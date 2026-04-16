@@ -1,5 +1,15 @@
 import type { FormEvent } from "react";
-import { startTransition, useDeferredValue, useEffect, useEffectEvent, useState } from "react";
+import {
+  createContext,
+  startTransition,
+  useCallback,
+  useContext,
+  useDeferredValue,
+  useEffect,
+  useEffectEvent,
+  useState,
+  useSyncExternalStore,
+} from "react";
 import {
   Link,
   NavLink,
@@ -19,6 +29,85 @@ import type {
   SettingsPayload,
 } from "../shared/types";
 import { api } from "./lib/api";
+
+type Theme = "light" | "dark";
+
+const THEME_KEY = "ebook-manager-theme";
+const THEME_META_COLORS: Record<Theme, string> = {
+  dark: "#0A0A0B",
+  light: "#F8F9FA",
+};
+
+function getSystemTheme(): Theme {
+  return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+}
+
+function getStoredTheme(): Theme | null {
+  try {
+    const stored = localStorage.getItem(THEME_KEY);
+    if (stored === "light" || stored === "dark") return stored;
+  } catch {
+    /* localStorage unavailable */
+  }
+  return null;
+}
+
+function applyTheme(theme: Theme) {
+  document.documentElement.setAttribute("data-theme", theme);
+  const meta = document.querySelector<HTMLMetaElement>('meta[name="theme-color"]');
+  if (meta) meta.content = THEME_META_COLORS[theme];
+}
+
+function resolveTheme(): Theme {
+  return getStoredTheme() ?? getSystemTheme();
+}
+
+const ThemeContext = createContext<{ theme: Theme; toggle: () => void }>({
+  theme: "dark",
+  toggle: () => {},
+});
+
+function useMediaQuery(query: string) {
+  const subscribe = useCallback(
+    (cb: () => void) => {
+      const mql = window.matchMedia(query);
+      mql.addEventListener("change", cb);
+      return () => mql.removeEventListener("change", cb);
+    },
+    [query],
+  );
+  const getSnapshot = useCallback(() => window.matchMedia(query).matches, [query]);
+  return useSyncExternalStore(subscribe, getSnapshot);
+}
+
+function useTheme() {
+  const prefersDark = useMediaQuery("(prefers-color-scheme: dark)");
+  const [theme, setTheme] = useState<Theme>(resolveTheme);
+
+  useEffect(() => {
+    if (!getStoredTheme()) {
+      setTheme(prefersDark ? "dark" : "light");
+    }
+  }, [prefersDark]);
+
+  useEffect(() => {
+    applyTheme(theme);
+  }, [theme]);
+
+  const toggle = useCallback(() => {
+    setTheme((prev) => {
+      const next = prev === "dark" ? "light" : "dark";
+      try {
+        localStorage.setItem(THEME_KEY, next);
+      } catch {
+        /* noop */
+      }
+      return next;
+    });
+  }, []);
+
+  return { theme, toggle };
+}
 
 const numberFormatter = new Intl.NumberFormat(undefined);
 const dateFormatter = new Intl.DateTimeFormat(undefined, {
@@ -60,6 +149,19 @@ const SettingsIcon = () => (
 const ArrowLeftIcon = () => (
   <svg viewBox="0 0 16 16" aria-hidden="true">
     <path d="M10 12 6 8l4-4" />
+  </svg>
+);
+
+const SunIcon = () => (
+  <svg viewBox="0 0 16 16" aria-hidden="true">
+    <circle cx="8" cy="8" r="3" />
+    <path d="M8 1.5v1M8 13.5v1M3.4 3.4l.7.7M11.9 11.9l.7.7M1.5 8h1M13.5 8h1M3.4 12.6l.7-.7M11.9 4.1l.7-.7" />
+  </svg>
+);
+
+const MoonIcon = () => (
+  <svg viewBox="0 0 16 16" aria-hidden="true">
+    <path d="M13.4 10.3A5.5 5.5 0 0 1 5.7 2.6a5.5 5.5 0 1 0 7.7 7.7Z" />
   </svg>
 );
 
@@ -113,6 +215,7 @@ const UploadResults = ({ results }: { results: ImportResult[] }) => {
 
 const Shell = () => {
   const location = useLocation();
+  const { theme, toggle } = useContext(ThemeContext);
 
   const pageTitle = (() => {
     if (location.pathname === "/settings") return "Settings";
@@ -153,6 +256,17 @@ const Shell = () => {
               Settings
             </NavLink>
           </nav>
+          <div className="sidebar-footer">
+            <button
+              aria-label={`Switch to ${theme === "dark" ? "light" : "dark"} mode`}
+              className="theme-toggle"
+              onClick={toggle}
+              type="button"
+            >
+              {theme === "dark" ? <SunIcon /> : <MoonIcon />}
+              {theme === "dark" ? "Light mode" : "Dark mode"}
+            </button>
+          </div>
         </aside>
         <div className="main-area">
           <header className="main-header">
@@ -653,5 +767,11 @@ const AppRoutes = () => (
 );
 
 export default function App() {
-  return <AppRoutes />;
+  const themeValue = useTheme();
+
+  return (
+    <ThemeContext.Provider value={themeValue}>
+      <AppRoutes />
+    </ThemeContext.Provider>
+  );
 }
