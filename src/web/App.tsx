@@ -7,6 +7,7 @@ import {
   useDeferredValue,
   useEffect,
   useEffectEvent,
+  useRef,
   useState,
   useSyncExternalStore,
 } from "react";
@@ -213,6 +214,104 @@ const UploadResults = ({ results }: { results: ImportResult[] }) => {
   );
 };
 
+const SkeletonLine = ({ className = "" }: { className?: string }) => (
+  <span aria-hidden="true" className={`skeleton-line${className ? ` ${className}` : ""}`} />
+);
+
+const BookshelfSkeleton = () => (
+  <section aria-hidden="true" className="books-grid books-grid-skeleton">
+    {Array.from({ length: 6 }, (_, index) => (
+      <div className="book-card skeleton-card" key={`bookshelf-skeleton-${index}`}>
+        <div className="book-cover">
+          <div className="skeleton-block skeleton-cover" />
+        </div>
+        <div className="book-card-copy stack-xs">
+          <SkeletonLine className="skeleton-line-title" />
+          <SkeletonLine className="skeleton-line-medium" />
+          <SkeletonLine className="skeleton-line-small" />
+        </div>
+      </div>
+    ))}
+  </section>
+);
+
+const BookDetailSkeleton = () => (
+  <div aria-busy="true" className="page stack-lg">
+    <Link className="backlink" to="/">
+      <ArrowLeftIcon />
+      Back to shelf
+    </Link>
+
+    <section aria-hidden="true" className="panel detail-layout">
+      <div className="book-cover book-cover-large">
+        <div className="skeleton-block skeleton-cover" />
+      </div>
+      <div className="stack-md">
+        <div className="stack-xs">
+          <SkeletonLine className="skeleton-line-small" />
+          <SkeletonLine className="skeleton-line-heading" />
+          <SkeletonLine className="skeleton-line-medium" />
+        </div>
+
+        <div className="metadata-grid">
+          {Array.from({ length: 4 }, (_, index) => (
+            <div key={`book-detail-meta-skeleton-${index}`}>
+              <SkeletonLine className="skeleton-line-small" />
+              <SkeletonLine className="skeleton-line-medium" />
+            </div>
+          ))}
+        </div>
+
+        <div className="stack-sm">
+          <div className="stack-xs">
+            <SkeletonLine className="skeleton-line-label" />
+            <div className="skeleton-input" />
+          </div>
+          <div className="inline-actions" aria-hidden="true">
+            <div className="skeleton-button" />
+            <div className="skeleton-button skeleton-button-secondary" />
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section aria-hidden="true" className="panel stack-sm">
+      <div className="section-heading">
+        <SkeletonLine className="skeleton-line-section" />
+        <SkeletonLine className="skeleton-line-small" />
+      </div>
+      <div className="stack-xs">
+        {Array.from({ length: 3 }, (_, index) => (
+          <div className="skeleton-row" key={`delivery-history-skeleton-${index}`} />
+        ))}
+      </div>
+    </section>
+  </div>
+);
+
+const SettingsSkeleton = () => (
+  <div aria-busy="true" className="page stack-lg">
+    <section aria-hidden="true" className="panel stack-md">
+      <div className="stack-xs">
+        <SkeletonLine className="skeleton-line-heading" />
+        <SkeletonLine className="skeleton-line-paragraph" />
+        <SkeletonLine className="skeleton-line-medium" />
+      </div>
+
+      <div className="stack-sm">
+        <div className="stack-xs">
+          <SkeletonLine className="skeleton-line-label" />
+          <div className="skeleton-input" />
+        </div>
+        <div className="inline-actions" aria-hidden="true">
+          <div className="skeleton-button" />
+          <div className="skeleton-button skeleton-button-secondary" />
+        </div>
+      </div>
+    </section>
+  </div>
+);
+
 const Shell = () => {
   const location = useLocation();
   const { theme, toggle } = useContext(ThemeContext);
@@ -287,29 +386,55 @@ const BookshelfPage = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const [query, setQuery] = useState(searchParams.get("q") ?? "");
   const [books, setBooks] = useState<BookSummary[]>([]);
+  const [lastLoadedQuery, setLastLoadedQuery] = useState(searchParams.get("q") ?? "");
   const [results, setResults] = useState<ImportResult[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [settings, setSettings] = useState<SettingsPayload | null>(null);
+  const [hasLoadedBooks, setHasLoadedBooks] = useState(false);
+  const [hasLoadedSettings, setHasLoadedSettings] = useState(false);
+  const latestBooksRequest = useRef(0);
 
   const deferredQuery = useDeferredValue(query);
 
   const loadBooks = useEffectEvent(async (term: string) => {
-    setLoading(true);
+    const requestId = latestBooksRequest.current + 1;
+    latestBooksRequest.current = requestId;
+
+    if (!hasLoadedBooks) {
+      setLoading(true);
+    }
     setError(null);
 
     try {
       const [nextBooks, nextSettings] = await Promise.all([
         api.listBooks(term),
-        api.getSettings(),
+        hasLoadedSettings ? Promise.resolve<SettingsPayload | null>(null) : api.getSettings(),
       ]);
+
+      if (requestId !== latestBooksRequest.current) {
+        return;
+      }
+
       setBooks(nextBooks);
-      setSettings(nextSettings);
+      setLastLoadedQuery(term);
+
+      if (nextSettings) {
+        setSettings(nextSettings);
+        setHasLoadedSettings(true);
+      }
     } catch (requestError) {
+      if (requestId !== latestBooksRequest.current) {
+        return;
+      }
+
       setError(requestError instanceof Error ? requestError.message : "Could not load books.");
     } finally {
-      setLoading(false);
+      if (requestId === latestBooksRequest.current) {
+        setLoading(false);
+        setHasLoadedBooks(true);
+      }
     }
   });
 
@@ -339,6 +464,9 @@ const BookshelfPage = () => {
       setUploading(false);
     }
   };
+
+  const showInitialBookshelfSkeleton = loading && !hasLoadedBooks;
+  const showingFilteredResults = lastLoadedQuery.trim().length > 0;
 
   return (
     <div className="page stack-lg">
@@ -397,14 +525,16 @@ const BookshelfPage = () => {
       {error ? <p className="inline-error">{error}</p> : null}
       <UploadResults results={results} />
 
-      {loading ? (
-        <section className="empty-state">
-          <h2>Loading\u2026</h2>
-        </section>
+      {showInitialBookshelfSkeleton ? (
+        <BookshelfSkeleton />
       ) : books.length === 0 ? (
         <section className="empty-state stack-sm">
-          <h2>No books yet</h2>
-          <p>Import EPUB files to populate your shelf.</p>
+          <h2>{showingFilteredResults ? "No matching books" : "No books yet"}</h2>
+          <p>
+            {showingFilteredResults
+              ? "Try a different title or author."
+              : "Import EPUB files to populate your shelf."}
+          </p>
         </section>
       ) : (
         <section aria-label="Bookshelf" className="books-grid">
@@ -460,6 +590,11 @@ const BookDetailPage = () => {
   });
 
   useEffect(() => {
+    setBook(null);
+    setDeliveries([]);
+    setSettings(null);
+    setMessage(null);
+    setRecipientEmail("");
     void loadBook();
   }, [bookId]);
 
@@ -482,12 +617,8 @@ const BookDetailPage = () => {
     }
   };
 
-  if (loading) {
-    return (
-      <section className="empty-state">
-        <h2>Loading\u2026</h2>
-      </section>
-    );
+  if (loading && !book) {
+    return <BookDetailSkeleton />;
   }
 
   if (!book) {
@@ -673,12 +804,8 @@ const SettingsPage = () => {
     }
   };
 
-  if (loading) {
-    return (
-      <section className="empty-state">
-        <h2>Loading\u2026</h2>
-      </section>
-    );
+  if (loading && !settings) {
+    return <SettingsSkeleton />;
   }
 
   return (

@@ -56,6 +56,8 @@
   --header-backdrop: rgba(10, 10, 11, 0.8);
   --cover-gradient-from: var(--bg-elevated);
   --cover-gradient-to: rgba(94, 106, 210, 0.18);
+  --skeleton-base: rgba(255, 255, 255, 0.08);
+  --skeleton-highlight: rgba(255, 255, 255, 0.14);
 }
 
 /* ─── Light theme ─── */
@@ -96,6 +98,8 @@
   --header-backdrop: rgba(248, 249, 250, 0.85);
   --cover-gradient-from: var(--bg-elevated);
   --cover-gradient-to: rgba(94, 106, 210, 0.10);
+  --skeleton-base: rgba(0, 0, 0, 0.05);
+  --skeleton-highlight: rgba(0, 0, 0, 0.1);
 }
 
 * {
@@ -358,6 +362,87 @@ img {
 .stack-sm > * + * { margin-top: 8px; }
 .stack-md > * + * { margin-top: 16px; }
 .stack-lg > * + * { margin-top: 24px; }
+
+.skeleton-card {
+  pointer-events: none;
+}
+
+.skeleton-block,
+.skeleton-line,
+.skeleton-input,
+.skeleton-button,
+.skeleton-row {
+  position: relative;
+  overflow: hidden;
+  background: linear-gradient(180deg, var(--skeleton-highlight), var(--skeleton-base));
+}
+
+.skeleton-block,
+.skeleton-cover {
+  width: 100%;
+  height: 100%;
+}
+
+.skeleton-line {
+  display: block;
+  height: 12px;
+  border-radius: 999px;
+}
+
+.skeleton-line-small {
+  width: 28%;
+}
+
+.skeleton-line-label {
+  width: 22%;
+}
+
+.skeleton-line-medium {
+  width: 56%;
+}
+
+.skeleton-line-title {
+  width: 78%;
+}
+
+.skeleton-line-heading {
+  width: 68%;
+  height: 18px;
+}
+
+.skeleton-line-section {
+  width: 24%;
+}
+
+.skeleton-line-paragraph {
+  width: min(100%, 40ch);
+}
+
+.skeleton-input,
+.skeleton-button,
+.skeleton-row {
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+}
+
+.skeleton-input {
+  width: 100%;
+  height: 32px;
+}
+
+.skeleton-button {
+  width: 132px;
+  height: 32px;
+}
+
+.skeleton-button-secondary {
+  width: 148px;
+}
+
+.skeleton-row {
+  width: 100%;
+  height: 40px;
+}
 
 /* ─── Buttons ─── */
 
