@@ -32,8 +32,10 @@ import type {
 import { api } from "./lib/api";
 
 type Theme = "light" | "dark";
+type BookshelfView = "grid" | "list";
 
 const THEME_KEY = "ebook-manager-theme";
+const BOOKSHELF_VIEW_KEY = "ebook-manager-bookshelf-view";
 const THEME_META_COLORS: Record<Theme, string> = {
   dark: "#0A0A0B",
   light: "#F8F9FA",
@@ -47,6 +49,16 @@ function getStoredTheme(): Theme | null {
   try {
     const stored = localStorage.getItem(THEME_KEY);
     if (stored === "light" || stored === "dark") return stored;
+  } catch {
+    /* localStorage unavailable */
+  }
+  return null;
+}
+
+function getStoredBookshelfView(): BookshelfView | null {
+  try {
+    const stored = localStorage.getItem(BOOKSHELF_VIEW_KEY);
+    if (stored === "grid" || stored === "list") return stored;
   } catch {
     /* localStorage unavailable */
   }
@@ -166,6 +178,19 @@ const MoonIcon = () => (
   </svg>
 );
 
+const GridIcon = () => (
+  <svg viewBox="0 0 16 16" aria-hidden="true">
+    <path d="M2.5 2.5h4v4h-4zM9.5 2.5h4v4h-4zM2.5 9.5h4v4h-4zM9.5 9.5h4v4h-4z" />
+  </svg>
+);
+
+const ListIcon = () => (
+  <svg viewBox="0 0 16 16" aria-hidden="true">
+    <path d="M3 4h10M3 8h10M3 12h10" />
+    <path d="M1.5 4h.01M1.5 8h.01M1.5 12h.01" />
+  </svg>
+);
+
 const PlaceholderCover = ({ title }: { title: string }) => (
   <div className="book-cover-fallback" aria-hidden="true">
     <span>{title.trim().charAt(0).toUpperCase() || "B"}</span>
@@ -218,19 +243,98 @@ const SkeletonLine = ({ className = "" }: { className?: string }) => (
   <span aria-hidden="true" className={`skeleton-line${className ? ` ${className}` : ""}`} />
 );
 
-const BookshelfSkeleton = () => (
-  <section aria-hidden="true" className="books-grid books-grid-skeleton">
-    {Array.from({ length: 6 }, (_, index) => (
-      <div className="book-card skeleton-card" key={`bookshelf-skeleton-${index}`}>
-        <div className="book-cover">
-          <div className="skeleton-block skeleton-cover" />
+const BookshelfSkeleton = ({ view }: { view: BookshelfView }) => {
+  if (view === "list") {
+    return (
+      <section aria-hidden="true" className="books-list books-list-skeleton">
+        {Array.from({ length: 6 }, (_, index) => (
+          <div className="book-list-row skeleton-card" key={`bookshelf-list-skeleton-${index}`}>
+            <div className="book-list-cover">
+              <div className="book-cover">
+                <div className="skeleton-block skeleton-cover" />
+              </div>
+            </div>
+            <div className="book-list-primary stack-xs">
+              <SkeletonLine className="skeleton-line-title" />
+              <SkeletonLine className="skeleton-line-medium" />
+            </div>
+            <div className="book-list-detail stack-xs">
+              <SkeletonLine className="skeleton-line-small" />
+              <SkeletonLine className="skeleton-line-medium" />
+            </div>
+            <div className="book-list-detail stack-xs">
+              <SkeletonLine className="skeleton-line-small" />
+              <SkeletonLine className="skeleton-line-medium" />
+            </div>
+            <div className="book-list-detail stack-xs">
+              <SkeletonLine className="skeleton-line-small" />
+              <SkeletonLine className="skeleton-line-small" />
+            </div>
+          </div>
+        ))}
+      </section>
+    );
+  }
+
+  return (
+    <section aria-hidden="true" className="books-grid books-grid-skeleton">
+      {Array.from({ length: 6 }, (_, index) => (
+        <div className="book-card skeleton-card" key={`bookshelf-grid-skeleton-${index}`}>
+          <div className="book-cover">
+            <div className="skeleton-block skeleton-cover" />
+          </div>
+          <div className="book-card-copy stack-xs">
+            <SkeletonLine className="skeleton-line-title" />
+            <SkeletonLine className="skeleton-line-medium" />
+            <SkeletonLine className="skeleton-line-small" />
+          </div>
         </div>
+      ))}
+    </section>
+  );
+};
+
+const BookshelfGrid = ({ books }: { books: BookSummary[] }) => (
+  <section aria-label="Bookshelf grid" className="books-grid">
+    {books.map((book) => (
+      <Link className="book-card" key={book.id} to={`/books/${book.id}`}>
+        <BookCover book={book} />
         <div className="book-card-copy stack-xs">
-          <SkeletonLine className="skeleton-line-title" />
-          <SkeletonLine className="skeleton-line-medium" />
-          <SkeletonLine className="skeleton-line-small" />
+          <strong className="book-title">{book.title}</strong>
+          <span className="book-author">{book.author}</span>
+          <span className="book-meta">{formatBytes(book.fileSizeBytes)}</span>
         </div>
-      </div>
+      </Link>
+    ))}
+  </section>
+);
+
+const BookshelfList = ({ books }: { books: BookSummary[] }) => (
+  <section aria-label="Bookshelf list" className="books-list">
+    {books.map((book) => (
+      <Link className="book-list-row" key={book.id} to={`/books/${book.id}`}>
+        <div className="book-list-cover">
+          <BookCover book={book} />
+        </div>
+        <div className="book-list-primary">
+          <strong className="book-title">{book.title}</strong>
+          <span className="book-author">{book.author}</span>
+        </div>
+        <div className="book-list-detail">
+          <span className="book-list-label">File</span>
+          <span className="book-list-value" title={book.sourceFilename}>
+            {book.sourceFilename}
+          </span>
+        </div>
+        <div className="book-list-detail">
+          <span className="book-list-label">Imported</span>
+          <span className="book-list-value">{formatDate(book.importedAt)}</span>
+        </div>
+        <div className="book-list-detail book-list-detail-compact">
+          <span className="book-list-label">Size</span>
+          <span className="book-list-value">{formatBytes(book.fileSizeBytes)}</span>
+        </div>
+      </Link>
     ))}
   </section>
 );
@@ -385,6 +489,7 @@ const BookshelfPage = () => {
 
   const [searchParams, setSearchParams] = useSearchParams();
   const [query, setQuery] = useState(searchParams.get("q") ?? "");
+  const [view, setView] = useState<BookshelfView>(() => getStoredBookshelfView() ?? "grid");
   const [books, setBooks] = useState<BookSummary[]>([]);
   const [lastLoadedQuery, setLastLoadedQuery] = useState(searchParams.get("q") ?? "");
   const [results, setResults] = useState<ImportResult[]>([]);
@@ -446,6 +551,15 @@ const BookshelfPage = () => {
     const nextQuery = searchParams.get("q") ?? "";
     setQuery((current) => (current === nextQuery ? current : nextQuery));
   }, [searchParams]);
+
+  const onChangeView = useCallback((nextView: BookshelfView) => {
+    setView(nextView);
+    try {
+      localStorage.setItem(BOOKSHELF_VIEW_KEY, nextView);
+    } catch {
+      /* localStorage unavailable */
+    }
+  }, []);
 
   const onPickFiles = async (fileList: FileList | null) => {
     const files = fileList ? Array.from(fileList) : [];
@@ -516,9 +630,31 @@ const BookshelfPage = () => {
             value={query}
           />
         </div>
-        <div className="stat-chip">
-          <strong>{numberFormatter.format(books.length)}</strong>
-          <span>books</span>
+        <div className="toolbar-actions">
+          <div aria-label="Bookshelf view" className="view-toggle" role="group">
+            <button
+              aria-pressed={view === "grid"}
+              className={`view-toggle-button ${view === "grid" ? "active" : ""}`}
+              onClick={() => onChangeView("grid")}
+              type="button"
+            >
+              <GridIcon />
+              Grid
+            </button>
+            <button
+              aria-pressed={view === "list"}
+              className={`view-toggle-button ${view === "list" ? "active" : ""}`}
+              onClick={() => onChangeView("list")}
+              type="button"
+            >
+              <ListIcon />
+              List
+            </button>
+          </div>
+          <div className="stat-chip">
+            <strong>{numberFormatter.format(books.length)}</strong>
+            <span>books</span>
+          </div>
         </div>
       </section>
 
@@ -526,7 +662,7 @@ const BookshelfPage = () => {
       <UploadResults results={results} />
 
       {showInitialBookshelfSkeleton ? (
-        <BookshelfSkeleton />
+        <BookshelfSkeleton view={view} />
       ) : books.length === 0 ? (
         <section className="empty-state stack-sm">
           <h2>{showingFilteredResults ? "No matching books" : "No books yet"}</h2>
@@ -537,18 +673,7 @@ const BookshelfPage = () => {
           </p>
         </section>
       ) : (
-        <section aria-label="Bookshelf" className="books-grid">
-          {books.map((book) => (
-            <Link className="book-card" key={book.id} to={`/books/${book.id}`}>
-              <BookCover book={book} />
-              <div className="book-card-copy stack-xs">
-                <strong className="book-title">{book.title}</strong>
-                <span className="book-author">{book.author}</span>
-                <span className="book-meta">{formatBytes(book.fileSizeBytes)}</span>
-              </div>
-            </Link>
-          ))}
-        </section>
+        view === "list" ? <BookshelfList books={books} /> : <BookshelfGrid books={books} />
       )}
     </div>
   );
