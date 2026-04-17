@@ -625,7 +625,7 @@ const BookshelfPage = () => {
                 setSearchParams(nextValue ? { q: nextValue } : {});
               });
             }}
-            placeholder="Search by title, author\u2026"
+            placeholder={"Search by title, author\u2026"}
             type="search"
             value={query}
           />
