@@ -783,10 +783,6 @@ const BookDetailPage = () => {
               <dt>File size</dt>
               <dd>{formatBytes(book.fileSizeBytes)}</dd>
             </div>
-            <div>
-              <dt>Kindle</dt>
-              <dd>{settings?.defaultKindleEmail ?? "Not configured"}</dd>
-            </div>
           </dl>
 
           <form className="stack-sm" onSubmit={onSend}>
