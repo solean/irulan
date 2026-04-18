@@ -1,4 +1,4 @@
-# lightweight ebook manager
+# Irulan
 
 A local-first, single-user EPUB manager focused on:
 

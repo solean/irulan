@@ -11,4 +11,4 @@ const server = Bun.serve({
   fetch: app.fetch,
 });
 
-console.log(`ebook manager listening on http://localhost:${server.port}`);
+console.log(`Irulan listening on http://localhost:${server.port}`);

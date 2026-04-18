@@ -1,4 +1,4 @@
-# Minimal Ebook Manager: Implementation Plan
+# Irulan: Implementation Plan
 
 ## Goal
 

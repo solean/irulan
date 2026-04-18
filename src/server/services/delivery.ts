@@ -139,7 +139,7 @@ export const sendTestEmail = async (recipientEmail: string) => {
   await transporter.sendMail({
     from: appConfig.smtp.from!,
     to: recipient,
-    subject: "ebook manager SMTP test",
-    text: "SMTP is configured and the app can send mail.",
+    subject: "Irulan SMTP test",
+    text: "SMTP is configured and Irulan can send mail.",
   });
 };

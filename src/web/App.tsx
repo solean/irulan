@@ -528,7 +528,7 @@ const Shell = () => {
 };
 
 const BookshelfPage = () => {
-  useDocumentTitle("Bookshelf \u2022 ebook manager");
+  useDocumentTitle("Bookshelf \u2022 Irulan");
 
   const [searchParams, setSearchParams] = useSearchParams();
   const [query, setQuery] = useState(searchParams.get("q") ?? "");
@@ -724,7 +724,7 @@ const BookshelfPage = () => {
 
 const BookDetailPage = () => {
   const { bookId = "" } = useParams();
-  useDocumentTitle("Book detail \u2022 ebook manager");
+  useDocumentTitle("Book detail \u2022 Irulan");
 
   const [book, setBook] = useState<BookDetail | null>(null);
   const [deliveries, setDeliveries] = useState<DeliveryRecord[]>([]);
@@ -952,8 +952,8 @@ const ReaderPage = () => {
 
   useDocumentTitle(
     reader
-      ? `${activeSectionLabel} \u2022 ${reader.title} \u2022 ebook manager`
-      : "Reader \u2022 ebook manager",
+      ? `${activeSectionLabel} \u2022 ${reader.title} \u2022 Irulan`
+      : "Reader \u2022 Irulan",
   );
 
   useEffect(() => {
@@ -1388,7 +1388,7 @@ const ReaderPage = () => {
 };
 
 const SettingsPage = () => {
-  useDocumentTitle("Settings \u2022 ebook manager");
+  useDocumentTitle("Settings \u2022 Irulan");
 
   const [settings, setSettings] = useState<SettingsPayload | null>(null);
   const [defaultEmail, setDefaultEmail] = useState("");
