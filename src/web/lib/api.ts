@@ -1,5 +1,6 @@
 import type {
   BookDetail,
+  BookReader,
   BookSummary,
   DeliveryRecord,
   ImportResult,
@@ -50,6 +51,11 @@ export const api = {
   async getBook(bookId: string) {
     const payload = await request<{ book: BookDetail }>(`/api/books/${bookId}`);
     return payload.book;
+  },
+
+  async getBookReader(bookId: string) {
+    const payload = await request<{ reader: BookReader }>(`/api/books/${bookId}/read`);
+    return payload.reader;
   },
 
   async getDeliveries(bookId: string) {

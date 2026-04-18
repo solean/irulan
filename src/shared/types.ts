@@ -10,6 +10,20 @@ export type BookSummary = {
 
 export type BookDetail = BookSummary;
 
+export type BookReaderSection = {
+  id: string;
+  href: string;
+  label: string;
+  url: string;
+};
+
+export type BookReader = {
+  id: string;
+  title: string;
+  author: string;
+  sections: BookReaderSection[];
+};
+
 export type DeliveryRecord = {
   id: string;
   recipientEmail: string;

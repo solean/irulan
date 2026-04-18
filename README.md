@@ -4,6 +4,7 @@ A local-first, single-user EPUB manager focused on:
 
 - importing EPUB files
 - browsing a clean bookshelf
+- reading EPUBs in the browser
 - sending a selected EPUB to a Kindle email address
 
 This project intentionally does not do format conversion.
@@ -63,6 +64,7 @@ Local app data is stored under:
 - `data/app.db`
 - `storage/books/<book-id>/original.epub`
 - `storage/books/<book-id>/cover.*`
+- `storage/books/<book-id>/reader/`
 
 You can override the storage locations with:
 

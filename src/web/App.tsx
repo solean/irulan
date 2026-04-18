@@ -1,4 +1,4 @@
-import type { FormEvent } from "react";
+import type { CSSProperties, FormEvent, MouseEvent } from "react";
 import {
   createContext,
   startTransition,
@@ -24,18 +24,32 @@ import {
 
 import type {
   BookDetail,
+  BookReader,
+  BookReaderSection,
   BookSummary,
   DeliveryRecord,
   ImportResult,
   SettingsPayload,
 } from "../shared/types";
 import { api } from "./lib/api";
+import {
+  createReaderAssetSection,
+  getReaderDocumentTitle,
+  renderReaderDocument,
+  type ReaderLinkTarget,
+} from "./lib/reader";
 
 type Theme = "light" | "dark";
 type BookshelfView = "grid" | "list";
+type ReaderTone = "paper" | "sepia" | "night";
 
 const THEME_KEY = "ebook-manager-theme";
 const BOOKSHELF_VIEW_KEY = "ebook-manager-bookshelf-view";
+const READER_TONE_KEY = "ebook-manager-reader-tone";
+const READER_FONT_SCALE_KEY = "ebook-manager-reader-font-scale";
+const READER_MIN_FONT_SCALE = 0.95;
+const READER_MAX_FONT_SCALE = 1.25;
+const READER_FONT_SCALE_STEP = 0.1;
 const THEME_META_COLORS: Record<Theme, string> = {
   dark: "#0A0A0B",
   light: "#F8F9FA",
@@ -59,6 +73,32 @@ function getStoredBookshelfView(): BookshelfView | null {
   try {
     const stored = localStorage.getItem(BOOKSHELF_VIEW_KEY);
     if (stored === "grid" || stored === "list") return stored;
+  } catch {
+    /* localStorage unavailable */
+  }
+  return null;
+}
+
+function getStoredReaderTone(): ReaderTone | null {
+  try {
+    const stored = localStorage.getItem(READER_TONE_KEY);
+    if (stored === "paper" || stored === "sepia" || stored === "night") return stored;
+  } catch {
+    /* localStorage unavailable */
+  }
+  return null;
+}
+
+function getStoredReaderFontScale(): number | null {
+  try {
+    const stored = Number.parseFloat(localStorage.getItem(READER_FONT_SCALE_KEY) ?? "");
+    if (
+      Number.isFinite(stored) &&
+      stored >= READER_MIN_FONT_SCALE &&
+      stored <= READER_MAX_FONT_SCALE
+    ) {
+      return stored;
+    }
   } catch {
     /* localStorage unavailable */
   }
@@ -422,6 +462,9 @@ const Shell = () => {
 
   const pageTitle = (() => {
     if (location.pathname === "/settings") return "Settings";
+    if (location.pathname.startsWith("/books/") && location.pathname.endsWith("/read")) {
+      return "Reader";
+    }
     if (location.pathname.startsWith("/books/")) return "Book detail";
     return "Bookshelf";
   })();
@@ -802,6 +845,9 @@ const BookDetailPage = () => {
               />
             </div>
             <div className="inline-actions">
+              <Link className="button button-secondary" to={`/books/${book.id}/read`}>
+                Read in browser
+              </Link>
               <button className="button button-primary" disabled={sending} type="submit">
                 {sending ? "Sending\u2026" : "Send to Kindle"}
               </button>
@@ -856,6 +902,486 @@ const BookDetailPage = () => {
             </table>
           </div>
         )}
+      </section>
+    </div>
+  );
+};
+
+const ReaderPage = () => {
+  const { bookId = "" } = useParams();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const readerBodyRef = useRef<HTMLElement | null>(null);
+  const sectionMarkupCache = useRef(new Map<string, string>());
+  const latestSectionRequest = useRef(0);
+
+  const [reader, setReader] = useState<BookReader | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [sectionDocument, setSectionDocument] = useState<Document | null>(null);
+  const [sectionTitle, setSectionTitle] = useState<string | null>(null);
+  const [sectionLoading, setSectionLoading] = useState(false);
+  const [sectionError, setSectionError] = useState<string | null>(null);
+  const [tone, setTone] = useState<ReaderTone>(() => getStoredReaderTone() ?? "paper");
+  const [fontScale, setFontScale] = useState(() => getStoredReaderFontScale() ?? 1);
+
+  const selectedHref = searchParams.get("section")?.trim() ?? "";
+  const anchorId = searchParams.get("anchor")?.trim() ?? null;
+  const activeSection = (() => {
+    if (!reader) return null;
+    if (!selectedHref) return reader.sections[0] ?? null;
+
+    return (
+      reader.sections.find((section) => section.href === selectedHref) ??
+      createReaderAssetSection(bookId, selectedHref)
+    );
+  })();
+  const currentSectionIndex =
+    reader && activeSection
+      ? reader.sections.findIndex((section) => section.href === activeSection.href)
+      : -1;
+  const previousSection =
+    reader && currentSectionIndex > 0 ? reader.sections[currentSectionIndex - 1] : null;
+  const nextSection =
+    reader && currentSectionIndex >= 0 && currentSectionIndex < reader.sections.length - 1
+      ? reader.sections[currentSectionIndex + 1]
+      : null;
+  const activeSectionLabel = sectionTitle ?? activeSection?.label ?? reader?.title ?? "Reader";
+  const readerStyle = {
+    "--reader-font-scale": `${fontScale}`,
+  } as CSSProperties;
+
+  useDocumentTitle(
+    reader
+      ? `${activeSectionLabel} \u2022 ${reader.title} \u2022 ebook manager`
+      : "Reader \u2022 ebook manager",
+  );
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(READER_TONE_KEY, tone);
+    } catch {
+      /* noop */
+    }
+  }, [tone]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(READER_FONT_SCALE_KEY, String(fontScale));
+    } catch {
+      /* noop */
+    }
+  }, [fontScale]);
+
+  const goToSection = useCallback(
+    (
+      href: string,
+      options: {
+        anchor?: string | null;
+        replace?: boolean;
+      } = {},
+    ) => {
+      if (!href) return;
+
+      const params = new URLSearchParams();
+      params.set("section", href);
+
+      if (options.anchor) {
+        params.set("anchor", options.anchor);
+      }
+
+      startTransition(() => {
+        setSearchParams(params, { replace: options.replace });
+      });
+    },
+    [setSearchParams],
+  );
+
+  const loadReader = useEffectEvent(async () => {
+    setLoading(true);
+    setError(null);
+
+    try {
+      setReader(await api.getBookReader(bookId));
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : "Could not load this EPUB.");
+    } finally {
+      setLoading(false);
+    }
+  });
+
+  const loadSection = useEffectEvent(async (section: BookReaderSection) => {
+    const requestId = latestSectionRequest.current + 1;
+    latestSectionRequest.current = requestId;
+
+    setSectionLoading(true);
+    setSectionError(null);
+
+    try {
+      let markup = sectionMarkupCache.current.get(section.href) ?? null;
+
+      if (!markup) {
+        const response = await fetch(section.url, {
+          headers: {
+            Accept: "application/xhtml+xml, text/html;q=0.9",
+          },
+        });
+
+        if (!response.ok) {
+          throw new Error(`Request failed with ${response.status}.`);
+        }
+
+        markup = await response.text();
+        sectionMarkupCache.current.set(section.href, markup);
+      }
+
+      let nextDocument = new DOMParser().parseFromString(markup, "application/xhtml+xml");
+      if (nextDocument.querySelector("parsererror")) {
+        nextDocument = new DOMParser().parseFromString(markup, "text/html");
+      }
+
+      if (requestId !== latestSectionRequest.current) {
+        return;
+      }
+
+      setSectionDocument(nextDocument);
+      setSectionTitle(getReaderDocumentTitle(nextDocument));
+    } catch (requestError) {
+      if (requestId !== latestSectionRequest.current) {
+        return;
+      }
+
+      setSectionDocument(null);
+      setSectionTitle(null);
+      setSectionError(
+        requestError instanceof Error ? requestError.message : "Could not load this section.",
+      );
+    } finally {
+      if (requestId === latestSectionRequest.current) {
+        setSectionLoading(false);
+      }
+    }
+  });
+
+  useEffect(() => {
+    sectionMarkupCache.current.clear();
+    setReader(null);
+    setError(null);
+    setSectionDocument(null);
+    setSectionTitle(null);
+    setSectionError(null);
+    void loadReader();
+  }, [bookId]);
+
+  useEffect(() => {
+    if (!reader || reader.sections.length === 0 || selectedHref) {
+      return;
+    }
+
+    goToSection(reader.sections[0]?.href ?? "", { replace: true });
+  }, [goToSection, reader, selectedHref]);
+
+  useEffect(() => {
+    setSectionDocument(null);
+    setSectionTitle(null);
+    setSectionError(null);
+
+    if (!activeSection) {
+      setSectionLoading(false);
+      return;
+    }
+
+    void loadSection(activeSection);
+  }, [activeSection?.href, activeSection?.url]);
+
+  useEffect(() => {
+    if (sectionLoading) {
+      return;
+    }
+
+    const root = readerBodyRef.current;
+    if (!root) {
+      return;
+    }
+
+    const animationFrame = window.requestAnimationFrame(() => {
+      if (anchorId) {
+        const escapedId =
+          typeof CSS !== "undefined" && typeof CSS.escape === "function"
+            ? CSS.escape(anchorId)
+            : anchorId.replace(/[^\w-]/g, "\\$&");
+        const escapedName = anchorId.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+        const anchorTarget = root.querySelector<HTMLElement>(
+          `#${escapedId}, [name="${escapedName}"]`,
+        );
+
+        if (anchorTarget) {
+          anchorTarget.scrollIntoView({ block: "start" });
+          return;
+        }
+      }
+
+      window.scrollTo({ top: 0, behavior: "auto" });
+    });
+
+    return () => {
+      window.cancelAnimationFrame(animationFrame);
+    };
+  }, [anchorId, activeSection?.href, sectionDocument, sectionLoading]);
+
+  const onInternalReaderLinkClick = useCallback(
+    (
+      event: MouseEvent<HTMLAnchorElement>,
+      target: Extract<ReaderLinkTarget, { kind: "internal" }>,
+    ) => {
+      event.preventDefault();
+      goToSection(target.href, {
+        anchor: target.anchor,
+        replace: target.href === activeSection?.href,
+      });
+    },
+    [activeSection?.href, goToSection],
+  );
+
+  const onAdjustFontScale = useCallback((delta: number) => {
+    setFontScale((current) => {
+      const next = Number((current + delta).toFixed(2));
+      return Math.max(READER_MIN_FONT_SCALE, Math.min(READER_MAX_FONT_SCALE, next));
+    });
+  }, []);
+
+  if (loading && !reader) {
+    return (
+      <div className="page stack-lg">
+        <Link className="backlink" to={`/books/${bookId}`}>
+          <ArrowLeftIcon />
+          Back to book
+        </Link>
+
+        <section aria-busy="true" className="reader-shell">
+          <aside aria-hidden="true" className="panel reader-sidebar stack-sm">
+            <div className="stack-xs">
+              <SkeletonLine className="skeleton-line-small" />
+              <SkeletonLine className="skeleton-line-heading" />
+              <SkeletonLine className="skeleton-line-medium" />
+            </div>
+            <div className="skeleton-input" />
+            <div className="stack-xs">
+              {Array.from({ length: 6 }, (_, index) => (
+                <div className="skeleton-button" key={`reader-skeleton-nav-${index}`} />
+              ))}
+            </div>
+          </aside>
+          <section aria-hidden="true" className="reader-content stack-sm">
+            <div className="reader-toolbar">
+              <div className="skeleton-button skeleton-button-secondary" />
+              <SkeletonLine className="skeleton-line-medium" />
+              <div className="skeleton-button skeleton-button-secondary" />
+            </div>
+            <div className="reader-canvas">
+              <div className="reader-paper">
+                <div className="stack-sm">
+                  {Array.from({ length: 8 }, (_, index) => (
+                    <SkeletonLine
+                      className={index === 0 ? "skeleton-line-heading" : "skeleton-line-paragraph"}
+                      key={`reader-paper-skeleton-${index}`}
+                    />
+                  ))}
+                </div>
+              </div>
+            </div>
+          </section>
+        </section>
+      </div>
+    );
+  }
+
+  if (!reader) {
+    return (
+      <div className="page stack-lg">
+        <Link className="backlink" to={`/books/${bookId}`}>
+          <ArrowLeftIcon />
+          Back to book
+        </Link>
+
+        <section className="empty-state stack-sm">
+          <h2>Reader unavailable</h2>
+          <p>{error ?? "This EPUB could not be opened in the browser."}</p>
+        </section>
+      </div>
+    );
+  }
+
+  return (
+    <div className="page stack-lg">
+      <Link className="backlink" to={`/books/${bookId}`}>
+        <ArrowLeftIcon />
+        Back to book
+      </Link>
+
+      {error ? <p className="inline-error">{error}</p> : null}
+
+      <section className="reader-shell">
+        <aside className="panel reader-sidebar stack-sm">
+          <div className="stack-xs">
+            <p className="eyebrow">Now reading</p>
+            <h2>{reader.title}</h2>
+            <p className="detail-author">{reader.author}</p>
+          </div>
+
+          {currentSectionIndex >= 0 ? (
+            <div className="stat-chip reader-progress">
+              <strong>{numberFormatter.format(currentSectionIndex + 1)}</strong>
+              <span>of {numberFormatter.format(reader.sections.length)} sections</span>
+            </div>
+          ) : (
+            <div className="stat-chip reader-progress">
+              <strong>Linked</strong>
+              <span>section</span>
+            </div>
+          )}
+
+          <div className="stack-xs">
+            <label className="field-label" htmlFor="reader-section">
+              Jump to section
+            </label>
+            <select
+              id="reader-section"
+              onChange={(event) => goToSection(event.currentTarget.value)}
+              value={activeSection?.href ?? ""}
+            >
+              {reader.sections.map((section, index) => (
+                <option key={section.id} value={section.href}>
+                  {index + 1}. {section.label}
+                </option>
+              ))}
+              {currentSectionIndex < 0 && activeSection ? (
+                <option value={activeSection.href}>{activeSection.label}</option>
+              ) : null}
+            </select>
+          </div>
+
+          <nav aria-label="Table of contents" className="reader-toc">
+            {reader.sections.map((section, index) => (
+              <button
+                aria-current={section.href === activeSection?.href ? "page" : undefined}
+                className={`reader-toc-item ${section.href === activeSection?.href ? "active" : ""}`}
+                key={section.id}
+                onClick={() => goToSection(section.href)}
+                type="button"
+              >
+                <span className="reader-toc-index">{index + 1}</span>
+                <span className="reader-toc-label">{section.label}</span>
+              </button>
+            ))}
+          </nav>
+        </aside>
+
+        <section className="reader-content">
+          <div className="reader-toolbar">
+            <div className="reader-toolbar-nav">
+              <button
+                className="button button-secondary"
+                disabled={!previousSection}
+                onClick={() =>
+                  previousSection ? goToSection(previousSection.href) : undefined
+                }
+                type="button"
+              >
+                Previous
+              </button>
+              <button
+                className="button button-secondary"
+                disabled={!nextSection}
+                onClick={() => (nextSection ? goToSection(nextSection.href) : undefined)}
+                type="button"
+              >
+                Next
+              </button>
+            </div>
+
+            <strong className="reader-current-label">{activeSectionLabel}</strong>
+
+            <div className="reader-toolbar-controls">
+              <div aria-label="Reader tone" className="view-toggle" role="group">
+                {(["paper", "sepia", "night"] as const).map((option) => (
+                  <button
+                    aria-pressed={tone === option}
+                    className={`view-toggle-button ${tone === option ? "active" : ""}`}
+                    key={option}
+                    onClick={() => setTone(option)}
+                    type="button"
+                  >
+                    {option === "paper"
+                      ? "Paper"
+                      : option === "sepia"
+                        ? "Sepia"
+                        : "Night"}
+                  </button>
+                ))}
+              </div>
+
+              <div aria-label="Type size" className="view-toggle" role="group">
+                <button
+                  aria-label="Decrease type size"
+                  className="view-toggle-button"
+                  disabled={fontScale <= READER_MIN_FONT_SCALE}
+                  onClick={() => onAdjustFontScale(-READER_FONT_SCALE_STEP)}
+                  type="button"
+                >
+                  A-
+                </button>
+                <div className="stat-chip reader-type-scale">
+                  <strong>{Math.round(fontScale * 100)}%</strong>
+                </div>
+                <button
+                  aria-label="Increase type size"
+                  className="view-toggle-button"
+                  disabled={fontScale >= READER_MAX_FONT_SCALE}
+                  onClick={() => onAdjustFontScale(READER_FONT_SCALE_STEP)}
+                  type="button"
+                >
+                  A+
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div className="reader-canvas" data-reader-tone={tone} style={readerStyle}>
+            <div className="reader-paper">
+              <header className="reader-paper-header">
+                <p className="eyebrow">Section</p>
+                <h2>{activeSectionLabel}</h2>
+              </header>
+
+              {sectionError ? <p className="inline-error">{sectionError}</p> : null}
+
+              {sectionLoading && !sectionDocument ? (
+                <div aria-hidden="true" className="reader-loading stack-sm">
+                  {Array.from({ length: 9 }, (_, index) => (
+                    <SkeletonLine
+                      className={index === 0 ? "skeleton-line-heading" : "skeleton-line-paragraph"}
+                      key={`reader-body-skeleton-${index}`}
+                    />
+                  ))}
+                </div>
+              ) : activeSection && sectionDocument ? (
+                <article className="reader-body" ref={readerBodyRef}>
+                  {renderReaderDocument({
+                    bookId,
+                    document: sectionDocument,
+                    onInternalLinkClick: onInternalReaderLinkClick,
+                    section: activeSection,
+                  })}
+                </article>
+              ) : (
+                <div className="empty-state stack-sm">
+                  <h2>No readable sections</h2>
+                  <p>This EPUB does not include any linear spine items to display.</p>
+                </div>
+              )}
+            </div>
+          </div>
+        </section>
       </section>
     </div>
   );
@@ -1009,6 +1535,7 @@ const AppRoutes = () => (
     <Route element={<Shell />}>
       <Route element={<BookshelfPage />} path="/" />
       <Route element={<BookDetailPage />} path="/books/:bookId" />
+      <Route element={<ReaderPage />} path="/books/:bookId/read" />
       <Route element={<SettingsPage />} path="/settings" />
     </Route>
   </Routes>

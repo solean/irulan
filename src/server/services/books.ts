@@ -4,14 +4,16 @@ import path from "node:path";
 
 import { desc, eq, like, or } from "drizzle-orm";
 
-import { BookDetail, BookSummary, ImportResult } from "../../shared/types";
+import { BookDetail, BookReader, BookSummary, ImportResult } from "../../shared/types";
 import { db } from "../db/client";
 import { books } from "../db/schema";
 import { AppError } from "../errors";
-import { bookDirectory } from "../lib/storage";
-import { extractEpubMetadata } from "./epub";
+import { bookDirectory, readerDirectory } from "../lib/storage";
+import { extractEpubMetadata, prepareEpubReader, resolveEpubReaderAssetPath } from "./epub";
 
 type BookRecord = typeof books.$inferSelect;
+
+const readerManifestRequests = new Map<string, Promise<BookReader>>();
 
 const fallbackTitle = (filename: string) =>
   path.basename(filename, path.extname(filename)).replace(/[_-]+/g, " ").trim();
@@ -61,6 +63,37 @@ export const getBookRecord = (bookId: string) => {
     throw new AppError(404, "Book not found.");
   }
   return row;
+};
+
+const loadBookReader = async (book: BookRecord): Promise<BookReader> => {
+  const manifest = await prepareEpubReader(book.filePath, readerDirectory(book.id), book.id);
+  return {
+    id: book.id,
+    title: manifest.title,
+    author: manifest.author,
+    sections: manifest.sections,
+  };
+};
+
+export const getBookReader = async (bookId: string): Promise<BookReader> => {
+  const book = getBookRecord(bookId);
+  const existing = readerManifestRequests.get(bookId);
+  if (existing) {
+    return existing;
+  }
+
+  const request = loadBookReader(book).finally(() => {
+    readerManifestRequests.delete(bookId);
+  });
+
+  readerManifestRequests.set(bookId, request);
+  return request;
+};
+
+export const getBookReaderAssetPath = async (bookId: string, assetPath: string) => {
+  const book = getBookRecord(bookId);
+  await getBookReader(bookId);
+  return resolveEpubReaderAssetPath(readerDirectory(book.id), assetPath);
 };
 
 export const importBookFile = async (file: File): Promise<ImportResult> => {

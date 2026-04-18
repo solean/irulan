@@ -4,8 +4,15 @@ import { Hono } from "hono";
 import { z } from "zod";
 
 import { AppError, errorMessage } from "../errors";
-import { coverContentType } from "../lib/storage";
-import { getBook, getBookRecord, importBookFile, listBooks } from "../services/books";
+import { coverContentType, readerAssetContentType } from "../lib/storage";
+import {
+  getBook,
+  getBookReader,
+  getBookReaderAssetPath,
+  getBookRecord,
+  importBookFile,
+  listBooks,
+} from "../services/books";
 import { listDeliveriesForBook, sendBookToKindle } from "../services/delivery";
 
 const sendSchema = z.object({
@@ -35,6 +42,15 @@ const routeError = (error: unknown) => {
 };
 
 export const booksRoutes = new Hono();
+
+const getReaderAssetRequestPath = (requestPath: string, bookId: string) => {
+  const prefix = `/api/books/${bookId}/read/`;
+  if (!requestPath.startsWith(prefix)) {
+    throw new AppError(400, "Invalid reader asset path.");
+  }
+
+  return decodeURIComponent(requestPath.slice(prefix.length));
+};
 
 booksRoutes.get("/", (c) => {
   const query = c.req.query("q") ?? "";
@@ -72,6 +88,36 @@ booksRoutes.get("/:id/cover", async (c) => {
     return new Response(bytes, {
       headers: {
         "Content-Type": coverContentType(book.coverPath),
+        "Cache-Control": "public, max-age=3600",
+      },
+    });
+  } catch (error) {
+    return routeError(error);
+  }
+});
+
+booksRoutes.get("/:id/read", async (c) => {
+  try {
+    return c.json({ reader: await getBookReader(c.req.param("id")) });
+  } catch (error) {
+    return routeError(error);
+  }
+});
+
+booksRoutes.get("/:id/read/*", async (c) => {
+  try {
+    const bookId = c.req.param("id");
+    const assetPath = getReaderAssetRequestPath(c.req.path, bookId);
+    const filePath = await getBookReaderAssetPath(bookId, assetPath);
+    const file = Bun.file(filePath);
+
+    if (!(await file.exists())) {
+      throw new AppError(404, "Reader asset not found.");
+    }
+
+    return new Response(file, {
+      headers: {
+        "Content-Type": readerAssetContentType(filePath),
         "Cache-Control": "public, max-age=3600",
       },
     });
