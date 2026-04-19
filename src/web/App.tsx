@@ -19,6 +19,7 @@ import {
   Route,
   Routes,
   useLocation,
+  useNavigate,
   useParams,
   useSearchParams,
 } from "react-router-dom";
@@ -461,6 +462,136 @@ const ImportBooksModal = ({ open, onClose, onImportFiles }: ImportBooksModalProp
   );
 };
 
+type DeleteBookModalProps = {
+  open: boolean;
+  deleting: boolean;
+  error: string | null;
+  bookTitle: string;
+  onClose: () => void;
+  onConfirm: () => void;
+};
+
+const DeleteBookModal = ({
+  open,
+  deleting,
+  error,
+  bookTitle,
+  onClose,
+  onConfirm,
+}: DeleteBookModalProps) => {
+  const modalRef = useRef<HTMLDivElement | null>(null);
+  const cancelButtonRef = useRef<HTMLButtonElement | null>(null);
+
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+
+    const previousActiveElement =
+      document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const previousOverflow = document.body.style.overflow;
+
+    document.body.style.overflow = "hidden";
+    cancelButtonRef.current?.focus();
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      previousActiveElement?.focus();
+    };
+  }, [open]);
+
+  if (!open) return null;
+
+  const onModalKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (event.key === "Escape" && !deleting) {
+      event.preventDefault();
+      onClose();
+      return;
+    }
+
+    if (event.key !== "Tab") return;
+
+    const focusableElements = getFocusableElements(modalRef.current);
+    if (focusableElements.length === 0) {
+      event.preventDefault();
+      modalRef.current?.focus();
+      return;
+    }
+
+    const firstElement = focusableElements[0];
+    const lastElement = focusableElements[focusableElements.length - 1];
+
+    if (event.shiftKey) {
+      if (document.activeElement === firstElement || document.activeElement === modalRef.current) {
+        event.preventDefault();
+        lastElement.focus();
+      }
+      return;
+    }
+
+    if (document.activeElement === lastElement) {
+      event.preventDefault();
+      firstElement.focus();
+    }
+  };
+
+  return createPortal(
+    <div
+      className="modal-backdrop"
+      onClick={() => {
+        if (!deleting) {
+          onClose();
+        }
+      }}
+    >
+      <div
+        aria-describedby="delete-book-description"
+        aria-labelledby="delete-book-title"
+        aria-modal="true"
+        className="confirm-modal stack-md"
+        onClick={(event) => event.stopPropagation()}
+        onKeyDown={onModalKeyDown}
+        ref={modalRef}
+        role="dialog"
+        tabIndex={-1}
+      >
+        <div className="stack-sm">
+          <div className="stack-xs">
+            <p className="eyebrow">Delete book</p>
+            <h2 id="delete-book-title">Remove this title from your library?</h2>
+          </div>
+          <p className="confirm-modal-copy" id="delete-book-description">
+            <strong>{bookTitle}</strong> and its delivery history will be removed. This cannot be
+            undone.
+          </p>
+        </div>
+
+        {error ? (
+          <p aria-live="polite" className="inline-error">
+            {error}
+          </p>
+        ) : null}
+
+        <div className="confirm-modal-actions">
+          <button
+            className="button button-secondary"
+            disabled={deleting}
+            onClick={onClose}
+            ref={cancelButtonRef}
+            type="button"
+          >
+            Cancel
+          </button>
+          <button className="button button-danger" disabled={deleting} onClick={onConfirm} type="button">
+            {deleting ? "Deleting\u2026" : "Delete book"}
+          </button>
+        </div>
+      </div>
+    </div>,
+    document.body,
+  );
+};
+
 const UploadResults = ({ results }: { results: ImportResult[] }) => {
   if (results.length === 0) return null;
 
@@ -736,6 +867,7 @@ const Shell = () => {
 const BookshelfPage = () => {
   useDocumentTitle("Bookshelf \u2022 Irulan");
 
+  const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
   const [query, setQuery] = useState(searchParams.get("q") ?? "");
   const [view, setView] = useState<BookshelfView>(() => getStoredBookshelfView() ?? "grid");
@@ -750,6 +882,7 @@ const BookshelfPage = () => {
   const [hasLoadedBooks, setHasLoadedBooks] = useState(false);
   const [hasLoadedSettings, setHasLoadedSettings] = useState(false);
   const latestBooksRequest = useRef(0);
+  const flashMessage = (location.state as { message?: string } | null)?.message ?? null;
 
   const deferredQuery = useDeferredValue(query);
 
@@ -910,6 +1043,7 @@ const BookshelfPage = () => {
         </div>
       </section>
 
+      {flashMessage ? <p className="inline-success">{flashMessage}</p> : null}
       {error ? <p className="inline-error">{error}</p> : null}
       <UploadResults results={results} />
 
@@ -933,6 +1067,7 @@ const BookshelfPage = () => {
 
 const BookDetailPage = () => {
   const { bookId = "" } = useParams();
+  const navigate = useNavigate();
   useDocumentTitle("Book detail \u2022 Irulan");
 
   const [book, setBook] = useState<BookDetail | null>(null);
@@ -941,8 +1076,11 @@ const BookDetailPage = () => {
   const [recipientEmail, setRecipientEmail] = useState("");
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   const loadBook = useEffectEvent(async () => {
     setLoading(true);
@@ -972,6 +1110,8 @@ const BookDetailPage = () => {
     setSettings(null);
     setMessage(null);
     setRecipientEmail("");
+    setDeleteError(null);
+    setIsDeleteModalOpen(false);
     void loadBook();
   }, [bookId]);
 
@@ -994,6 +1134,26 @@ const BookDetailPage = () => {
     }
   };
 
+  const onDelete = async () => {
+    if (!book) return;
+
+    setDeleting(true);
+    setDeleteError(null);
+
+    try {
+      const deletion = await api.deleteBook(book.id);
+      setIsDeleteModalOpen(false);
+      navigate("/", {
+        replace: true,
+        state: { message: deletion.message },
+      });
+    } catch (requestError) {
+      setDeleteError(requestError instanceof Error ? requestError.message : "Delete failed.");
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   if (loading && !book) {
     return <BookDetailSkeleton />;
   }
@@ -1009,6 +1169,22 @@ const BookDetailPage = () => {
 
   return (
     <div className="page stack-lg">
+      <DeleteBookModal
+        bookTitle={book.title}
+        deleting={deleting}
+        error={deleteError}
+        onClose={() => {
+          if (!deleting) {
+            setDeleteError(null);
+            setIsDeleteModalOpen(false);
+          }
+        }}
+        onConfirm={() => {
+          void onDelete();
+        }}
+        open={isDeleteModalOpen}
+      />
+
       <Link className="backlink" to="/">
         <ArrowLeftIcon />
         Back to shelf
@@ -1071,6 +1247,28 @@ const BookDetailPage = () => {
             ) : null}
             {error ? <p className="inline-error">{error}</p> : null}
           </form>
+
+          <div className="detail-danger-zone stack-sm">
+            <div className="stack-xs">
+              <p className="eyebrow">Library</p>
+              <p className="detail-danger-copy">
+                Remove this EPUB and its delivery history from your library.
+              </p>
+            </div>
+            <div className="inline-actions">
+              <button
+                className="button button-danger"
+                disabled={deleting || sending}
+                onClick={() => {
+                  setDeleteError(null);
+                  setIsDeleteModalOpen(true);
+                }}
+                type="button"
+              >
+                Delete book
+              </button>
+            </div>
+          </div>
         </div>
       </section>
 

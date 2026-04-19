@@ -1,17 +1,19 @@
 import { createHash } from "node:crypto";
-import { mkdir, rm, writeFile } from "node:fs/promises";
+import { mkdir, rename, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 import { desc, eq, like, or } from "drizzle-orm";
 
-import { BookDetail, BookReader, BookSummary, ImportResult } from "../../shared/types";
+import { BookDetail, BookReader, BookSummary, DeleteBookResult, ImportResult } from "../../shared/types";
+import { appConfig } from "../config";
 import { db } from "../db/client";
-import { books } from "../db/schema";
+import { books, deliveries } from "../db/schema";
 import { AppError } from "../errors";
 import { bookDirectory, readerDirectory } from "../lib/storage";
 import { extractEpubMetadata, prepareEpubReader, resolveEpubReaderAssetPath } from "./epub";
 
 type BookRecord = typeof books.$inferSelect;
+type DeliveryRecord = typeof deliveries.$inferSelect;
 
 const readerManifestRequests = new Map<string, Promise<BookReader>>();
 
@@ -94,6 +96,61 @@ export const getBookReaderAssetPath = async (bookId: string, assetPath: string) 
   const book = getBookRecord(bookId);
   await getBookReader(bookId);
   return resolveEpubReaderAssetPath(readerDirectory(book.id), assetPath);
+};
+
+export const deleteBook = async (bookId: string): Promise<DeleteBookResult> => {
+  const book = getBookRecord(bookId);
+  const bookDeliveries: DeliveryRecord[] = db
+    .select()
+    .from(deliveries)
+    .where(eq(deliveries.bookId, book.id))
+    .all();
+  const sourceDir = bookDirectory(book.id);
+  const trashRoot = path.join(appConfig.storageDir, ".trash");
+  const trashDir = path.join(trashRoot, `${book.id}-${Date.now()}`);
+  let movedToTrash = false;
+
+  readerManifestRequests.delete(book.id);
+
+  try {
+    await mkdir(trashRoot, { recursive: true });
+    await rename(sourceDir, trashDir);
+    movedToTrash = true;
+  } catch (error) {
+    if (!(error instanceof Error) || !("code" in error) || error.code !== "ENOENT") {
+      throw new AppError(500, "The book files could not be prepared for deletion.");
+    }
+  }
+
+  try {
+    db.delete(deliveries).where(eq(deliveries.bookId, book.id)).run();
+    db.delete(books).where(eq(books.id, book.id)).run();
+  } catch (error) {
+    if (movedToTrash) {
+      await rename(trashDir, sourceDir).catch((restoreError) => {
+        console.error("Failed to restore book after delete rollback.", restoreError);
+      });
+    }
+
+    if (bookDeliveries.length > 0) {
+      db.insert(deliveries).values(bookDeliveries).run();
+    }
+
+    console.error("Failed to delete book record.", error);
+    throw new AppError(500, "The book could not be deleted.");
+  }
+
+  if (movedToTrash) {
+    await rm(trashDir, { recursive: true, force: true }).catch((cleanupError) => {
+      console.error("Book record deleted but filesystem cleanup failed.", cleanupError);
+    });
+  }
+
+  return {
+    id: book.id,
+    title: book.title,
+    message: `${book.title} was deleted from your library.`,
+  };
 };
 
 export const importBookFile = async (file: File): Promise<ImportResult> => {

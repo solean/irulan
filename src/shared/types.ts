@@ -56,3 +56,9 @@ export type ImportResult =
       message: string;
       book?: undefined;
     };
+
+export type DeleteBookResult = {
+  id: string;
+  title: string;
+  message: string;
+};

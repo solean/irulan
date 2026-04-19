@@ -6,6 +6,7 @@ import { z } from "zod";
 import { AppError, errorMessage } from "../errors";
 import { coverContentType, readerAssetContentType } from "../lib/storage";
 import {
+  deleteBook,
   getBook,
   getBookReader,
   getBookReaderAssetPath,
@@ -72,6 +73,14 @@ booksRoutes.post("/import", async (c) => {
     }
 
     return c.json({ results });
+  } catch (error) {
+    return routeError(error);
+  }
+});
+
+booksRoutes.delete("/:id", async (c) => {
+  try {
+    return c.json({ deletion: await deleteBook(c.req.param("id")) });
   } catch (error) {
     return routeError(error);
   }

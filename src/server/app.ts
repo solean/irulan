@@ -15,7 +15,7 @@ app.use(
   cors({
     origin: appConfig.webOrigins,
     allowHeaders: ["Content-Type"],
-    allowMethods: ["GET", "POST", "PUT"],
+    allowMethods: ["GET", "POST", "PUT", "DELETE"],
   }),
 );
 

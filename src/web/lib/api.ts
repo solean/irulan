@@ -2,6 +2,7 @@ import type {
   BookDetail,
   BookReader,
   BookSummary,
+  DeleteBookResult,
   DeliveryRecord,
   ImportResult,
   SettingsPayload,
@@ -51,6 +52,13 @@ export const api = {
   async getBook(bookId: string) {
     const payload = await request<{ book: BookDetail }>(`/api/books/${bookId}`);
     return payload.book;
+  },
+
+  async deleteBook(bookId: string) {
+    const payload = await request<{ deletion: DeleteBookResult }>(`/api/books/${bookId}`, {
+      method: "DELETE",
+    });
+    return payload.deletion;
   },
 
   async getBookReader(bookId: string) {
