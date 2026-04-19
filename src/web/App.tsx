@@ -1,4 +1,4 @@
-import type { CSSProperties, FormEvent, MouseEvent } from "react";
+import type { CSSProperties, DragEvent, FormEvent, KeyboardEvent, MouseEvent } from "react";
 import {
   createContext,
   startTransition,
@@ -11,6 +11,7 @@ import {
   useState,
   useSyncExternalStore,
 } from "react";
+import { createPortal } from "react-dom";
 import {
   Link,
   NavLink,
@@ -179,6 +180,24 @@ const formatDate = (value: string | null) => {
   return dateFormatter.format(new Date(value));
 };
 
+const isFileDrag = (dataTransfer: DataTransfer | null) =>
+  Array.from(dataTransfer?.items ?? []).some((item) => item.kind === "file") ||
+  Array.from(dataTransfer?.types ?? []).includes("Files");
+
+const focusableSelector = [
+  'a[href]',
+  'button:not([disabled])',
+  'input:not([disabled]):not([type="hidden"])',
+  'select:not([disabled])',
+  'textarea:not([disabled])',
+  '[tabindex]:not([tabindex="-1"])',
+].join(", ");
+
+const getFocusableElements = (container: HTMLElement | null) =>
+  container
+    ? Array.from(container.querySelectorAll<HTMLElement>(focusableSelector))
+    : [];
+
 const useDocumentTitle = (title: string) => {
   useEffect(() => {
     document.title = title;
@@ -231,6 +250,14 @@ const ListIcon = () => (
   </svg>
 );
 
+const UploadIcon = () => (
+  <svg viewBox="0 0 24 24" aria-hidden="true">
+    <path d="M12 16V5" />
+    <path d="m7.5 9.5 4.5-4.5 4.5 4.5" />
+    <path d="M5 19h14" />
+  </svg>
+);
+
 const PlaceholderCover = ({ title }: { title: string }) => (
   <div className="book-cover-fallback" aria-hidden="true">
     <span>{title.trim().charAt(0).toUpperCase() || "B"}</span>
@@ -254,6 +281,185 @@ const BookCover = ({ book, large = false }: { book: BookSummary; large?: boolean
     )}
   </div>
 );
+
+type ImportBooksModalProps = {
+  open: boolean;
+  onClose: () => void;
+  onImportFiles: (files: File[]) => void;
+};
+
+const ImportBooksModal = ({ open, onClose, onImportFiles }: ImportBooksModalProps) => {
+  const modalRef = useRef<HTMLDivElement | null>(null);
+  const browseButtonRef = useRef<HTMLButtonElement | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const dragDepthRef = useRef(0);
+  const [isDropTargetActive, setIsDropTargetActive] = useState(false);
+
+  const resetDropTarget = useCallback(() => {
+    dragDepthRef.current = 0;
+    setIsDropTargetActive(false);
+  }, []);
+
+  useEffect(() => {
+    if (!open) {
+      resetDropTarget();
+      return;
+    }
+
+    const previousActiveElement =
+      document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const previousOverflow = document.body.style.overflow;
+
+    document.body.style.overflow = "hidden";
+    browseButtonRef.current?.focus();
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      resetDropTarget();
+      previousActiveElement?.focus();
+    };
+  }, [open, resetDropTarget]);
+
+  if (!open) return null;
+
+  const submitFiles = (files: File[]) => {
+    if (files.length === 0) return;
+
+    onImportFiles(files);
+    onClose();
+  };
+
+  const onModalKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      onClose();
+      return;
+    }
+
+    if (event.key !== "Tab") return;
+
+    const focusableElements = getFocusableElements(modalRef.current);
+    if (focusableElements.length === 0) {
+      event.preventDefault();
+      modalRef.current?.focus();
+      return;
+    }
+
+    const firstElement = focusableElements[0];
+    const lastElement = focusableElements[focusableElements.length - 1];
+
+    if (event.shiftKey) {
+      if (document.activeElement === firstElement || document.activeElement === modalRef.current) {
+        event.preventDefault();
+        lastElement.focus();
+      }
+      return;
+    }
+
+    if (document.activeElement === lastElement) {
+      event.preventDefault();
+      firstElement.focus();
+    }
+  };
+
+  const onDragEnterDropzone = (event: DragEvent<HTMLDivElement>) => {
+    if (!isFileDrag(event.dataTransfer)) return;
+
+    event.preventDefault();
+    dragDepthRef.current += 1;
+    setIsDropTargetActive(true);
+  };
+
+  const onDragOverDropzone = (event: DragEvent<HTMLDivElement>) => {
+    if (!isFileDrag(event.dataTransfer)) return;
+
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "copy";
+
+    if (!isDropTargetActive) {
+      setIsDropTargetActive(true);
+    }
+  };
+
+  const onDragLeaveDropzone = (event: DragEvent<HTMLDivElement>) => {
+    if (!isFileDrag(event.dataTransfer)) return;
+
+    dragDepthRef.current = Math.max(0, dragDepthRef.current - 1);
+    if (dragDepthRef.current === 0) {
+      setIsDropTargetActive(false);
+    }
+  };
+
+  const onDropDropzone = (event: DragEvent<HTMLDivElement>) => {
+    if (!isFileDrag(event.dataTransfer)) return;
+
+    event.preventDefault();
+    resetDropTarget();
+    submitFiles(Array.from(event.dataTransfer.files));
+  };
+
+  return createPortal(
+    <div className="modal-backdrop" onClick={onClose}>
+      <div
+        aria-labelledby="import-books-title"
+        aria-modal="true"
+        className="import-modal"
+        onClick={(event) => event.stopPropagation()}
+        onKeyDown={onModalKeyDown}
+        ref={modalRef}
+        role="dialog"
+        tabIndex={-1}
+      >
+        <div className="import-modal-header">
+          <div className="stack-xs import-modal-copy">
+            <h2 id="import-books-title">Add EPUBs</h2>
+          </div>
+          <button className="button button-secondary import-modal-dismiss" onClick={onClose} type="button">
+            Close
+          </button>
+        </div>
+
+        <div
+          className={`import-dropzone${isDropTargetActive ? " import-dropzone-active" : ""}`}
+          onDragEnter={onDragEnterDropzone}
+          onDragLeave={onDragLeaveDropzone}
+          onDragOver={onDragOverDropzone}
+          onDrop={onDropDropzone}
+        >
+          <div className="import-dropzone-icon">
+            <UploadIcon />
+          </div>
+          <p className="import-dropzone-title">
+            {isDropTargetActive ? "Release to upload" : "Drag and Drop here"}
+          </p>
+          <p className="import-dropzone-divider">or</p>
+          <button
+            className="import-browse-button"
+            onClick={() => fileInputRef.current?.click()}
+            ref={browseButtonRef}
+            type="button"
+          >
+            Browse files
+          </button>
+          <input
+            accept=".epub,application/epub+zip"
+            aria-hidden="true"
+            className="sr-only"
+            multiple
+            onChange={(event) => {
+              submitFiles(Array.from(event.currentTarget.files ?? []));
+              event.currentTarget.value = "";
+            }}
+            ref={fileInputRef}
+            tabIndex={-1}
+            type="file"
+          />
+        </div>
+      </div>
+    </div>,
+    document.body,
+  );
+};
 
 const UploadResults = ({ results }: { results: ImportResult[] }) => {
   if (results.length === 0) return null;
@@ -539,6 +745,7 @@ const BookshelfPage = () => {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
+  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [settings, setSettings] = useState<SettingsPayload | null>(null);
   const [hasLoadedBooks, setHasLoadedBooks] = useState(false);
   const [hasLoadedSettings, setHasLoadedSettings] = useState(false);
@@ -604,8 +811,7 @@ const BookshelfPage = () => {
     }
   }, []);
 
-  const onPickFiles = async (fileList: FileList | null) => {
-    const files = fileList ? Array.from(fileList) : [];
+  const importFiles = useEffectEvent(async (files: File[]) => {
     if (files.length === 0) return;
 
     setUploading(true);
@@ -620,7 +826,7 @@ const BookshelfPage = () => {
     } finally {
       setUploading(false);
     }
-  };
+  });
 
   const showInitialBookshelfSkeleton = loading && !hasLoadedBooks;
   const showingFilteredResults = lastLoadedQuery.trim().length > 0;
@@ -632,19 +838,14 @@ const BookshelfPage = () => {
           <h2>Your bookshelf</h2>
         </div>
         <div className="hero-actions">
-          <label className="button button-primary">
+          <button
+            className="button button-primary"
+            disabled={uploading}
+            onClick={() => setIsImportModalOpen(true)}
+            type="button"
+          >
             {uploading ? "Importing\u2026" : "Add EPUBs"}
-            <input
-              accept=".epub,application/epub+zip"
-              className="sr-only"
-              multiple
-              onChange={(event) => {
-                void onPickFiles(event.currentTarget.files);
-                event.currentTarget.value = "";
-              }}
-              type="file"
-            />
-          </label>
+          </button>
           {!settings?.defaultKindleEmail && (
             <Link className="button button-secondary" to="/settings">
               Add Kindle address
@@ -652,6 +853,14 @@ const BookshelfPage = () => {
           )}
         </div>
       </section>
+
+      <ImportBooksModal
+        onClose={() => setIsImportModalOpen(false)}
+        onImportFiles={(files) => {
+          void importFiles(files);
+        }}
+        open={isImportModalOpen}
+      />
 
       <section className="toolbar">
         <div className="searchbox">
