@@ -81,6 +81,12 @@ import {
 type Theme = "light" | "dark";
 type BookshelfView = "grid" | "list";
 type ReaderTone = "paper" | "sepia" | "night";
+type BookshelfSortKey = "title" | "author" | "sourceFilename" | "importedAt" | "fileSizeBytes";
+type SortDirection = "asc" | "desc";
+type BookshelfSort = {
+  key: BookshelfSortKey;
+  direction: SortDirection;
+};
 
 const THEME_KEY = "ebook-manager-theme";
 const BOOKSHELF_VIEW_KEY = "ebook-manager-bookshelf-view";
@@ -89,6 +95,10 @@ const READER_FONT_SCALE_KEY = "ebook-manager-reader-font-scale";
 const READER_MIN_FONT_SCALE = 0.95;
 const READER_MAX_FONT_SCALE = 1.25;
 const READER_FONT_SCALE_STEP = 0.1;
+const DEFAULT_BOOKSHELF_SORT: BookshelfSort = {
+  key: "importedAt",
+  direction: "desc",
+};
 const THEME_META_COLORS: Record<Theme, string> = {
   dark: "#0A0A0B",
   light: "#F8F9FA",
@@ -207,6 +217,10 @@ const dateFormatter = new Intl.DateTimeFormat(undefined, {
   dateStyle: "medium",
   timeStyle: "short",
 });
+const bookshelfTextCollator = new Intl.Collator(undefined, {
+  numeric: true,
+  sensitivity: "base",
+});
 
 const formatBytes = (bytes: number) => {
   if (bytes < 1024) return `${bytes}\u00A0B`;
@@ -218,6 +232,50 @@ const formatDate = (value: string | null) => {
   if (!value) return "\u2014";
   return dateFormatter.format(new Date(value));
 };
+
+const getDefaultBookshelfSortDirection = (key: BookshelfSortKey): SortDirection =>
+  key === "importedAt" || key === "fileSizeBytes" ? "desc" : "asc";
+
+const getNextBookshelfSort = (current: BookshelfSort, key: BookshelfSortKey): BookshelfSort => {
+  if (current.key === key) {
+    return {
+      key,
+      direction: current.direction === "asc" ? "desc" : "asc",
+    };
+  }
+
+  return {
+    key,
+    direction: getDefaultBookshelfSortDirection(key),
+  };
+};
+
+const compareBooks = (left: BookSummary, right: BookSummary, key: BookshelfSortKey) => {
+  switch (key) {
+    case "fileSizeBytes":
+      return left.fileSizeBytes - right.fileSizeBytes;
+    case "importedAt":
+      return new Date(left.importedAt).getTime() - new Date(right.importedAt).getTime();
+    case "author":
+      return bookshelfTextCollator.compare(left.author, right.author);
+    case "sourceFilename":
+      return bookshelfTextCollator.compare(left.sourceFilename, right.sourceFilename);
+    case "title":
+    default:
+      return bookshelfTextCollator.compare(left.title, right.title);
+  }
+};
+
+const getSortedBooks = (books: BookSummary[], sort: BookshelfSort) => {
+  const direction = sort.direction === "asc" ? 1 : -1;
+  return [...books].sort((left, right) => compareBooks(left, right, sort.key) * direction);
+};
+
+const getAriaSort = (
+  sort: BookshelfSort,
+  key: BookshelfSortKey,
+): "ascending" | "descending" | "none" =>
+  sort.key === key ? (sort.direction === "asc" ? "ascending" : "descending") : "none";
 
 const isFileDrag = (dataTransfer: DataTransfer | null) =>
   Array.from(dataTransfer?.items ?? []).some((item) => item.kind === "file") ||
@@ -298,6 +356,30 @@ const ListIcon = () => (
   <svg viewBox="0 0 16 16" aria-hidden="true">
     <path d="M3 4h10M3 8h10M3 12h10" />
     <path d="M1.5 4h.01M1.5 8h.01M1.5 12h.01" />
+  </svg>
+);
+
+const SortIcon = ({
+  active,
+  direction,
+}: {
+  active: boolean;
+  direction: SortDirection;
+}) => (
+  <svg
+    aria-hidden="true"
+    className={cn("books-table-sort-icon", active && "active")}
+    viewBox="0 0 16 16"
+  >
+    <path
+      d={
+        active
+          ? direction === "asc"
+            ? "M5 10l3-4 3 4"
+            : "M5 6l3 4 3-4"
+          : "M5 6l3-3 3 3M5 10l3 3 3-3"
+      }
+    />
   </svg>
 );
 
@@ -585,32 +667,57 @@ const SkeletonLine = ({ className = "" }: { className?: string }) => (
 const BookshelfSkeleton = ({ view }: { view: BookshelfView }) => {
   if (view === "list") {
     return (
-      <section aria-hidden="true" className="books-list books-list-skeleton">
-        {Array.from({ length: 6 }, (_, index) => (
-          <div className="book-list-row skeleton-card" key={`bookshelf-list-skeleton-${index}`}>
-            <div className="book-list-cover">
-              <div className="book-cover">
-                <div className="skeleton-block skeleton-cover" />
-              </div>
-            </div>
-            <div className="book-list-primary stack-xs">
-              <SkeletonLine className="skeleton-line-title" />
-              <SkeletonLine className="skeleton-line-medium" />
-            </div>
-            <div className="book-list-detail stack-xs">
-              <SkeletonLine className="skeleton-line-small" />
-              <SkeletonLine className="skeleton-line-medium" />
-            </div>
-            <div className="book-list-detail stack-xs">
-              <SkeletonLine className="skeleton-line-small" />
-              <SkeletonLine className="skeleton-line-medium" />
-            </div>
-            <div className="book-list-detail stack-xs">
-              <SkeletonLine className="skeleton-line-small" />
-              <SkeletonLine className="skeleton-line-small" />
-            </div>
-          </div>
-        ))}
+      <section aria-hidden="true" className="books-table-shell books-table-skeleton">
+        <Table className="books-table">
+          <colgroup>
+            <col className="books-table-col-title" />
+            <col className="books-table-col-author" />
+            <col className="books-table-col-file" />
+            <col className="books-table-col-imported" />
+            <col className="books-table-col-size" />
+          </colgroup>
+          <TableHeader className="[&_tr]:border-0">
+            <TableRow className="books-table-row border-0">
+              <TableHead scope="col">Title</TableHead>
+              <TableHead scope="col">Author</TableHead>
+              <TableHead scope="col">File</TableHead>
+              <TableHead scope="col">Imported</TableHead>
+              <TableHead className="books-table-size-cell" scope="col">
+                Size
+              </TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {Array.from({ length: 6 }, (_, index) => (
+              <TableRow className="books-table-row border-0" key={`bookshelf-list-skeleton-${index}`}>
+                <TableCell className="books-table-title-cell">
+                  <div className="books-table-title-content">
+                    <div className="books-table-cover">
+                      <div className="book-cover">
+                        <div className="skeleton-block skeleton-cover" />
+                      </div>
+                    </div>
+                    <div className="books-table-title-stack stack-xs">
+                      <SkeletonLine className="skeleton-line-title" />
+                    </div>
+                  </div>
+                </TableCell>
+                <TableCell>
+                  <SkeletonLine className="skeleton-line-medium" />
+                </TableCell>
+                <TableCell>
+                  <SkeletonLine className="skeleton-line-medium" />
+                </TableCell>
+                <TableCell>
+                  <SkeletonLine className="skeleton-line-medium" />
+                </TableCell>
+                <TableCell className="books-table-size-cell">
+                  <SkeletonLine className="skeleton-line-small" />
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
       </section>
     );
   }
@@ -648,35 +755,141 @@ const BookshelfGrid = ({ books }: { books: BookSummary[] }) => (
   </section>
 );
 
-const BookshelfList = ({ books }: { books: BookSummary[] }) => (
-  <section aria-label="Bookshelf list" className="books-list">
-    {books.map((book) => (
-      <Link className="book-list-row" key={book.id} to={`/books/${book.id}`}>
-        <div className="book-list-cover">
-          <BookCover book={book} />
-        </div>
-        <div className="book-list-primary">
-          <strong className="book-title">{book.title}</strong>
-          <span className="book-author">{book.author}</span>
-        </div>
-        <div className="book-list-detail">
-          <span className="book-list-label">File</span>
-          <span className="book-list-value" title={book.sourceFilename}>
-            {book.sourceFilename}
-          </span>
-        </div>
-        <div className="book-list-detail">
-          <span className="book-list-label">Imported</span>
-          <span className="book-list-value">{formatDate(book.importedAt)}</span>
-        </div>
-        <div className="book-list-detail book-list-detail-compact">
-          <span className="book-list-label">Size</span>
-          <span className="book-list-value">{formatBytes(book.fileSizeBytes)}</span>
-        </div>
-      </Link>
-    ))}
-  </section>
-);
+type BookshelfListProps = {
+  books: BookSummary[];
+  sort: BookshelfSort;
+  onChangeSort: (key: BookshelfSortKey) => void;
+};
+
+const BookshelfSortButton = ({
+  label,
+  sortKey,
+  sort,
+  onChangeSort,
+}: {
+  label: string;
+  sortKey: BookshelfSortKey;
+  sort: BookshelfSort;
+  onChangeSort: (key: BookshelfSortKey) => void;
+}) => {
+  const isActive = sort.key === sortKey;
+
+  return (
+    <button
+      className={cn("books-table-sort-button", isActive && "active")}
+      onClick={() => onChangeSort(sortKey)}
+      title={`Sort by ${label}`}
+      type="button"
+    >
+      <span>{label}</span>
+      <SortIcon active={isActive} direction={sort.direction} />
+    </button>
+  );
+};
+
+const BookshelfList = ({ books, sort, onChangeSort }: BookshelfListProps) => {
+  const sortedBooks = getSortedBooks(books, sort);
+
+  return (
+    <section aria-label="Bookshelf list" className="books-table-shell">
+      <Table className="books-table">
+        <colgroup>
+          <col className="books-table-col-title" />
+          <col className="books-table-col-author" />
+          <col className="books-table-col-file" />
+          <col className="books-table-col-imported" />
+          <col className="books-table-col-size" />
+        </colgroup>
+        <TableHeader className="[&_tr]:border-0">
+          <TableRow className="books-table-row border-0">
+            <TableHead aria-sort={getAriaSort(sort, "title")} scope="col">
+              <BookshelfSortButton
+                label="Title"
+                onChangeSort={onChangeSort}
+                sort={sort}
+                sortKey="title"
+              />
+            </TableHead>
+            <TableHead aria-sort={getAriaSort(sort, "author")} scope="col">
+              <BookshelfSortButton
+                label="Author"
+                onChangeSort={onChangeSort}
+                sort={sort}
+                sortKey="author"
+              />
+            </TableHead>
+            <TableHead aria-sort={getAriaSort(sort, "sourceFilename")} scope="col">
+              <BookshelfSortButton
+                label="File"
+                onChangeSort={onChangeSort}
+                sort={sort}
+                sortKey="sourceFilename"
+              />
+            </TableHead>
+            <TableHead aria-sort={getAriaSort(sort, "importedAt")} scope="col">
+              <BookshelfSortButton
+                label="Imported"
+                onChangeSort={onChangeSort}
+                sort={sort}
+                sortKey="importedAt"
+              />
+            </TableHead>
+            <TableHead
+              aria-sort={getAriaSort(sort, "fileSizeBytes")}
+              className="books-table-size-cell"
+              scope="col"
+            >
+              <BookshelfSortButton
+                label="Size"
+                onChangeSort={onChangeSort}
+                sort={sort}
+                sortKey="fileSizeBytes"
+              />
+            </TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {sortedBooks.map((book) => (
+            <TableRow className="books-table-row border-0" key={book.id}>
+              <TableCell className="books-table-title-cell">
+                <div className="books-table-title-content">
+                  <Link
+                    aria-label={`Open ${book.title}`}
+                    className="books-table-cover"
+                    to={`/books/${book.id}`}
+                  >
+                    <BookCover book={book} />
+                  </Link>
+                  <div className="books-table-title-stack">
+                    <Link className="books-table-title-link" to={`/books/${book.id}`}>
+                      {book.title}
+                    </Link>
+                  </div>
+                </div>
+              </TableCell>
+              <TableCell>
+                <span className="books-table-text" title={book.author}>
+                  {book.author}
+                </span>
+              </TableCell>
+              <TableCell>
+                <span className="books-table-text" title={book.sourceFilename}>
+                  {book.sourceFilename}
+                </span>
+              </TableCell>
+              <TableCell>
+                <span className="books-table-text">{formatDate(book.importedAt)}</span>
+              </TableCell>
+              <TableCell className="books-table-size-cell">
+                <span className="books-table-text">{formatBytes(book.fileSizeBytes)}</span>
+              </TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+    </section>
+  );
+};
 
 const BookDetailSkeleton = () => (
   <div aria-busy="true" className="page stack-lg">
@@ -835,6 +1048,7 @@ const BookshelfPage = () => {
   const [query, setQuery] = useState(searchParams.get("q") ?? "");
   const [view, setView] = useState<BookshelfView>(() => getStoredBookshelfView() ?? "grid");
   const [books, setBooks] = useState<BookSummary[]>([]);
+  const [listSort, setListSort] = useState<BookshelfSort>(DEFAULT_BOOKSHELF_SORT);
   const [lastLoadedQuery, setLastLoadedQuery] = useState(searchParams.get("q") ?? "");
   const [results, setResults] = useState<ImportResult[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -905,6 +1119,10 @@ const BookshelfPage = () => {
     } catch {
       /* localStorage unavailable */
     }
+  }, []);
+
+  const onChangeListSort = useCallback((key: BookshelfSortKey) => {
+    setListSort((current) => getNextBookshelfSort(current, key));
   }, []);
 
   const importFiles = useEffectEvent(async (files: File[]) => {
@@ -1021,7 +1239,11 @@ const BookshelfPage = () => {
           </p>
         </section>
       ) : (
-        view === "list" ? <BookshelfList books={books} /> : <BookshelfGrid books={books} />
+        view === "list" ? (
+          <BookshelfList books={books} onChangeSort={onChangeListSort} sort={listSort} />
+        ) : (
+          <BookshelfGrid books={books} />
+        )
       )}
     </div>
   );

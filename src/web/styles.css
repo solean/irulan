@@ -773,67 +773,158 @@ input::placeholder {
   font-variant-numeric: tabular-nums;
 }
 
-.books-list {
-  display: grid;
-  gap: 8px;
-}
-
-.book-list-row {
-  min-width: 0;
-  display: grid;
-  grid-template-columns: 56px minmax(0, 1.75fr) minmax(0, 1.3fr) minmax(132px, auto) auto;
-  align-items: center;
-  gap: 16px;
-  padding: 10px 12px;
-  border-radius: var(--radius-md);
+.books-table-shell [data-slot="table-container"] {
   border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
   background: var(--bg-surface);
-  transition: background-color 120ms ease, border-color 120ms ease;
-  -webkit-tap-highlight-color: transparent;
-  touch-action: manipulation;
 }
 
-.book-list-row:hover {
-  background: var(--bg-hover);
-  border-color: var(--border-hover);
+.books-table {
+  width: 100%;
+  min-width: 760px;
+  table-layout: fixed;
+  border-collapse: separate;
+  border-spacing: 0;
 }
 
-.book-list-cover {
-  width: 56px;
+.books-table-col-title {
+  width: 34%;
 }
 
-.book-list-primary,
-.book-list-detail {
-  min-width: 0;
+.books-table-col-author {
+  width: 18%;
 }
 
-.book-list-primary .book-title,
-.book-list-primary .book-author,
-.book-list-value {
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+.books-table-col-file {
+  width: 24%;
 }
 
-.book-list-label {
-  display: block;
-  margin-bottom: 2px;
-  font-size: 10px;
+.books-table-col-imported {
+  width: 16%;
+}
+
+.books-table-col-size {
+  width: 8%;
+}
+
+.books-table th,
+.books-table td {
+  height: auto;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border-default);
+  vertical-align: middle;
+}
+
+.books-table th {
+  font-size: 11px;
   font-weight: 600;
+  color: var(--text-tertiary);
   letter-spacing: 0.04em;
   text-transform: uppercase;
-  color: var(--text-tertiary);
 }
 
-.book-list-value {
+.books-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.books-table-row {
+  transition: background-color 120ms ease;
+}
+
+.books-table-row:hover {
+  background: var(--bg-hover);
+}
+
+.books-table-sort-button {
+  width: 100%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  cursor: pointer;
+}
+
+.books-table-sort-button:hover,
+.books-table-sort-button.active {
+  color: var(--text-primary);
+}
+
+.books-table-sort-icon {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  opacity: 0.55;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.books-table-sort-button.active .books-table-sort-icon {
+  opacity: 1;
+}
+
+.books-table-title-cell,
+.books-table-title-stack,
+.books-table-text {
+  min-width: 0;
+}
+
+.books-table-title-content {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.books-table-cover {
   display: block;
+  width: 40px;
+  flex-shrink: 0;
+}
+
+.books-table-title-link,
+.books-table-text {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.books-table-title-link {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.books-table-title-link:hover {
+  color: var(--accent);
+}
+
+.books-table-text {
   font-size: 12px;
   color: var(--text-secondary);
   font-variant-numeric: tabular-nums;
 }
 
-.book-list-detail-compact {
+.books-table-size-cell {
   text-align: right;
+}
+
+.books-table-size-cell .books-table-text {
+  color: var(--text-primary);
+}
+
+.books-table-skeleton .books-table-sort-button {
+  cursor: default;
 }
 
 /* ─── Section heading ─── */
@@ -1967,21 +2058,17 @@ code {
     grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
   }
 
-  .book-list-row {
-    grid-template-columns: 56px minmax(0, 1fr);
-    gap: 10px 12px;
+  .books-table {
+    min-width: 640px;
   }
 
-  .book-list-primary {
-    align-self: center;
+  .books-table th,
+  .books-table td {
+    padding: 9px 10px;
   }
 
-  .book-list-detail {
-    grid-column: 2;
-  }
-
-  .book-list-detail-compact {
-    text-align: left;
+  .books-table-cover {
+    width: 34px;
   }
 
   .smtp-onboarding-grid {
