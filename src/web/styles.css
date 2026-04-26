@@ -1015,12 +1015,15 @@ input::placeholder {
   gap: 10px;
   align-items: start;
   width: 100%;
+  min-height: 44px;
+  height: auto;
   padding: 10px 12px;
   border: 1px solid var(--border-default);
   border-radius: var(--radius-md);
   background: transparent;
   color: var(--text-secondary);
   text-align: left;
+  white-space: normal;
   cursor: pointer;
   transition: background-color 120ms ease, border-color 120ms ease, color 120ms ease;
 }
@@ -1048,6 +1051,8 @@ input::placeholder {
   min-width: 0;
   font-size: 13px;
   line-height: 1.4;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 .reader-content {
