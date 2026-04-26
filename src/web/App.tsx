@@ -1365,7 +1365,13 @@ const BookDetailPage = () => {
       </Button>
 
       <Card className="panel detail-layout">
-        <BookCover book={book} large />
+        <Link
+          aria-label={`Open ${book.title} in reader`}
+          className="detail-cover-link"
+          to={`/books/${book.id}/read`}
+        >
+          <BookCover book={book} large />
+        </Link>
         <div className="stack-md">
           <div className="stack-xs">
             <h2>{book.title}</h2>

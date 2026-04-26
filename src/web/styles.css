@@ -940,6 +940,26 @@ input::placeholder {
   align-items: start;
 }
 
+.detail-cover-link {
+  display: block;
+  width: fit-content;
+  border-radius: var(--radius-sm);
+}
+
+.detail-cover-link .book-cover {
+  transition:
+    transform 160ms ease,
+    border-color 120ms ease,
+    box-shadow 160ms ease;
+}
+
+.detail-cover-link:hover .book-cover,
+.detail-cover-link:focus-visible .book-cover {
+  border-color: var(--border-hover);
+  box-shadow: 0 14px 32px rgba(0, 0, 0, 0.18);
+  transform: translateY(-2px);
+}
+
 .reader-shell {
   display: grid;
   grid-template-columns: minmax(260px, 320px) minmax(0, 1fr);
