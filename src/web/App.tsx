@@ -987,54 +987,43 @@ const Shell = () => {
         Skip to content
       </a>
       <div className="app-shell">
-        <aside className="sidebar">
-          <div className="sidebar-brand">
-            <div className="sidebar-brand-icon">
-              <svg viewBox="0 0 16 16" aria-hidden="true">
-                <path d="M2 3h4.5a2 2 0 0 1 2 2v9a1.5 1.5 0 0 0-1.5-1.5H2V3Z" />
-                <path d="M14 3H9.5a2 2 0 0 0-2 2v9A1.5 1.5 0 0 1 9 12.5H14V3Z" />
-              </svg>
+        <header className="main-header">
+          <div className="main-header-inner">
+            <Link aria-label="Go to bookshelf" className="main-header-home" to="/">
+              <div className="main-header-brand-icon">
+                <BookIcon />
+              </div>
+              <div className="main-header-brand-copy">
+                <span className="main-header-brand-name">irulan</span>
+                <span className="main-header-brand-page">{pageTitle}</span>
+              </div>
+            </Link>
+            <div className="header-spacer" />
+            <div aria-label="App controls" className="main-header-actions" role="group">
+              <NavLink
+                aria-label="Open settings"
+                className={({ isActive }) =>
+                  cn("main-header-action", isActive && "active")
+                }
+                to="/settings"
+              >
+                <span className="main-header-action-label">Settings</span>
+              </NavLink>
+              <button
+                aria-label={`Switch to ${theme === "dark" ? "light" : "dark"} mode`}
+                className="main-header-action"
+                onClick={toggle}
+                type="button"
+              >
+                {theme === "dark" ? <SunIcon /> : <MoonIcon />}
+              </button>
             </div>
-            <h1>ebooks</h1>
           </div>
-          <nav aria-label="Primary">
-            <NavLink
-              className={({ isActive }) => (isActive ? "navlink active" : "navlink")}
-              to="/"
-              end
-            >
-              <BookIcon />
-              Bookshelf
-            </NavLink>
-            <NavLink
-              className={({ isActive }) => (isActive ? "navlink active" : "navlink")}
-              to="/settings"
-            >
-              <SettingsIcon />
-              Settings
-            </NavLink>
-          </nav>
-          <div className="sidebar-footer">
-            <Button
-              aria-label={`Switch to ${theme === "dark" ? "light" : "dark"} mode`}
-              className="theme-toggle"
-              onClick={toggle}
-              type="button"
-              variant="ghost"
-            >
-              {theme === "dark" ? <SunIcon /> : <MoonIcon />}
-              {theme === "dark" ? "Light mode" : "Dark mode"}
-            </Button>
-          </div>
-        </aside>
-        <div className="main-area">
-          <header className="main-header">
-            <h2 className="main-header-title">{pageTitle}</h2>
-          </header>
-          <main className="content" id="content">
-            <Outlet />
-          </main>
-        </div>
+        </header>
+        <main className="content" id="content">
+          <h1 className="sr-only">{pageTitle}</h1>
+          <Outlet />
+        </main>
       </div>
     </>
   );
@@ -2127,14 +2116,6 @@ const SettingsPage = () => {
   const smtpSender = settings?.smtp.from.trim() || null;
   const savedKindleEmail = settings?.defaultKindleEmail?.trim() || null;
   const hasSavedKindleEmail = Boolean(savedKindleEmail);
-  const smtpSourceLabel =
-    settings?.smtp.source === "environment" ? "Environment fallback" : "App settings";
-  const smtpConnectionLabel = settings?.smtp.host
-    ? `${settings.smtp.host}:${settings.smtp.port}`
-    : "Not set";
-  const smtpSecurityLabel = settings?.smtp.secure
-    ? "Direct TLS / SSL"
-    : "STARTTLS or opportunistic TLS";
   const normalizedSmtpPort = Number.parseInt(smtpForm.port.trim(), 10);
   const smtpDirty = Boolean(
     settings &&
@@ -2148,6 +2129,13 @@ const SettingsPage = () => {
 
   return (
     <div className="page stack-lg">
+      <Button asChild className="backlink" variant="ghost">
+        <Link to="/">
+          <ArrowLeftIcon />
+          Back to bookshelf
+        </Link>
+      </Button>
+
       {loadError ? <p className="inline-error">{loadError}</p> : null}
 
       <Card className="panel stack-md">
@@ -2257,7 +2245,15 @@ const SettingsPage = () => {
 
       <Card className="panel stack-md">
         <div className="stack-xs">
-          <h2>SMTP connection</h2>
+          <div className="section-heading">
+            <h2>SMTP connection</h2>
+            <Badge
+              className={cn("status-pill", smtpConfigured ? "status-sent" : "status-failed")}
+              variant={getStatusBadgeVariant(smtpConfigured ? "configured" : "missing")}
+            >
+              {smtpConfigured ? "Configured" : "Not configured"}
+            </Badge>
+          </div>
           <p className="lede">
             Store the mail server Irulan should use for Send to Kindle. If these values are
             currently coming from the environment, saving here overrides them for this library.
@@ -2450,33 +2446,6 @@ const SettingsPage = () => {
           ) : null}
           {kindleError ? <p className="inline-error">{kindleError}</p> : null}
         </form>
-      </Card>
-
-      <Card className="panel stack-sm">
-        <CardHeader className="section-heading border-b">
-          <CardTitle>SMTP status</CardTitle>
-          <Badge
-            className={cn(
-              "status-pill",
-              smtpConfigured ? "status-sent" : "status-failed",
-            )}
-            variant={getStatusBadgeVariant(smtpConfigured ? "configured" : "missing")}
-          >
-            {smtpConfigured ? "Configured" : "Missing"}
-          </Badge>
-        </CardHeader>
-        <p className="smtp-status-copy">
-          Sender Amazon will see: <strong>{smtpSender ?? "Not set"}</strong>
-        </p>
-        <p className="smtp-status-copy">
-          Connection: <strong>{smtpConnectionLabel}</strong> using <strong>{smtpSecurityLabel}</strong>
-        </p>
-        <p className="smtp-status-copy">
-          Configuration source: <strong>{smtpSourceLabel}</strong>
-        </p>
-        <p className="smtp-onboarding-step-meta">
-          Amazon still requires the sender email on your approved personal document sender list.
-        </p>
       </Card>
     </div>
   );
