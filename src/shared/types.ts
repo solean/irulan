@@ -34,10 +34,20 @@ export type DeliveryRecord = {
   sentAt: string | null;
 };
 
+export type SmtpSettings = {
+  host: string;
+  port: number;
+  secure: boolean;
+  user: string;
+  pass: string;
+  from: string;
+  configured: boolean;
+  source: "app" | "environment";
+};
+
 export type SettingsPayload = {
   defaultKindleEmail: string | null;
-  smtpConfigured: boolean;
-  smtpFrom: string | null;
+  smtp: SmtpSettings;
 };
 
 export type ImportResult =

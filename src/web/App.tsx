@@ -67,6 +67,7 @@ import type {
   BookSummary,
   DeliveryRecord,
   ImportResult,
+  SmtpSettings,
   SettingsPayload,
 } from "../shared/types";
 import { api } from "./lib/api";
@@ -235,6 +236,24 @@ const getStatusBadgeVariant = (
   if (status === "pending") return "outline";
   return "secondary";
 };
+
+type SmtpFormState = {
+  host: string;
+  port: string;
+  secure: boolean;
+  user: string;
+  pass: string;
+  from: string;
+};
+
+const toSmtpFormState = (smtp: SettingsPayload["smtp"]): SmtpFormState => ({
+  host: smtp.host,
+  port: String(smtp.port),
+  secure: smtp.secure,
+  user: smtp.user,
+  pass: smtp.pass,
+  from: smtp.from,
+});
 
 const BookIcon = () => (
   <svg viewBox="0 0 16 16" aria-hidden="true">
@@ -1763,22 +1782,37 @@ const SettingsPage = () => {
 
   const [settings, setSettings] = useState<SettingsPayload | null>(null);
   const [defaultEmail, setDefaultEmail] = useState("");
+  const [smtpForm, setSmtpForm] = useState<SmtpFormState>({
+    host: "",
+    port: "587",
+    secure: false,
+    user: "",
+    pass: "",
+    from: "",
+  });
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
+  const [savingKindle, setSavingKindle] = useState(false);
+  const [savingSmtp, setSavingSmtp] = useState(false);
   const [testing, setTesting] = useState(false);
-  const [message, setMessage] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [kindleMessage, setKindleMessage] = useState<string | null>(null);
+  const [kindleError, setKindleError] = useState<string | null>(null);
+  const [smtpMessage, setSmtpMessage] = useState<string | null>(null);
+  const [smtpError, setSmtpError] = useState<string | null>(null);
 
   const loadSettings = useEffectEvent(async () => {
     setLoading(true);
-    setError(null);
+    setLoadError(null);
 
     try {
       const payload = await api.getSettings();
       setSettings(payload);
       setDefaultEmail(payload.defaultKindleEmail ?? "");
+      setSmtpForm(toSmtpFormState(payload.smtp));
     } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : "Could not load settings.");
+      setLoadError(
+        requestError instanceof Error ? requestError.message : "Could not load settings.",
+      );
     } finally {
       setLoading(false);
     }
@@ -1788,33 +1822,74 @@ const SettingsPage = () => {
     void loadSettings();
   }, []);
 
-  const onSave = async (event: FormEvent<HTMLFormElement>) => {
+  const onSaveKindle = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    setSaving(true);
-    setError(null);
-    setMessage(null);
+    setSavingKindle(true);
+    setKindleError(null);
+    setKindleMessage(null);
 
     try {
       const payload = await api.saveSettings(defaultEmail.trim() || null);
       setSettings(payload);
-      setMessage("Default Kindle address saved.");
+      setDefaultEmail(payload.defaultKindleEmail ?? "");
+      setKindleMessage("Default Kindle address saved.");
     } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : "Could not save settings.");
+      setKindleError(
+        requestError instanceof Error ? requestError.message : "Could not save settings.",
+      );
     } finally {
-      setSaving(false);
+      setSavingKindle(false);
+    }
+  };
+
+  const onSaveSmtp = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setSavingSmtp(true);
+    setSmtpError(null);
+    setSmtpMessage(null);
+
+    const nextPort = Number.parseInt(smtpForm.port.trim(), 10);
+    if (!Number.isInteger(nextPort) || nextPort < 1 || nextPort > 65535) {
+      setSavingSmtp(false);
+      setSmtpError("SMTP port must be a whole number between 1 and 65535.");
+      return;
+    }
+
+    try {
+      const payload = await api.saveSmtpSettings({
+        host: smtpForm.host.trim(),
+        port: nextPort,
+        secure: smtpForm.secure,
+        user: smtpForm.user.trim(),
+        pass: smtpForm.pass,
+        from: smtpForm.from.trim(),
+      });
+      setSettings(payload);
+      setSmtpForm(toSmtpFormState(payload.smtp));
+      setSmtpMessage(
+        payload.smtp.configured
+          ? "SMTP settings saved."
+          : "SMTP settings saved. Add at least a host and sender address to finish setup.",
+      );
+    } catch (requestError) {
+      setSmtpError(
+        requestError instanceof Error ? requestError.message : "Could not save SMTP settings.",
+      );
+    } finally {
+      setSavingSmtp(false);
     }
   };
 
   const onSendTest = async () => {
     setTesting(true);
-    setError(null);
-    setMessage(null);
+    setKindleError(null);
+    setKindleMessage(null);
 
     try {
       await api.sendTestEmail(defaultEmail.trim());
-      setMessage("SMTP test email sent.");
+      setKindleMessage("SMTP test email sent.");
     } catch (requestError) {
-      setError(
+      setKindleError(
         requestError instanceof Error ? requestError.message : "Could not send the test email.",
       );
     } finally {
@@ -1826,17 +1901,289 @@ const SettingsPage = () => {
     return <SettingsSkeleton />;
   }
 
+  const smtpConfigured = Boolean(settings?.smtp.configured);
+  const smtpSender = settings?.smtp.from.trim() || null;
+  const savedKindleEmail = settings?.defaultKindleEmail?.trim() || null;
+  const hasSavedKindleEmail = Boolean(savedKindleEmail);
+  const smtpSourceLabel =
+    settings?.smtp.source === "environment" ? "Environment fallback" : "App settings";
+  const smtpConnectionLabel = settings?.smtp.host
+    ? `${settings.smtp.host}:${settings.smtp.port}`
+    : "Not set";
+  const smtpSecurityLabel = settings?.smtp.secure
+    ? "Direct TLS / SSL"
+    : "STARTTLS or opportunistic TLS";
+  const normalizedSmtpPort = Number.parseInt(smtpForm.port.trim(), 10);
+  const smtpDirty = Boolean(
+    settings &&
+      (smtpForm.host.trim() !== settings.smtp.host ||
+        (!Number.isInteger(normalizedSmtpPort) || normalizedSmtpPort !== settings.smtp.port) ||
+        smtpForm.secure !== settings.smtp.secure ||
+        smtpForm.user.trim() !== settings.smtp.user ||
+        smtpForm.pass !== settings.smtp.pass ||
+        smtpForm.from.trim() !== settings.smtp.from),
+  );
+
   return (
     <div className="page stack-lg">
+      {loadError ? <p className="inline-error">{loadError}</p> : null}
+
+      <Card className="panel stack-md">
+        <div className="stack-xs">
+          <h2>Send to Kindle setup</h2>
+          <p className="lede">
+            Irulan emails EPUBs through your SMTP provider, then Amazon decides whether the
+            message is allowed to reach your Kindle library.
+          </p>
+        </div>
+
+        <div className="smtp-onboarding-grid">
+          <div className="smtp-onboarding-callout stack-xs">
+            <p className="smtp-onboarding-eyebrow">What Amazon checks</p>
+            <p className="smtp-onboarding-copy">
+              Amazon must see the exact sender address from <code>SMTP_FROM</code>. Add that
+              address to your approved personal document sender list before you test delivery.
+            </p>
+          </div>
+          <div className="smtp-onboarding-callout stack-xs">
+            <p className="smtp-onboarding-eyebrow">What most SMTP providers expect</p>
+            <p className="smtp-onboarding-copy">
+              Port <code>587</code> usually goes with <code>SMTP_SECURE=false</code>. Port{" "}
+              <code>465</code> usually goes with <code>SMTP_SECURE=true</code>. Many providers
+              require an app password instead of your normal mailbox password.
+            </p>
+          </div>
+        </div>
+
+        <ol className="smtp-onboarding-steps">
+          <li className="smtp-onboarding-step">
+            <span aria-hidden="true" className="smtp-onboarding-step-number">
+              1
+            </span>
+            <div className="stack-xs">
+              <div className="smtp-onboarding-step-heading">
+                <p className="smtp-onboarding-step-title">Save your SMTP connection in Irulan</p>
+                <Badge
+                  className={cn("status-pill", smtpConfigured ? "status-sent" : "status-failed")}
+                  variant={getStatusBadgeVariant(smtpConfigured ? "configured" : "missing")}
+                >
+                  {smtpConfigured ? "Ready" : "Needs SMTP"}
+                </Badge>
+              </div>
+              <p className="smtp-onboarding-step-copy">
+                Use the SMTP form below to set the server, port, security mode, optional auth, and
+                sender address. Irulan uses the saved values immediately after you press save.
+              </p>
+            </div>
+          </li>
+          <li className="smtp-onboarding-step">
+            <span aria-hidden="true" className="smtp-onboarding-step-number">
+              2
+            </span>
+            <div className="stack-xs">
+              <div className="smtp-onboarding-step-heading">
+                <p className="smtp-onboarding-step-title">Approve the sender in Amazon</p>
+                <Badge className="status-pill status-pending" variant="outline">
+                  Manual step
+                </Badge>
+              </div>
+              <p className="smtp-onboarding-step-copy">
+                In Amazon Kindle settings, add{" "}
+                <code>{smtpSender ?? "the address from SMTP_FROM"}</code> to the Approved Personal
+                Document E-mail List. SMTP success only means your mail server accepted the
+                message. Amazon can still reject it after that.
+              </p>
+            </div>
+          </li>
+          <li className="smtp-onboarding-step">
+            <span aria-hidden="true" className="smtp-onboarding-step-number">
+              3
+            </span>
+            <div className="stack-xs">
+              <div className="smtp-onboarding-step-heading">
+                <p className="smtp-onboarding-step-title">Save your Kindle address and send a test</p>
+                <Badge
+                  className={cn(
+                    "status-pill",
+                    hasSavedKindleEmail ? "status-sent" : "status-pending",
+                  )}
+                  variant={getStatusBadgeVariant(hasSavedKindleEmail ? "configured" : "pending")}
+                >
+                  {hasSavedKindleEmail ? "Saved" : "Needs address"}
+                </Badge>
+              </div>
+              <p className="smtp-onboarding-step-copy">
+                Save the destination Kindle email below, then use <strong>Send test email</strong>.
+                The test goes to the saved default Kindle address, so it checks both your SMTP
+                setup and the destination you plan to use for book delivery.
+              </p>
+              {savedKindleEmail ? (
+                <p className="smtp-onboarding-step-meta">
+                  Current default Kindle address: <code>{savedKindleEmail}</code>
+                </p>
+              ) : null}
+            </div>
+          </li>
+        </ol>
+
+        <p className="smtp-onboarding-note">
+          If saving works but sending still fails, the usual causes are the wrong port, the wrong
+          TLS mode, or a provider that expects an app password instead of your normal mailbox
+          password.
+        </p>
+      </Card>
+
+      <Card className="panel stack-md">
+        <div className="stack-xs">
+          <h2>SMTP connection</h2>
+          <p className="lede">
+            Store the mail server Irulan should use for Send to Kindle. If these values are
+            currently coming from the environment, saving here overrides them for this library.
+          </p>
+        </div>
+
+        <form className="stack-md" onSubmit={onSaveSmtp}>
+          <div className="settings-form-grid">
+            <div className="stack-xs">
+              <Label className="field-label" htmlFor="smtp-host">
+                SMTP host
+              </Label>
+              <Input
+                autoComplete="url"
+                id="smtp-host"
+                name="smtp_host"
+                onChange={(event) => {
+                  const value = event.currentTarget.value;
+                  setSmtpForm((current) => ({ ...current, host: value }));
+                }}
+                placeholder="smtp.example.com"
+                spellCheck={false}
+                type="text"
+                value={smtpForm.host}
+              />
+            </div>
+            <div className="stack-xs">
+              <Label className="field-label" htmlFor="smtp-port">
+                SMTP port
+              </Label>
+              <Input
+                id="smtp-port"
+                inputMode="numeric"
+                name="smtp_port"
+                onChange={(event) => {
+                  const value = event.currentTarget.value;
+                  setSmtpForm((current) => ({ ...current, port: value }));
+                }}
+                placeholder="587"
+                spellCheck={false}
+                type="text"
+                value={smtpForm.port}
+              />
+            </div>
+            <div className="stack-xs">
+              <Label className="field-label" htmlFor="smtp-security">
+                Security mode
+              </Label>
+              <Select
+                onValueChange={(value) =>
+                  setSmtpForm((current) => ({ ...current, secure: value === "true" }))
+                }
+                value={smtpForm.secure ? "true" : "false"}
+              >
+                <SelectTrigger className="w-full" id="smtp-security">
+                  <SelectValue placeholder="Choose a security mode" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="false">STARTTLS or opportunistic TLS</SelectItem>
+                  <SelectItem value="true">Direct TLS / SSL</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="stack-xs">
+              <Label className="field-label" htmlFor="smtp-user">
+                Username
+              </Label>
+              <Input
+                autoComplete="username"
+                id="smtp-user"
+                name="smtp_user"
+                onChange={(event) => {
+                  const value = event.currentTarget.value;
+                  setSmtpForm((current) => ({ ...current, user: value }));
+                }}
+                placeholder="sender@example.com"
+                spellCheck={false}
+                type="text"
+                value={smtpForm.user}
+              />
+            </div>
+            <div className="stack-xs">
+              <Label className="field-label" htmlFor="smtp-pass">
+                Password or app password
+              </Label>
+              <Input
+                autoComplete="current-password"
+                id="smtp-pass"
+                name="smtp_pass"
+                onChange={(event) => {
+                  const value = event.currentTarget.value;
+                  setSmtpForm((current) => ({ ...current, pass: value }));
+                }}
+                placeholder="Required by many providers"
+                spellCheck={false}
+                type="password"
+                value={smtpForm.pass}
+              />
+            </div>
+            <div className="stack-xs">
+              <Label className="field-label" htmlFor="smtp-from">
+                Sender address
+              </Label>
+              <Input
+                autoComplete="email"
+                id="smtp-from"
+                name="smtp_from"
+                onChange={(event) => {
+                  const value = event.currentTarget.value;
+                  setSmtpForm((current) => ({ ...current, from: value }));
+                }}
+                placeholder="sender@example.com"
+                spellCheck={false}
+                type="email"
+                value={smtpForm.from}
+              />
+            </div>
+          </div>
+
+          <p className="smtp-onboarding-step-meta">
+            Leave username and password blank only if your SMTP server accepts mail without auth.
+            Amazon should see the sender address from this form.
+          </p>
+
+          <div className="inline-actions">
+            <Button disabled={savingSmtp} type="submit">
+              {savingSmtp ? "Saving\u2026" : "Save SMTP"}
+            </Button>
+          </div>
+          {smtpMessage ? (
+            <p aria-live="polite" className="inline-success">
+              {smtpMessage}
+            </p>
+          ) : null}
+          {smtpError ? <p className="inline-error">{smtpError}</p> : null}
+        </form>
+      </Card>
+
       <Card className="panel stack-md">
         <div className="stack-xs">
           <h2>Kindle destination</h2>
           <p className="lede">
-            Set a default Kindle email. SMTP credentials are read from <code>.env</code>.
+            Set the default Kindle email this app should use. The test button sends to this
+            address, and book delivery uses it as the default recipient.
           </p>
         </div>
 
-        <form className="stack-sm" onSubmit={onSave}>
+        <form className="stack-sm" onSubmit={onSaveKindle}>
           <div className="stack-xs">
             <Label className="field-label" htmlFor="default-kindle-email">
               Default Kindle email
@@ -1851,13 +2198,22 @@ const SettingsPage = () => {
               type="email"
               value={defaultEmail}
             />
+            <p className="smtp-onboarding-step-meta">
+              Save this before testing SMTP if you want to verify the real Kindle destination.
+            </p>
+            {smtpDirty ? (
+              <p className="smtp-onboarding-step-meta">
+                Save SMTP changes before sending a test email so Irulan uses the latest server
+                details.
+              </p>
+            ) : null}
           </div>
           <div className="inline-actions">
-            <Button disabled={saving} type="submit">
-              {saving ? "Saving\u2026" : "Save"}
+            <Button disabled={savingKindle} type="submit">
+              {savingKindle ? "Saving\u2026" : "Save Kindle address"}
             </Button>
             <Button
-              disabled={testing || !defaultEmail.trim()}
+              disabled={testing || !defaultEmail.trim() || !smtpConfigured || smtpDirty}
               onClick={onSendTest}
               type="button"
               variant="outline"
@@ -1865,12 +2221,12 @@ const SettingsPage = () => {
               {testing ? "Sending\u2026" : "Send test email"}
             </Button>
           </div>
-          {message ? (
+          {kindleMessage ? (
             <p aria-live="polite" className="inline-success">
-              {message}
+              {kindleMessage}
             </p>
           ) : null}
-          {error ? <p className="inline-error">{error}</p> : null}
+          {kindleError ? <p className="inline-error">{kindleError}</p> : null}
         </form>
       </Card>
 
@@ -1880,28 +2236,25 @@ const SettingsPage = () => {
           <Badge
             className={cn(
               "status-pill",
-              settings?.smtpConfigured ? "status-sent" : "status-failed",
+              smtpConfigured ? "status-sent" : "status-failed",
             )}
-            variant={getStatusBadgeVariant(settings?.smtpConfigured ? "configured" : "missing")}
+            variant={getStatusBadgeVariant(smtpConfigured ? "configured" : "missing")}
           >
-            {settings?.smtpConfigured ? "Configured" : "Missing"}
+            {smtpConfigured ? "Configured" : "Missing"}
           </Badge>
         </CardHeader>
-        <p style={{ color: "var(--text-secondary)", fontSize: 13, margin: 0 }}>
-          Sender: <strong>{settings?.smtpFrom ?? "Not set"}</strong>
+        <p className="smtp-status-copy">
+          Sender Amazon will see: <strong>{smtpSender ?? "Not set"}</strong>
         </p>
-        <p style={{ color: "var(--text-tertiary)", fontSize: 13, margin: 0 }}>
-          Amazon requires the sender email on your approved personal document sender list.
-          SMTP success does not guarantee Kindle acceptance.
+        <p className="smtp-status-copy">
+          Connection: <strong>{smtpConnectionLabel}</strong> using <strong>{smtpSecurityLabel}</strong>
         </p>
-        <pre className="env-snippet">
-{`SMTP_HOST=smtp.example.com
-SMTP_PORT=587
-SMTP_SECURE=false
-SMTP_USER=sender@example.com
-SMTP_PASS=replace-me
-SMTP_FROM=sender@example.com`}
-        </pre>
+        <p className="smtp-status-copy">
+          Configuration source: <strong>{smtpSourceLabel}</strong>
+        </p>
+        <p className="smtp-onboarding-step-meta">
+          Amazon still requires the sender email on your approved personal document sender list.
+        </p>
       </Card>
     </div>
   );

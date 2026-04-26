@@ -3,12 +3,11 @@ import { desc, eq } from "drizzle-orm";
 import { z } from "zod";
 
 import { DeliveryRecord } from "../../shared/types";
-import { appConfig } from "../config";
 import { db } from "../db/client";
 import { deliveries } from "../db/schema";
 import { AppError } from "../errors";
 import { getBookRecord } from "./books";
-import { getDefaultKindleEmail } from "./settings";
+import { getDefaultKindleEmail, getSmtpSettings } from "./settings";
 
 const emailSchema = z.string().trim().email();
 
@@ -25,18 +24,20 @@ const serializeDelivery = (delivery: DeliveryRow): DeliveryRecord => ({
 });
 
 const requireTransport = () => {
-  if (!appConfig.smtp.configured || !appConfig.smtp.host || !appConfig.smtp.from) {
-    throw new AppError(400, "SMTP is not configured. Add the SMTP values in .env first.");
+  const smtp = getSmtpSettings();
+
+  if (!smtp.configured || !smtp.host || !smtp.from) {
+    throw new AppError(400, "SMTP is not configured. Add the SMTP settings first.");
   }
 
   return nodemailer.createTransport({
-    host: appConfig.smtp.host,
-    port: appConfig.smtp.port,
-    secure: appConfig.smtp.secure,
-    auth: appConfig.smtp.user
+    host: smtp.host,
+    port: smtp.port,
+    secure: smtp.secure,
+    auth: smtp.user
       ? {
-          user: appConfig.smtp.user,
-          pass: appConfig.smtp.pass ?? "",
+          user: smtp.user,
+          pass: smtp.pass ?? "",
         }
       : undefined,
   });
@@ -79,9 +80,10 @@ export const sendBookToKindle = async (bookId: string, recipientEmail?: string |
     .run();
 
   try {
+    const smtp = getSmtpSettings();
     const transporter = requireTransport();
     const result = await transporter.sendMail({
-      from: appConfig.smtp.from!,
+      from: smtp.from,
       to: recipient,
       subject: `Send to Kindle: ${book.title}`,
       text: [
@@ -134,10 +136,11 @@ export const sendBookToKindle = async (bookId: string, recipientEmail?: string |
 
 export const sendTestEmail = async (recipientEmail: string) => {
   const recipient = emailSchema.parse(recipientEmail.trim());
+  const smtp = getSmtpSettings();
   const transporter = requireTransport();
 
   await transporter.sendMail({
-    from: appConfig.smtp.from!,
+    from: smtp.from,
     to: recipient,
     subject: "Irulan SMTP test",
     text: "SMTP is configured and Irulan can send mail.",

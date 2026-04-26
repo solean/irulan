@@ -5,6 +5,7 @@ import type {
   DeleteBookResult,
   DeliveryRecord,
   ImportResult,
+  SmtpSettings,
   SettingsPayload,
 } from "../../shared/types";
 
@@ -98,6 +99,16 @@ export const api = {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({ defaultKindleEmail }),
+    });
+  },
+
+  async saveSmtpSettings(smtp: Omit<SmtpSettings, "configured" | "source">) {
+    return request<SettingsPayload>("/api/settings/smtp", {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(smtp),
     });
   },
 

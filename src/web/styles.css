@@ -1496,6 +1496,117 @@ input::placeholder {
 
 /* ─── Settings ─── */
 
+.settings-form-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+}
+
+.smtp-onboarding-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.smtp-onboarding-callout {
+  padding: 14px 16px;
+  border: 1px solid color-mix(in srgb, var(--accent-hover) 20%, var(--border-default));
+  border-radius: var(--radius-md);
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--accent-soft) 85%, transparent),
+      transparent 140%
+    ),
+    var(--bg-elevated);
+}
+
+.smtp-onboarding-eyebrow {
+  margin: 0;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: color-mix(in srgb, var(--accent-hover) 84%, var(--text-primary));
+}
+
+.smtp-onboarding-copy,
+.smtp-onboarding-step-copy,
+.smtp-onboarding-step-meta,
+.smtp-status-copy {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.smtp-onboarding-copy,
+.smtp-onboarding-step-copy,
+.smtp-status-copy {
+  color: var(--text-secondary);
+}
+
+.smtp-onboarding-step-meta {
+  color: var(--text-tertiary);
+}
+
+.smtp-onboarding-steps {
+  display: grid;
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.smtp-onboarding-step {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 14px;
+  align-items: start;
+  padding: 16px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-default);
+  background: var(--bg-base);
+}
+
+.smtp-onboarding-step-number {
+  display: inline-grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent-soft) 92%, transparent);
+  color: color-mix(in srgb, var(--accent-hover) 84%, var(--text-primary));
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.smtp-onboarding-step-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.smtp-onboarding-step-title {
+  margin: 0;
+  color: var(--text-primary);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.smtp-onboarding-note {
+  margin: 0;
+  padding: 14px 16px;
+  border-radius: var(--radius-md);
+  border: 1px solid color-mix(in srgb, var(--accent-hover) 18%, var(--border-default));
+  background: color-mix(in srgb, var(--accent-soft) 58%, transparent);
+  color: var(--text-secondary);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
 .env-snippet {
   margin: 0;
   padding: 14px 16px;
@@ -1871,6 +1982,15 @@ code {
 
   .book-list-detail-compact {
     text-align: left;
+  }
+
+  .smtp-onboarding-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .smtp-onboarding-step {
+    gap: 12px;
+    padding: 14px;
   }
 }
 
