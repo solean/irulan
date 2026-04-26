@@ -995,7 +995,6 @@ const Shell = () => {
               </div>
               <div className="main-header-brand-copy">
                 <span className="main-header-brand-name">irulan</span>
-                <span className="main-header-brand-page">{pageTitle}</span>
               </div>
             </Link>
             <div className="header-spacer" />
