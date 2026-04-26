@@ -1155,7 +1155,7 @@ const BookshelfPage = () => {
           <Button disabled={uploading} onClick={() => setIsImportModalOpen(true)} type="button">
             {uploading ? "Importing\u2026" : "Add EPUBs"}
           </Button>
-          {!settings?.defaultKindleEmail && (
+          {hasLoadedSettings && !settings?.defaultKindleEmail && (
             <Button asChild variant="outline">
               <Link to="/settings">Add Kindle address</Link>
             </Button>
