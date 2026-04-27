@@ -1,4 +1,10 @@
-import type { CSSProperties, DragEvent, FormEvent, MouseEvent } from "react";
+import type {
+  CSSProperties,
+  DragEvent,
+  FormEvent,
+  KeyboardEvent as ReactKeyboardEvent,
+  MouseEvent,
+} from "react";
 import {
   createContext,
   startTransition,
@@ -1985,6 +1991,7 @@ const BookDetailPage = () => {
 const ReaderPage = () => {
   const { bookId = "" } = useParams();
   const [searchParams, setSearchParams] = useSearchParams();
+  const readerViewportRef = useRef<HTMLDivElement | null>(null);
   const readerBodyRef = useRef<HTMLElement | null>(null);
   const sectionMarkupCache = useRef(new Map<string, string>());
   const latestSectionRequest = useRef(0);
@@ -1996,11 +2003,17 @@ const ReaderPage = () => {
   const [sectionTitle, setSectionTitle] = useState<string | null>(null);
   const [sectionLoading, setSectionLoading] = useState(false);
   const [sectionError, setSectionError] = useState<string | null>(null);
+  const [pageCount, setPageCount] = useState(1);
+  const [pageSpan, setPageSpan] = useState(0);
   const [tone, setTone] = useState<ReaderTone>(() => getStoredReaderTone() ?? "paper");
   const [fontScale, setFontScale] = useState(() => getStoredReaderFontScale() ?? 1);
 
   const selectedHref = searchParams.get("section")?.trim() ?? "";
   const anchorId = searchParams.get("anchor")?.trim() ?? null;
+  const currentPage = Math.max(
+    1,
+    Number.parseInt(searchParams.get("page") ?? "1", 10) || 1,
+  );
   const activeSection = (() => {
     if (!reader) return null;
     if (!selectedHref) return reader.sections[0] ?? null;
@@ -2024,6 +2037,8 @@ const ReaderPage = () => {
   const readerStyle = {
     "--reader-font-scale": `${fontScale}`,
   } as CSSProperties;
+  const currentPageIndex = Math.min(Math.max(0, currentPage - 1), Math.max(0, pageCount - 1));
+  const pageOffset = pageSpan > 0 ? currentPageIndex * pageSpan : 0;
 
   useDocumentTitle(
     reader
@@ -2052,6 +2067,7 @@ const ReaderPage = () => {
       href: string,
       options: {
         anchor?: string | null;
+        page?: number | null;
         replace?: boolean;
       } = {},
     ) => {
@@ -2064,11 +2080,42 @@ const ReaderPage = () => {
         params.set("anchor", options.anchor);
       }
 
+      if (typeof options.page === "number" && Number.isFinite(options.page)) {
+        params.set("page", String(Math.max(1, Math.round(options.page))));
+      } else if (!options.anchor) {
+        params.set("page", "1");
+      }
+
       startTransition(() => {
         setSearchParams(params, { replace: options.replace });
       });
     },
     [setSearchParams],
+  );
+
+  const goToPage = useCallback(
+    (
+      nextPage: number,
+      options: {
+        preserveAnchor?: boolean;
+        replace?: boolean;
+      } = {},
+    ) => {
+      if (!activeSection?.href) return;
+
+      const params = new URLSearchParams();
+      params.set("section", activeSection.href);
+      params.set("page", String(Math.max(1, Math.round(nextPage))));
+
+      if (options.preserveAnchor && anchorId) {
+        params.set("anchor", anchorId);
+      }
+
+      startTransition(() => {
+        setSearchParams(params, { replace: options.replace });
+      });
+    },
+    [activeSection?.href, anchorId, setSearchParams],
   );
 
   const loadReader = useEffectEvent(async () => {
@@ -2159,6 +2206,8 @@ const ReaderPage = () => {
     setSectionDocument(null);
     setSectionTitle(null);
     setSectionError(null);
+    setPageCount(1);
+    setPageSpan(0);
 
     if (!activeSection) {
       setSectionLoading(false);
@@ -2168,8 +2217,68 @@ const ReaderPage = () => {
     void loadSection(activeSection);
   }, [activeSection?.href, activeSection?.url]);
 
+  const measurePagination = useEffectEvent(() => {
+    const viewport = readerViewportRef.current;
+    const body = readerBodyRef.current;
+    if (!viewport || !body) {
+      setPageCount(1);
+      setPageSpan(0);
+      return;
+    }
+
+    body.style.setProperty("--reader-page-width", `${viewport.clientWidth}px`);
+
+    const columnGap = Number.parseFloat(window.getComputedStyle(body).columnGap || "0");
+    const nextPageSpan = viewport.clientWidth + columnGap;
+    const nextPageCount =
+      nextPageSpan > 0 ? Math.max(1, Math.ceil((body.scrollWidth + columnGap) / nextPageSpan)) : 1;
+
+    setPageSpan(nextPageSpan);
+    setPageCount(nextPageCount);
+  });
+
   useEffect(() => {
-    if (sectionLoading) {
+    if (!sectionDocument || sectionLoading) {
+      return;
+    }
+
+    measurePagination();
+
+    const viewport = readerViewportRef.current;
+    const body = readerBodyRef.current;
+    if (!viewport || !body) {
+      return;
+    }
+
+    const observer = new ResizeObserver(() => {
+      measurePagination();
+    });
+
+    observer.observe(viewport);
+    observer.observe(body);
+
+    return () => {
+      observer.disconnect();
+    };
+  }, [fontScale, sectionDocument, sectionLoading]);
+
+  useEffect(() => {
+    if (!activeSection?.href) {
+      return;
+    }
+
+    if (sectionLoading || pageSpan <= 0) {
+      return;
+    }
+
+    const clampedPage = Math.max(1, Math.min(currentPage, pageCount));
+    if (clampedPage !== currentPage) {
+      goToPage(clampedPage, { preserveAnchor: true, replace: true });
+    }
+  }, [activeSection?.href, currentPage, goToPage, pageCount, pageSpan, sectionLoading]);
+
+  useEffect(() => {
+    if (sectionLoading || pageSpan <= 0) {
       return;
     }
 
@@ -2190,9 +2299,22 @@ const ReaderPage = () => {
         );
 
         if (anchorTarget) {
-          anchorTarget.scrollIntoView({ block: "start" });
+          const rootBounds = root.getBoundingClientRect();
+          const targetBounds = anchorTarget.getBoundingClientRect();
+          const absoluteLeft = targetBounds.left - rootBounds.left + pageOffset;
+          const nextPage = Math.max(1, Math.floor(absoluteLeft / pageSpan) + 1);
+
+          if (nextPage !== currentPage) {
+            goToPage(nextPage, { preserveAnchor: true, replace: true });
+            return;
+          }
+
           return;
         }
+      }
+
+      if (currentPage !== 1) {
+        return;
       }
 
       window.scrollTo({ top: 0, behavior: "auto" });
@@ -2201,7 +2323,7 @@ const ReaderPage = () => {
     return () => {
       window.cancelAnimationFrame(animationFrame);
     };
-  }, [anchorId, activeSection?.href, sectionDocument, sectionLoading]);
+  }, [anchorId, currentPage, goToPage, pageOffset, pageSpan, sectionDocument, sectionLoading]);
 
   const onInternalReaderLinkClick = useCallback(
     (
@@ -2223,6 +2345,109 @@ const ReaderPage = () => {
       return Math.max(READER_MIN_FONT_SCALE, Math.min(READER_MAX_FONT_SCALE, next));
     });
   }, []);
+
+  const onTurnPage = useCallback(
+    (direction: "previous" | "next") => {
+      if (direction === "previous") {
+        if (currentPage > 1) {
+          goToPage(currentPage - 1);
+          return;
+        }
+
+        if (previousSection) {
+          goToSection(previousSection.href, { page: 1 });
+        }
+        return;
+      }
+
+      if (currentPage < pageCount) {
+        goToPage(currentPage + 1);
+        return;
+      }
+
+      if (nextSection) {
+        goToSection(nextSection.href, { page: 1 });
+      }
+    },
+    [currentPage, goToPage, goToSection, nextSection, pageCount, previousSection],
+  );
+
+  const handleReaderShortcut = useCallback(
+    (key: string) => {
+      if (key === "ArrowRight" || key === "PageDown" || key === " ") {
+        onTurnPage("next");
+        return true;
+      }
+
+      if (key === "ArrowLeft" || key === "PageUp") {
+        onTurnPage("previous");
+        return true;
+      }
+
+      if (key === "Home") {
+        goToPage(1, { preserveAnchor: false });
+        return true;
+      }
+
+      if (key === "End") {
+        goToPage(pageCount, { preserveAnchor: false });
+        return true;
+      }
+
+      return false;
+    },
+    [goToPage, onTurnPage, pageCount],
+  );
+
+  useEffect(() => {
+    const onWindowKeyDown = (event: KeyboardEvent) => {
+      if (event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey) {
+        return;
+      }
+
+      if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") {
+        return;
+      }
+
+      const target =
+        event.target instanceof HTMLElement || event.target instanceof SVGElement
+          ? event.target
+          : null;
+      if (
+        target?.closest(
+          'input, textarea, select, button, a[href], [contenteditable="true"], [role="button"], [role="combobox"], [role="dialog"], [role="link"], [role="listbox"], [role="menu"], [role="textbox"]',
+        )
+      ) {
+        return;
+      }
+
+      if (target instanceof HTMLElement && target.isContentEditable) {
+        return;
+      }
+
+      if (handleReaderShortcut(event.key)) {
+        event.preventDefault();
+      }
+    };
+
+    window.addEventListener("keydown", onWindowKeyDown);
+    return () => {
+      window.removeEventListener("keydown", onWindowKeyDown);
+    };
+  }, [handleReaderShortcut]);
+
+  const onReaderViewportKeyDown = useCallback(
+    (event: ReactKeyboardEvent<HTMLDivElement>) => {
+      if (event.altKey || event.ctrlKey || event.metaKey) {
+        return;
+      }
+
+      if (handleReaderShortcut(event.key)) {
+        event.preventDefault();
+      }
+    },
+    [handleReaderShortcut],
+  );
 
   if (loading && !reader) {
     return (
@@ -2367,26 +2592,34 @@ const ReaderPage = () => {
           <div className="reader-toolbar">
             <div className="reader-toolbar-nav">
               <Button
-                disabled={!previousSection}
-                onClick={() =>
-                  previousSection ? goToSection(previousSection.href) : undefined
-                }
+                aria-keyshortcuts="ArrowLeft"
+                disabled={currentPage === 1 && !previousSection}
+                onClick={() => onTurnPage("previous")}
+                title="Previous page (Left arrow)"
                 type="button"
                 variant="outline"
               >
-                Previous
+                Previous page
               </Button>
               <Button
-                disabled={!nextSection}
-                onClick={() => (nextSection ? goToSection(nextSection.href) : undefined)}
+                aria-keyshortcuts="ArrowRight"
+                disabled={currentPage >= pageCount && !nextSection}
+                onClick={() => onTurnPage("next")}
+                title="Next page (Right arrow)"
                 type="button"
                 variant="outline"
               >
-                Next
+                Next page
               </Button>
             </div>
 
-            <strong className="reader-current-label">{activeSectionLabel}</strong>
+            <div className="reader-toolbar-status">
+              <strong className="reader-current-label">{activeSectionLabel}</strong>
+              <span className="reader-page-status">
+                Page {numberFormatter.format(currentPageIndex + 1)} of{" "}
+                {numberFormatter.format(pageCount)}
+              </span>
+            </div>
 
             <div className="reader-toolbar-controls">
               <div aria-label="Reader tone" className="view-toggle" role="group">
@@ -2441,11 +2674,6 @@ const ReaderPage = () => {
 
           <div className="reader-canvas" data-reader-tone={tone} style={readerStyle}>
             <div className="reader-paper">
-              <header className="reader-paper-header">
-                <p className="eyebrow">Section</p>
-                <h2>{activeSectionLabel}</h2>
-              </header>
-
               {sectionError ? <p className="inline-error">{sectionError}</p> : null}
 
               {sectionLoading && !sectionDocument ? (
@@ -2458,14 +2686,31 @@ const ReaderPage = () => {
                   ))}
                 </div>
               ) : activeSection && sectionDocument ? (
-                <article className="reader-body" ref={readerBodyRef}>
-                  {renderReaderDocument({
-                    bookId,
-                    document: sectionDocument,
-                    onInternalLinkClick: onInternalReaderLinkClick,
-                    section: activeSection,
-                  })}
-                </article>
+                <div
+                  aria-label={`Reading viewport, page ${currentPageIndex + 1} of ${pageCount}`}
+                  className="reader-page-window"
+                  onKeyDown={onReaderViewportKeyDown}
+                  ref={readerViewportRef}
+                  tabIndex={0}
+                >
+                  <article
+                    className="reader-body reader-body-paginated"
+                    onLoadCapture={() => {
+                      measurePagination();
+                    }}
+                    ref={readerBodyRef}
+                    style={{
+                      transform: `translate3d(-${pageOffset}px, 0, 0)`,
+                    }}
+                  >
+                    {renderReaderDocument({
+                      bookId,
+                      document: sectionDocument,
+                      onInternalLinkClick: onInternalReaderLinkClick,
+                      section: activeSection,
+                    })}
+                  </article>
+                </div>
               ) : (
                 <div className="empty-state stack-sm">
                   <h2>No readable sections</h2>

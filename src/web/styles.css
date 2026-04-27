@@ -1104,12 +1104,25 @@ input::placeholder {
   flex-wrap: wrap;
 }
 
+.reader-toolbar-status {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+  justify-items: center;
+}
+
 .reader-current-label {
   min-width: 0;
   font-size: 13px;
   font-weight: 600;
   color: var(--text-primary);
   text-wrap: balance;
+}
+
+.reader-page-status {
+  font-size: 12px;
+  color: var(--text-tertiary);
+  font-variant-numeric: tabular-nums;
 }
 
 .reader-type-scale {
@@ -1170,24 +1183,20 @@ input::placeholder {
     0 3px 12px rgba(0, 0, 0, 0.08);
 }
 
-.reader-paper-header {
-  margin-bottom: 28px;
-  padding-bottom: 18px;
-  border-bottom: 1px solid color-mix(in srgb, var(--reader-paper-edge) 60%, transparent);
-}
-
-.reader-paper-header .eyebrow {
-  margin-bottom: 8px;
-  color: var(--reader-muted);
-}
-
-.reader-paper-header h2 {
-  color: var(--reader-ink);
-  text-wrap: balance;
-}
-
 .reader-loading {
   min-height: 50vh;
+}
+
+.reader-page-window {
+  --reader-page-gap: clamp(32px, 4vw, 56px);
+  position: relative;
+  overflow: hidden;
+  height: min(72vh, 920px);
+  outline: none;
+}
+
+.reader-page-window:focus-visible {
+  box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--reader-link) 40%, transparent);
 }
 
 .reader-body {
@@ -1198,6 +1207,17 @@ input::placeholder {
   letter-spacing: 0.01em;
   text-rendering: optimizeLegibility;
   font-kerning: normal;
+}
+
+.reader-body-paginated {
+  height: 100%;
+  margin: 0;
+  width: 100%;
+  column-width: var(--reader-page-width, 40rem);
+  column-gap: var(--reader-page-gap);
+  column-fill: auto;
+  transition: transform 180ms ease;
+  will-change: transform;
 }
 
 .reader-body ::selection {
@@ -1224,6 +1244,7 @@ input::placeholder {
   letter-spacing: -0.02em;
   line-height: 1.18;
   text-wrap: balance;
+  break-after: avoid;
 }
 
 .reader-heading-h1,
@@ -1256,12 +1277,14 @@ input::placeholder {
   border-radius: 18px;
   background: color-mix(in srgb, var(--reader-paper-edge) 35%, transparent);
   color: color-mix(in srgb, var(--reader-ink) 85%, var(--reader-muted));
+  break-inside: avoid;
 }
 
 .reader-figure {
   margin: 0;
   display: grid;
   gap: 10px;
+  break-inside: avoid;
 }
 
 .reader-image {
@@ -1317,6 +1340,7 @@ input::placeholder {
   font-family: "SF Mono", "Fira Code", "Cascadia Code", monospace;
   font-size: 0.9em;
   line-height: 1.65;
+  break-inside: avoid;
 }
 
 .reader-inline-code {
@@ -1332,6 +1356,7 @@ input::placeholder {
   border-radius: 18px;
   border: 1px solid color-mix(in srgb, var(--reader-paper-edge) 75%, transparent);
   background: color-mix(in srgb, var(--reader-paper-edge) 20%, transparent);
+  break-inside: avoid;
 }
 
 .reader-table {
@@ -2807,9 +2832,14 @@ code {
   }
 
   .reader-toolbar-nav,
+  .reader-toolbar-status,
   .reader-toolbar-controls {
     width: 100%;
     justify-content: space-between;
+  }
+
+  .reader-toolbar-status {
+    justify-items: start;
   }
 
   .reader-canvas {
@@ -2821,13 +2851,13 @@ code {
     border-radius: 22px;
   }
 
-  .reader-paper-header {
-    margin-bottom: 22px;
-  }
-
   .reader-body {
     font-size: calc(1rem * var(--reader-font-scale, 1));
     line-height: 1.75;
+  }
+
+  .reader-page-window {
+    height: min(64vh, 720px);
   }
 
   .book-cover-large {
