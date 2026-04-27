@@ -233,6 +233,31 @@ const formatDate = (value: string | null) => {
   return dateFormatter.format(new Date(value));
 };
 
+const relativeTimeFormatter = new Intl.RelativeTimeFormat(undefined, {
+  numeric: "auto",
+});
+
+const formatRelative = (value: string | null): string | null => {
+  if (!value) return null;
+  const then = new Date(value).getTime();
+  if (Number.isNaN(then)) return null;
+  const diff = then - Date.now();
+  const abs = Math.abs(diff);
+  const minute = 60_000;
+  const hour = minute * 60;
+  const day = hour * 24;
+  const week = day * 7;
+  const month = day * 30;
+  const year = day * 365;
+  if (abs < minute) return "just now";
+  if (abs < hour) return relativeTimeFormatter.format(Math.round(diff / minute), "minute");
+  if (abs < day) return relativeTimeFormatter.format(Math.round(diff / hour), "hour");
+  if (abs < week) return relativeTimeFormatter.format(Math.round(diff / day), "day");
+  if (abs < month) return relativeTimeFormatter.format(Math.round(diff / week), "week");
+  if (abs < year) return relativeTimeFormatter.format(Math.round(diff / month), "month");
+  return relativeTimeFormatter.format(Math.round(diff / year), "year");
+};
+
 const getDefaultBookshelfSortDirection = (key: BookshelfSortKey): SortDirection =>
   key === "importedAt" || key === "fileSizeBytes" ? "desc" : "asc";
 
@@ -388,6 +413,40 @@ const UploadIcon = () => (
     <path d="M12 16V5" />
     <path d="m7.5 9.5 4.5-4.5 4.5 4.5" />
     <path d="M5 19h14" />
+  </svg>
+);
+
+const PlayIcon = () => (
+  <svg viewBox="0 0 16 16" aria-hidden="true">
+    <path d="M5.5 3.4 12 8l-6.5 4.6z" fill="currentColor" stroke="none" />
+  </svg>
+);
+
+const MoreIcon = () => (
+  <svg viewBox="0 0 16 16" aria-hidden="true">
+    <circle cx="3.5" cy="8" r="1.2" fill="currentColor" stroke="none" />
+    <circle cx="8" cy="8" r="1.2" fill="currentColor" stroke="none" />
+    <circle cx="12.5" cy="8" r="1.2" fill="currentColor" stroke="none" />
+  </svg>
+);
+
+const CopyIcon = () => (
+  <svg viewBox="0 0 16 16" aria-hidden="true">
+    <rect height="9" rx="1.5" width="9" x="5" y="5" />
+    <path d="M3 11V4a1 1 0 0 1 1-1h7" />
+  </svg>
+);
+
+const EditIcon = () => (
+  <svg viewBox="0 0 16 16" aria-hidden="true">
+    <path d="m10.5 3 2.5 2.5L6 12.5H3.5V10z" />
+  </svg>
+);
+
+const MailIcon = () => (
+  <svg viewBox="0 0 16 16" aria-hidden="true">
+    <rect height="10" rx="1.5" width="13" x="1.5" y="3" />
+    <path d="m2 4 6 5 6-5" />
   </svg>
 );
 
@@ -633,6 +692,84 @@ const DeleteBookModal = ({
     </AlertDialogContent>
   </AlertDialog>
 );
+
+type OverflowMenuItem = {
+  id: string;
+  label: string;
+  onSelect: () => void;
+  variant?: "default" | "destructive";
+  disabled?: boolean;
+};
+
+type OverflowMenuProps = {
+  label: string;
+  items: OverflowMenuItem[];
+};
+
+const OverflowMenu = ({ label, items }: OverflowMenuProps) => {
+  const [open, setOpen] = useState(false);
+  const containerRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+
+    const onPointerDown = (event: PointerEvent) => {
+      if (
+        containerRef.current &&
+        !containerRef.current.contains(event.target as Node)
+      ) {
+        setOpen(false);
+      }
+    };
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setOpen(false);
+    };
+    window.addEventListener("pointerdown", onPointerDown);
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("pointerdown", onPointerDown);
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
+  return (
+    <div className="overflow-menu" ref={containerRef}>
+      <button
+        aria-expanded={open}
+        aria-haspopup="menu"
+        aria-label={label}
+        className="overflow-menu-trigger"
+        onClick={() => setOpen((current) => !current)}
+        type="button"
+      >
+        <MoreIcon />
+      </button>
+      {open ? (
+        <div className="overflow-menu-popover" role="menu">
+          {items.map((item) => (
+            <button
+              className={cn(
+                "overflow-menu-item",
+                item.variant === "destructive" && "destructive",
+              )}
+              disabled={item.disabled}
+              key={item.id}
+              onClick={() => {
+                if (item.disabled) return;
+                setOpen(false);
+                item.onSelect();
+              }}
+              role="menuitem"
+              type="button"
+            >
+              {item.label}
+            </button>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+};
 
 const UploadResults = ({ results }: { results: ImportResult[] }) => {
   if (results.length === 0) return null;
@@ -893,41 +1030,46 @@ const BookshelfList = ({ books, sort, onChangeSort }: BookshelfListProps) => {
 
 const BookDetailSkeleton = () => (
   <div aria-busy="true" className="page stack-lg">
-    <Link className="backlink" to="/">
-      <ArrowLeftIcon />
-      Back to shelf
-    </Link>
+    <div className="detail-page-header">
+      <Link className="backlink" to="/">
+        <ArrowLeftIcon />
+        Bookshelf
+      </Link>
+      <div aria-hidden="true" className="overflow-menu-trigger" />
+    </div>
 
-    <section aria-hidden="true" className="panel detail-layout">
-      <div className="book-cover book-cover-large">
-        <div className="skeleton-block skeleton-cover" />
+    <section aria-hidden="true" className="detail-hero">
+      <div className="detail-cover-clickable">
+        <div className="book-cover book-cover-large">
+          <div className="skeleton-block skeleton-cover" />
+        </div>
       </div>
-      <div className="stack-md">
+      <div className="detail-identity stack-md">
         <div className="stack-xs">
-          <SkeletonLine className="skeleton-line-small" />
           <SkeletonLine className="skeleton-line-heading" />
           <SkeletonLine className="skeleton-line-medium" />
+          <SkeletonLine className="skeleton-line-small" />
         </div>
 
-        <div className="metadata-grid">
-          {Array.from({ length: 4 }, (_, index) => (
-            <div key={`book-detail-meta-skeleton-${index}`}>
-              <SkeletonLine className="skeleton-line-small" />
-              <SkeletonLine className="skeleton-line-medium" />
-            </div>
-          ))}
-        </div>
-
-        <div className="stack-sm">
-          <div className="stack-xs">
-            <SkeletonLine className="skeleton-line-label" />
-            <div className="skeleton-input" />
+        <div className="send-card stack-sm">
+          <div className="send-card-header">
+            <SkeletonLine className="skeleton-line-medium" />
+            <SkeletonLine className="skeleton-line-small" />
           </div>
-          <div className="inline-actions" aria-hidden="true">
+          <div className="skeleton-input" />
+          <div className="send-card-actions">
             <div className="skeleton-button" />
-            <div className="skeleton-button skeleton-button-secondary" />
           </div>
         </div>
+      </div>
+    </section>
+
+    <section aria-hidden="true" className="panel stack-sm">
+      <SkeletonLine className="skeleton-line-section" />
+      <div className="stack-xs">
+        {Array.from({ length: 4 }, (_, index) => (
+          <div className="skeleton-row" key={`book-detail-about-skeleton-${index}`} />
+        ))}
       </div>
     </section>
 
@@ -1246,6 +1388,7 @@ const BookDetailPage = () => {
   const [deliveries, setDeliveries] = useState<DeliveryRecord[]>([]);
   const [settings, setSettings] = useState<SettingsPayload | null>(null);
   const [recipientEmail, setRecipientEmail] = useState("");
+  const [editingRecipient, setEditingRecipient] = useState(false);
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -1253,6 +1396,11 @@ const BookDetailPage = () => {
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [copyState, setCopyState] = useState<"idle" | "copied" | "failed">("idle");
+  const [showStickyBar, setShowStickyBar] = useState(false);
+
+  const heroTitleRef = useRef<HTMLHeadingElement | null>(null);
+  const historyRef = useRef<HTMLDivElement | null>(null);
 
   const loadBook = useEffectEvent(async () => {
     setLoading(true);
@@ -1268,7 +1416,9 @@ const BookDetailPage = () => {
       setBook(nextBook);
       setDeliveries(nextDeliveries);
       setSettings(nextSettings);
-      setRecipientEmail((current) => current || nextSettings.defaultKindleEmail || "");
+      const defaultEmail = nextSettings.defaultKindleEmail ?? "";
+      setRecipientEmail(defaultEmail);
+      setEditingRecipient(defaultEmail.length === 0);
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : "Could not load the book.");
     } finally {
@@ -1282,13 +1432,36 @@ const BookDetailPage = () => {
     setSettings(null);
     setMessage(null);
     setRecipientEmail("");
+    setEditingRecipient(false);
     setDeleteError(null);
     setIsDeleteModalOpen(false);
+    setShowStickyBar(false);
+    setCopyState("idle");
     void loadBook();
   }, [bookId]);
 
-  const onSend = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
+  useEffect(() => {
+    const target = heroTitleRef.current;
+    if (!target || typeof IntersectionObserver === "undefined") {
+      return;
+    }
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const entry = entries[0];
+        if (entry) {
+          setShowStickyBar(!entry.isIntersecting);
+        }
+      },
+      { rootMargin: "-72px 0px 0px 0px", threshold: 0 },
+    );
+    observer.observe(target);
+    return () => observer.disconnect();
+  }, [book?.id]);
+
+  const onSend = async (event?: FormEvent<HTMLFormElement>) => {
+    event?.preventDefault();
+    if (sending || !recipientEmail.trim()) return;
+
     setSending(true);
     setError(null);
     setMessage(null);
@@ -1299,6 +1472,10 @@ const BookDetailPage = () => {
       setMessage(
         "Email accepted by SMTP. Amazon may still reject it if the sender is not approved.",
       );
+      setEditingRecipient(false);
+      window.requestAnimationFrame(() => {
+        historyRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      });
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : "Send failed.");
     } finally {
@@ -1326,172 +1503,440 @@ const BookDetailPage = () => {
     }
   };
 
+  const onCopyFilename = async () => {
+    if (!book) return;
+    try {
+      await navigator.clipboard.writeText(book.sourceFilename);
+      setCopyState("copied");
+    } catch {
+      setCopyState("failed");
+    }
+    window.setTimeout(() => setCopyState("idle"), 1800);
+  };
+
   if (loading && !book) {
     return <BookDetailSkeleton />;
   }
 
   if (!book) {
     return (
-      <section className="empty-state stack-sm">
-        <h2>Book unavailable</h2>
-        <p>{error ?? "This record could not be loaded."}</p>
-      </section>
+      <div className="page stack-lg">
+        <div className="detail-page-header">
+          <Button asChild className="backlink" variant="ghost">
+            <Link to="/">
+              <ArrowLeftIcon />
+              Bookshelf
+            </Link>
+          </Button>
+        </div>
+        <section className="empty-state stack-sm">
+          <h2>Book unavailable</h2>
+          <p>{error ?? "This record could not be loaded."}</p>
+        </section>
+      </div>
     );
   }
 
+  const smtpReady = Boolean(settings?.smtp.configured);
+  const defaultEmail = settings?.defaultKindleEmail?.trim() ?? "";
+  const trimmedRecipient = recipientEmail.trim();
+  const hasDefaultEmail = defaultEmail.length > 0;
+  const recipientMatchesDefault =
+    hasDefaultEmail && trimmedRecipient === defaultEmail;
+  const lastSuccessfulDelivery =
+    deliveries.find((delivery) => delivery.status === "sent") ?? null;
+  const lastSentAt =
+    lastSuccessfulDelivery?.sentAt ?? lastSuccessfulDelivery?.createdAt ?? null;
+  const sendDisabled = sending || !smtpReady || trimmedRecipient.length === 0;
+
+  const overflowItems: OverflowMenuItem[] = [
+    {
+      id: "copy-filename",
+      label: copyState === "copied" ? "Filename copied" : "Copy filename",
+      onSelect: () => {
+        void onCopyFilename();
+      },
+    },
+    {
+      id: "delete",
+      label: "Delete book",
+      onSelect: () => {
+        setDeleteError(null);
+        setIsDeleteModalOpen(true);
+      },
+      variant: "destructive",
+      disabled: deleting || sending,
+    },
+  ];
+
+  const stickyBarVisible = showStickyBar;
+  const showRecipientForm = editingRecipient || trimmedRecipient.length === 0;
+
   return (
-    <div className="page stack-lg">
-      <DeleteBookModal
-        bookTitle={book.title}
-        deleting={deleting}
-        error={deleteError}
-        onClose={() => {
-          if (!deleting) {
-            setDeleteError(null);
-            setIsDeleteModalOpen(false);
-          }
-        }}
-        onConfirm={() => {
-          void onDelete();
-        }}
-        open={isDeleteModalOpen}
-      />
+    <>
+      <div
+        aria-hidden={!stickyBarVisible}
+        className={cn("detail-sticky-bar", stickyBarVisible && "visible")}
+      >
+        <div className="detail-sticky-bar-inner">
+          <Link
+            aria-label="Back to bookshelf"
+            className="detail-sticky-back"
+            tabIndex={stickyBarVisible ? 0 : -1}
+            to="/"
+          >
+            <ArrowLeftIcon />
+          </Link>
+          <div className="detail-sticky-text">
+            <span className="detail-sticky-title" title={book.title}>
+              {book.title}
+            </span>
+            <span className="detail-sticky-author">{book.author}</span>
+          </div>
+          <div className="detail-sticky-actions">
+            <Button asChild size="sm" variant="outline">
+              <Link
+                tabIndex={stickyBarVisible ? 0 : -1}
+                to={`/books/${book.id}/read`}
+              >
+                Read
+              </Link>
+            </Button>
+            <Button
+              disabled={sendDisabled}
+              onClick={() => {
+                void onSend();
+              }}
+              size="sm"
+              tabIndex={stickyBarVisible ? 0 : -1}
+              type="button"
+            >
+              {sending ? "Sending\u2026" : "Send to Kindle"}
+            </Button>
+          </div>
+        </div>
+      </div>
 
-      <Button asChild className="backlink" variant="ghost">
-        <Link to="/">
-          <ArrowLeftIcon />
-          Back to shelf
-        </Link>
-      </Button>
+      <div className="page stack-lg">
+        <DeleteBookModal
+          bookTitle={book.title}
+          deleting={deleting}
+          error={deleteError}
+          onClose={() => {
+            if (!deleting) {
+              setDeleteError(null);
+              setIsDeleteModalOpen(false);
+            }
+          }}
+          onConfirm={() => {
+            void onDelete();
+          }}
+          open={isDeleteModalOpen}
+        />
 
-      <Card className="panel detail-layout">
+        <div className="detail-page-header">
+        <Button asChild className="backlink" variant="ghost">
+          <Link to="/">
+            <ArrowLeftIcon />
+            Bookshelf
+          </Link>
+        </Button>
+        <OverflowMenu items={overflowItems} label="More book actions" />
+      </div>
+
+      <section className="detail-hero">
         <Link
-          aria-label={`Open ${book.title} in reader`}
-          className="detail-cover-link"
+          aria-label={`Read ${book.title} in browser`}
+          className="detail-cover-clickable"
           to={`/books/${book.id}/read`}
         >
           <BookCover book={book} large />
+          <span className="detail-cover-overlay" aria-hidden="true">
+            <span className="detail-cover-overlay-icon">
+              <PlayIcon />
+            </span>
+            <span className="detail-cover-overlay-label">Read</span>
+          </span>
         </Link>
-        <div className="stack-md">
+
+        <div className="detail-identity stack-md">
           <div className="stack-xs">
-            <h2>{book.title}</h2>
-            <p className="detail-author">{book.author}</p>
+            <h2 className="detail-title" ref={heroTitleRef}>
+              {book.title}
+            </h2>
+            <p className="detail-author detail-author-large">{book.author}</p>
+            <p className="detail-meta-line">
+              <span>EPUB</span>
+              <span aria-hidden="true">·</span>
+              <span>{formatBytes(book.fileSizeBytes)}</span>
+              <span aria-hidden="true">·</span>
+              <span>Imported {formatDate(book.importedAt)}</span>
+              {lastSentAt ? (
+                <>
+                  <span aria-hidden="true">·</span>
+                  <span>
+                    Last sent {formatRelative(lastSentAt) ?? formatDate(lastSentAt)}
+                  </span>
+                </>
+              ) : null}
+            </p>
           </div>
 
-          <dl className="metadata-grid">
-            <div>
-              <dt>Filename</dt>
-              <dd>{book.sourceFilename}</dd>
+          <div className="send-card">
+            <div className="send-card-header">
+              <div className="send-card-title">
+                <span aria-hidden="true" className="send-card-icon">
+                  <MailIcon />
+                </span>
+                <span>Send to Kindle</span>
+              </div>
+              <span
+                className={cn(
+                  "send-status",
+                  smtpReady ? "send-status-ready" : "send-status-warn",
+                )}
+              >
+                <span aria-hidden="true" className="send-status-dot" />
+                {smtpReady ? "SMTP ready" : "SMTP not configured"}
+              </span>
             </div>
-            <div>
-              <dt>Imported</dt>
-              <dd>{formatDate(book.importedAt)}</dd>
-            </div>
-            <div>
-              <dt>File size</dt>
-              <dd>{formatBytes(book.fileSizeBytes)}</dd>
-            </div>
-          </dl>
 
-          <form className="stack-sm" onSubmit={onSend}>
-            <div className="stack-xs">
-              <Label className="field-label" htmlFor="recipient-email">
-                Kindle address
-              </Label>
-              <Input
-                autoComplete="email"
-                id="recipient-email"
-                name="recipient_email"
-                onChange={(event) => setRecipientEmail(event.currentTarget.value)}
-                placeholder="yourname@kindle.com"
-                spellCheck={false}
-                type="email"
-                value={recipientEmail}
-              />
-            </div>
-            <div className="inline-actions">
-              <Button asChild variant="outline">
-                <Link to={`/books/${book.id}/read`}>Read in browser</Link>
-              </Button>
-              <Button disabled={sending} type="submit">
+            {showRecipientForm ? (
+              <form
+                className="send-recipient-form"
+                onSubmit={(event) => {
+                  void onSend(event);
+                }}
+              >
+                <Label className="sr-only" htmlFor="recipient-email">
+                  Kindle address
+                </Label>
+                <Input
+                  autoComplete="email"
+                  id="recipient-email"
+                  name="recipient_email"
+                  onChange={(event) => setRecipientEmail(event.currentTarget.value)}
+                  placeholder="yourname@kindle.com"
+                  spellCheck={false}
+                  type="email"
+                  value={recipientEmail}
+                />
+                {hasDefaultEmail && !recipientMatchesDefault ? (
+                  <Button
+                    onClick={() => {
+                      setRecipientEmail(defaultEmail);
+                      setEditingRecipient(false);
+                    }}
+                    size="sm"
+                    type="button"
+                    variant="ghost"
+                  >
+                    Use default
+                  </Button>
+                ) : hasDefaultEmail ? (
+                  <Button
+                    onClick={() => setEditingRecipient(false)}
+                    size="sm"
+                    type="button"
+                    variant="ghost"
+                  >
+                    Cancel
+                  </Button>
+                ) : null}
+              </form>
+            ) : (
+              <div className="send-recipient-display">
+                <div className="send-recipient-info">
+                  <span className="send-recipient-eyebrow">To</span>
+                  <span className="send-recipient-email" title={trimmedRecipient}>
+                    {trimmedRecipient}
+                  </span>
+                  {recipientMatchesDefault ? (
+                    <span className="send-recipient-tag">Default</span>
+                  ) : null}
+                </div>
+                <Button
+                  className="send-recipient-edit"
+                  onClick={() => setEditingRecipient(true)}
+                  size="sm"
+                  type="button"
+                  variant="ghost"
+                >
+                  <EditIcon />
+                  Change
+                </Button>
+              </div>
+            )}
+
+            <div className="send-card-actions">
+              <Button
+                disabled={sendDisabled}
+                onClick={() => {
+                  void onSend();
+                }}
+                type="button"
+              >
                 {sending ? "Sending\u2026" : "Send to Kindle"}
               </Button>
-              <Button asChild variant="outline">
-                <Link to="/settings">Delivery settings</Link>
-              </Button>
+              {!smtpReady ? (
+                <Button asChild size="sm" variant="ghost">
+                  <Link to="/settings">Configure SMTP →</Link>
+                </Button>
+              ) : null}
             </div>
+
             {message ? (
-              <p aria-live="polite" className="inline-success">
+              <p aria-live="polite" className="inline-success send-card-message">
                 {message}
               </p>
             ) : null}
-            {error ? <p className="inline-error">{error}</p> : null}
-          </form>
-
-          <div className="detail-danger-zone stack-sm">
-            <div className="stack-xs">
-              <p className="eyebrow">Library</p>
-              <p className="detail-danger-copy">
-                Remove this EPUB and its delivery history from your library.
-              </p>
-            </div>
-            <div className="inline-actions">
-              <Button
-                disabled={deleting || sending}
-                onClick={() => {
-                  setDeleteError(null);
-                  setIsDeleteModalOpen(true);
-                }}
-                type="button"
-                variant="destructive"
-              >
-                Delete book
-              </Button>
-            </div>
+            {error ? (
+              <p className="inline-error send-card-message">{error}</p>
+            ) : null}
           </div>
+
+          <Link className="detail-secondary-link" to="/settings">
+            Manage delivery settings <span aria-hidden="true">→</span>
+          </Link>
         </div>
-      </Card>
+      </section>
 
       <Card className="panel stack-sm">
+        <div className="section-heading">
+          <CardTitle>About this book</CardTitle>
+        </div>
+        <dl className="about-grid">
+          <div>
+            <dt>Format</dt>
+            <dd>EPUB</dd>
+          </div>
+          <div>
+            <dt>File size</dt>
+            <dd>{formatBytes(book.fileSizeBytes)}</dd>
+          </div>
+          <div>
+            <dt>Imported</dt>
+            <dd>{formatDate(book.importedAt)}</dd>
+          </div>
+          <div>
+            <dt>Filename</dt>
+            <dd>
+              <span className="about-grid-filename-value" title={book.sourceFilename}>
+                {book.sourceFilename}
+              </span>
+              <Button
+                aria-label={
+                  copyState === "copied"
+                    ? "Filename copied to clipboard"
+                    : "Copy filename to clipboard"
+                }
+                className="about-grid-copy"
+                onClick={() => {
+                  void onCopyFilename();
+                }}
+                size="sm"
+                type="button"
+                variant="ghost"
+              >
+                <CopyIcon />
+                <span>{copyState === "copied" ? "Copied" : "Copy"}</span>
+              </Button>
+            </dd>
+          </div>
+          <div>
+            <dt>Last sent</dt>
+            <dd>
+              {lastSentAt
+                ? `${formatRelative(lastSentAt) ?? formatDate(lastSentAt)}${
+                    lastSuccessfulDelivery?.recipientEmail
+                      ? ` \u00b7 ${lastSuccessfulDelivery.recipientEmail}`
+                      : ""
+                  }`
+                : "Never"}
+            </dd>
+          </div>
+        </dl>
+      </Card>
+
+      <Card className="panel stack-sm" ref={historyRef}>
         <CardHeader className="section-heading border-b">
           <CardTitle>Delivery history</CardTitle>
-          <span>{numberFormatter.format(deliveries.length)} attempts</span>
+          <span>
+            {deliveries.length === 0
+              ? "0 attempts"
+              : `${numberFormatter.format(deliveries.length)} ${
+                  deliveries.length === 1 ? "attempt" : "attempts"
+                }`}
+          </span>
         </CardHeader>
         {deliveries.length === 0 ? (
-          <p style={{ color: "var(--text-tertiary)", fontSize: 13 }}>No sends yet.</p>
+          <div className="history-empty">
+            <p className="history-empty-title">No delivery attempts yet</p>
+            <p className="history-empty-copy">
+              Send this book once to see how Amazon responded. SMTP success only means
+              your mail server accepted the message — Amazon can still reject after that.
+            </p>
+          </div>
         ) : (
-          <Table className="history-table">
-            <TableHeader>
-              <TableRow>
-                <TableHead scope="col">Status</TableHead>
-                <TableHead scope="col">Recipient</TableHead>
-                <TableHead scope="col">Created</TableHead>
-                <TableHead scope="col">Sent</TableHead>
-                <TableHead scope="col">Error</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {deliveries.map((delivery) => (
-                <TableRow key={delivery.id}>
-                  <TableCell>
+          <div className="history-list">
+            {deliveries.map((delivery) => {
+              const sentAt = delivery.sentAt ?? delivery.createdAt;
+              const relative = formatRelative(sentAt);
+              return (
+                <article
+                  className={cn("history-row", `history-row-${delivery.status}`)}
+                  key={delivery.id}
+                >
+                  <div className="history-row-main">
                     <Badge
                       className={cn("status-pill", `status-${delivery.status}`)}
                       variant={getStatusBadgeVariant(delivery.status)}
                     >
                       {delivery.status}
                     </Badge>
-                  </TableCell>
-                  <TableCell>{delivery.recipientEmail}</TableCell>
-                  <TableCell>{formatDate(delivery.createdAt)}</TableCell>
-                  <TableCell>{formatDate(delivery.sentAt)}</TableCell>
-                  <TableCell>{delivery.errorMessage ?? "\u2014"}</TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+                    <div className="history-row-text">
+                      <span className="history-row-recipient">
+                        {delivery.recipientEmail}
+                      </span>
+                      <span className="history-row-time" title={formatDate(sentAt)}>
+                        {relative ?? formatDate(sentAt)}
+                      </span>
+                    </div>
+                  </div>
+                  {delivery.errorMessage ? (
+                    <p className="history-row-error">{delivery.errorMessage}</p>
+                  ) : null}
+                </article>
+              );
+            })}
+          </div>
         )}
       </Card>
-    </div>
+
+      <Card className="panel danger-zone-card">
+        <div className="danger-zone-content">
+          <div className="stack-xs">
+            <p className="eyebrow danger-zone-eyebrow">Danger zone</p>
+            <p className="danger-zone-copy">
+              Permanently remove this EPUB and its delivery history. This cannot be
+              undone.
+            </p>
+          </div>
+          <Button
+            disabled={deleting || sending}
+            onClick={() => {
+              setDeleteError(null);
+              setIsDeleteModalOpen(true);
+            }}
+            type="button"
+            variant="destructive"
+          >
+            Delete book
+          </Button>
+        </div>
+      </Card>
+      </div>
+    </>
   );
 };
 
