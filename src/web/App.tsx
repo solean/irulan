@@ -1047,30 +1047,54 @@ const BookDetailSkeleton = () => (
       <div className="detail-identity stack-md">
         <div className="stack-xs">
           <SkeletonLine className="skeleton-line-heading" />
-          <SkeletonLine className="skeleton-line-medium" />
-          <SkeletonLine className="skeleton-line-small" />
+          <SkeletonLine className="skeleton-line-author" />
+          <SkeletonLine className="skeleton-line-meta" />
         </div>
 
-        <div className="send-card stack-sm">
+        <div className="send-card">
           <div className="send-card-header">
-            <SkeletonLine className="skeleton-line-medium" />
-            <SkeletonLine className="skeleton-line-small" />
+            <div className="send-card-title">
+              <span className="skeleton-circle" />
+              <SkeletonLine className="skeleton-line-medium" />
+            </div>
+            <span className="skeleton-pill" />
           </div>
-          <div className="skeleton-input" />
+          <div className="send-recipient-display">
+            <div className="send-recipient-info">
+              <SkeletonLine className="skeleton-line-eyebrow" />
+              <SkeletonLine className="skeleton-line-medium" />
+            </div>
+            <div className="skeleton-button skeleton-button-sm" />
+          </div>
           <div className="send-card-actions">
             <div className="skeleton-button" />
           </div>
         </div>
+
+        <SkeletonLine className="skeleton-line-small" />
       </div>
     </section>
 
     <section aria-hidden="true" className="panel stack-sm">
-      <SkeletonLine className="skeleton-line-section" />
-      <div className="stack-xs">
-        {Array.from({ length: 4 }, (_, index) => (
-          <div className="skeleton-row" key={`book-detail-about-skeleton-${index}`} />
-        ))}
+      <div className="section-heading">
+        <SkeletonLine className="skeleton-line-section" />
       </div>
+      <dl className="about-grid">
+        {Array.from({ length: 5 }, (_, index) => (
+          <div key={`book-detail-about-skeleton-${index}`}>
+            <dt>
+              <SkeletonLine className="skeleton-line-eyebrow" />
+            </dt>
+            <dd>
+              <SkeletonLine
+                className={
+                  index === 3 ? "skeleton-line-meta" : "skeleton-line-medium"
+                }
+              />
+            </dd>
+          </div>
+        ))}
+      </dl>
     </section>
 
     <section aria-hidden="true" className="panel stack-sm">
@@ -1078,10 +1102,28 @@ const BookDetailSkeleton = () => (
         <SkeletonLine className="skeleton-line-section" />
         <SkeletonLine className="skeleton-line-small" />
       </div>
-      <div className="stack-xs">
+      <div className="history-list">
         {Array.from({ length: 3 }, (_, index) => (
-          <div className="skeleton-row" key={`delivery-history-skeleton-${index}`} />
+          <div className="history-row" key={`delivery-history-skeleton-${index}`}>
+            <div className="history-row-main">
+              <span className="skeleton-pill" />
+              <div className="history-row-text">
+                <SkeletonLine className="skeleton-line-medium" />
+                <SkeletonLine className="skeleton-line-small" />
+              </div>
+            </div>
+          </div>
         ))}
+      </div>
+    </section>
+
+    <section aria-hidden="true" className="panel danger-zone-card">
+      <div className="danger-zone-content">
+        <div className="stack-xs skeleton-flex-fill">
+          <SkeletonLine className="skeleton-line-eyebrow" />
+          <SkeletonLine className="skeleton-line-paragraph" />
+        </div>
+        <div className="skeleton-button skeleton-button-secondary" />
       </div>
     </section>
   </div>

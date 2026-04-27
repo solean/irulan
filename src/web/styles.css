@@ -393,7 +393,9 @@ img {
 .skeleton-line,
 .skeleton-input,
 .skeleton-button,
-.skeleton-row {
+.skeleton-row,
+.skeleton-pill,
+.skeleton-circle {
   position: relative;
   overflow: hidden;
   background: linear-gradient(180deg, var(--skeleton-highlight), var(--skeleton-base));
@@ -461,9 +463,44 @@ img {
   width: 148px;
 }
 
+.skeleton-button-sm {
+  width: 96px;
+}
+
+.skeleton-flex-fill {
+  flex: 1;
+  min-width: 0;
+}
+
 .skeleton-row {
   width: 100%;
   height: 40px;
+}
+
+.skeleton-pill {
+  width: 64px;
+  height: 22px;
+  border: 1px solid var(--border-default);
+  border-radius: 999px;
+}
+
+.skeleton-circle {
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+.skeleton-line-eyebrow {
+  width: 72px;
+}
+
+.skeleton-line-author {
+  width: 38%;
+}
+
+.skeleton-line-meta {
+  width: 64%;
 }
 
 /* ─── Buttons ─── */
