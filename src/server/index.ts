@@ -8,6 +8,8 @@ ensureSchema();
 
 const server = Bun.serve({
   port: appConfig.port,
+  // EPUB uploads and import processing can exceed Bun's 10s default.
+  idleTimeout: appConfig.serverIdleTimeout,
   fetch: app.fetch,
 });
 

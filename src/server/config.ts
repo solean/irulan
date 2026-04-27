@@ -16,9 +16,18 @@ const parseNumber = (value: string | undefined, fallback: number, label: string)
 const port = Number(Bun.env.PORT ?? 8787);
 const webPort = parseNumber(Bun.env.WEB_PORT, 5173, "WEB_PORT");
 const smtpPort = parseNumber(Bun.env.SMTP_PORT, 587, "SMTP_PORT");
+const serverIdleTimeout = parseNumber(
+  Bun.env.SERVER_IDLE_TIMEOUT_SECONDS,
+  120,
+  "SERVER_IDLE_TIMEOUT_SECONDS",
+);
 
 if (Number.isNaN(port)) {
   throw new Error("PORT must be a valid number.");
+}
+
+if (serverIdleTimeout <= 0) {
+  throw new Error("SERVER_IDLE_TIMEOUT_SECONDS must be greater than 0.");
 }
 
 const smtpFrom = Bun.env.SMTP_FROM?.trim() || null;
@@ -30,6 +39,7 @@ export const appConfig = {
   rootDir,
   port,
   webPort,
+  serverIdleTimeout,
   webOrigins: [`http://localhost:${webPort}`, `http://127.0.0.1:${webPort}`],
   dataDir: resolveFromRoot(Bun.env.EBOOK_DATA_DIR, "./data"),
   storageDir: resolveFromRoot(Bun.env.EBOOK_STORAGE_DIR, "./storage"),

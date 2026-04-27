@@ -20,8 +20,9 @@ This project intentionally does not do format conversion.
 
 1. Copy `.env.example` to `.env`.
 2. If `5173` is busy, set `WEB_PORT` to another port in `.env`.
-3. Fill in your SMTP values.
-4. Run:
+3. If you expect large uploads or slower disks, raise `SERVER_IDLE_TIMEOUT_SECONDS`.
+4. Fill in your SMTP values.
+5. Run:
 
 ```bash
 bun install
@@ -38,6 +39,8 @@ Example:
 ```bash
 WEB_PORT=4173 bun run dev
 ```
+
+The Bun API server defaults `SERVER_IDLE_TIMEOUT_SECONDS` to `120` so EPUB uploads and import processing are not cut off by the runtime's default 10 second socket timeout.
 
 ## Build
 
