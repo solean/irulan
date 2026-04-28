@@ -14,8 +14,9 @@ import { extractEpubMetadata, prepareEpubReader, resolveEpubReaderAssetPath } fr
 
 type BookRecord = typeof books.$inferSelect;
 type DeliveryRecord = typeof deliveries.$inferSelect;
+type PreparedBookReader = Awaited<ReturnType<typeof prepareEpubReader>>;
 
-const readerManifestRequests = new Map<string, Promise<BookReader>>();
+const preparedReaderRequests = new Map<string, Promise<PreparedBookReader>>();
 
 const fallbackTitle = (filename: string) =>
   path.basename(filename, path.extname(filename)).replace(/[_-]+/g, " ").trim();
@@ -67,35 +68,39 @@ export const getBookRecord = (bookId: string) => {
   return row;
 };
 
-const loadBookReader = async (book: BookRecord): Promise<BookReader> => {
-  const manifest = await prepareEpubReader(book.filePath, readerDirectory(book.id), book.id);
+const loadPreparedBookReader = async (bookId: string): Promise<PreparedBookReader> => {
+  const book = getBookRecord(bookId);
+  return prepareEpubReader(book.filePath, readerDirectory(bookId), bookId);
+};
+
+const getPreparedBookReader = (bookId: string): Promise<PreparedBookReader> => {
+  const existing = preparedReaderRequests.get(bookId);
+  if (existing) {
+    return existing;
+  }
+
+  const request = loadPreparedBookReader(bookId).catch((error) => {
+    preparedReaderRequests.delete(bookId);
+    throw error;
+  });
+
+  preparedReaderRequests.set(bookId, request);
+  return request;
+};
+
+export const getBookReader = async (bookId: string): Promise<BookReader> => {
+  const manifest = await getPreparedBookReader(bookId);
   return {
-    id: book.id,
+    id: bookId,
     title: manifest.title,
     author: manifest.author,
     sections: manifest.sections,
   };
 };
 
-export const getBookReader = async (bookId: string): Promise<BookReader> => {
-  const book = getBookRecord(bookId);
-  const existing = readerManifestRequests.get(bookId);
-  if (existing) {
-    return existing;
-  }
-
-  const request = loadBookReader(book).finally(() => {
-    readerManifestRequests.delete(bookId);
-  });
-
-  readerManifestRequests.set(bookId, request);
-  return request;
-};
-
 export const getBookReaderAssetPath = async (bookId: string, assetPath: string) => {
-  const book = getBookRecord(bookId);
-  await getBookReader(bookId);
-  return resolveEpubReaderAssetPath(readerDirectory(book.id), assetPath);
+  await getPreparedBookReader(bookId);
+  return resolveEpubReaderAssetPath(readerDirectory(bookId), assetPath);
 };
 
 export const deleteBook = async (bookId: string): Promise<DeleteBookResult> => {
@@ -110,7 +115,7 @@ export const deleteBook = async (bookId: string): Promise<DeleteBookResult> => {
   const trashDir = path.join(trashRoot, `${book.id}-${Date.now()}`);
   let movedToTrash = false;
 
-  readerManifestRequests.delete(book.id);
+  preparedReaderRequests.delete(book.id);
 
   try {
     await mkdir(trashRoot, { recursive: true });
