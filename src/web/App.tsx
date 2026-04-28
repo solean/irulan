@@ -106,8 +106,8 @@ const DEFAULT_BOOKSHELF_SORT: BookshelfSort = {
   direction: "desc",
 };
 const THEME_META_COLORS: Record<Theme, string> = {
-  dark: "#0A0A0B",
-  light: "#F8F9FA",
+  dark: "#15100B",
+  light: "#F6F4EE",
 };
 
 function getSystemTheme(): Theme {

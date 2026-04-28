@@ -3,12 +3,12 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="theme-color" content="#0A0A0B" />
+    <meta name="theme-color" content="#15100B" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <title>Irulan</title>
     <script>
-      (function(){var t;try{t=localStorage.getItem("ebook-manager-theme")}catch(e){}if(t!=="light"&&t!=="dark")t=matchMedia("(prefers-color-scheme:dark)").matches?"dark":"light";document.documentElement.setAttribute("data-theme",t);document.querySelector('meta[name="theme-color"]').content=t==="dark"?"#0A0A0B":"#F8F9FA"})();
+      (function(){var t;try{t=localStorage.getItem("ebook-manager-theme")}catch(e){}if(t!=="light"&&t!=="dark")t=matchMedia("(prefers-color-scheme:dark)").matches?"dark":"light";document.documentElement.setAttribute("data-theme",t);document.documentElement.classList.toggle("dark",t==="dark");document.querySelector('meta[name="theme-color"]').content=t==="dark"?"#15100B":"#F6F4EE"})();
     </script>
   </head>
   <body>
