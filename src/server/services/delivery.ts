@@ -1,9 +1,11 @@
+import { randomUUID } from "node:crypto";
+
 import nodemailer from "nodemailer";
 import { desc, eq } from "drizzle-orm";
 import { z } from "zod";
 
 import { DeliveryRecord } from "../../shared/types";
-import { db } from "../db/client";
+import { db, persistDatabase } from "../db/client";
 import { deliveries } from "../db/schema";
 import { AppError } from "../errors";
 import { getBookRecord } from "./books";
@@ -67,7 +69,7 @@ export const sendBookToKindle = async (bookId: string, recipientEmail?: string |
   const book = getBookRecord(bookId);
   const recipient = resolveRecipient(recipientEmail);
   const createdAt = new Date();
-  const deliveryId = crypto.randomUUID();
+  const deliveryId = randomUUID();
 
   db.insert(deliveries)
     .values({
@@ -78,6 +80,7 @@ export const sendBookToKindle = async (bookId: string, recipientEmail?: string |
       createdAt,
     })
     .run();
+  persistDatabase();
 
   try {
     const smtp = getSmtpSettings();
@@ -111,6 +114,7 @@ export const sendBookToKindle = async (bookId: string, recipientEmail?: string |
       })
       .where(eq(deliveries.id, deliveryId))
       .run();
+    persistDatabase();
   } catch (error) {
     db.update(deliveries)
       .set({
@@ -119,6 +123,7 @@ export const sendBookToKindle = async (bookId: string, recipientEmail?: string |
       })
       .where(eq(deliveries.id, deliveryId))
       .run();
+    persistDatabase();
 
     throw new AppError(
       502,

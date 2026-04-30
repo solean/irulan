@@ -1,23 +1,50 @@
-import { mkdirSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
-import { Database } from "bun:sqlite";
-import { drizzle } from "drizzle-orm/bun-sqlite";
+import { drizzle, type SQLJsDatabase } from "drizzle-orm/sql-js";
+import initSqlJs, { type Database } from "sql.js";
 
 import { appConfig } from "../config";
 import * as schema from "./schema";
 
 mkdirSync(path.dirname(appConfig.dbPath), { recursive: true });
 
-const sqlite = new Database(appConfig.dbPath, { create: true });
+let sqlite: Database | null = null;
 
-sqlite.exec("PRAGMA journal_mode = WAL;");
-sqlite.exec("PRAGMA foreign_keys = ON;");
+export let db: SQLJsDatabase<typeof schema>;
 
-export const db = drizzle(sqlite, { schema });
+const requireSqlite = () => {
+  if (!sqlite) {
+    throw new Error("Database has not been initialized.");
+  }
+
+  return sqlite;
+};
+
+export const persistDatabase = () => {
+  const client = requireSqlite();
+  writeFileSync(appConfig.dbPath, Buffer.from(client.export()));
+};
+
+export const initializeDatabase = async () => {
+  if (sqlite) {
+    return;
+  }
+
+  const SQL = await initSqlJs({
+    locateFile: (file) => path.join(appConfig.rootDir, "node_modules/sql.js/dist", file),
+  });
+
+  const dbBytes = existsSync(appConfig.dbPath) ? readFileSync(appConfig.dbPath) : null;
+  sqlite = new SQL.Database(dbBytes);
+  sqlite.run("PRAGMA foreign_keys = ON;");
+  db = drizzle(sqlite, { schema });
+};
 
 export const ensureSchema = () => {
-  sqlite.exec(`
+  const client = requireSqlite();
+
+  client.run(`
     CREATE TABLE IF NOT EXISTS books (
       id TEXT PRIMARY KEY NOT NULL,
       title TEXT NOT NULL,
@@ -53,4 +80,6 @@ export const ensureSchema = () => {
     CREATE INDEX IF NOT EXISTS deliveries_book_id_created_at_idx
       ON deliveries(book_id, created_at);
   `);
+
+  persistDatabase();
 };

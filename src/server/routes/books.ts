@@ -1,4 +1,4 @@
-import { readFile } from "node:fs/promises";
+import { access, readFile } from "node:fs/promises";
 
 import { Hono } from "hono";
 import { z } from "zod";
@@ -118,13 +118,13 @@ booksRoutes.get("/:id/read/*", async (c) => {
     const bookId = c.req.param("id");
     const assetPath = getReaderAssetRequestPath(c.req.path, bookId);
     const filePath = await getBookReaderAssetPath(bookId, assetPath);
-    const file = Bun.file(filePath);
 
-    if (!(await file.exists())) {
+    if (!(await access(filePath).then(() => true).catch(() => false))) {
       throw new AppError(404, "Reader asset not found.");
     }
 
-    return new Response(file, {
+    const bytes = await readFile(filePath);
+    return new Response(bytes, {
       headers: {
         "Content-Type": readerAssetContentType(filePath),
         "Cache-Control": "public, max-age=3600",

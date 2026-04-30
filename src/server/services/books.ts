@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { createReadStream } from "node:fs";
 import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
@@ -7,7 +7,7 @@ import { desc, eq, like, or } from "drizzle-orm";
 
 import { BookDetail, BookReader, BookSummary, DeleteBookResult, ImportResult } from "../../shared/types";
 import { appConfig } from "../config";
-import { db } from "../db/client";
+import { db, persistDatabase } from "../db/client";
 import { books, deliveries } from "../db/schema";
 import { AppError } from "../errors";
 import { bookDirectory, readerDirectory } from "../lib/storage";
@@ -141,6 +141,7 @@ export const deleteBook = async (bookId: string): Promise<DeleteBookResult> => {
   try {
     db.delete(deliveries).where(eq(deliveries.bookId, book.id)).run();
     db.delete(books).where(eq(books.id, book.id)).run();
+    persistDatabase();
   } catch (error) {
     if (movedToTrash) {
       await rename(trashDir, sourceDir).catch((restoreError) => {
@@ -151,6 +152,7 @@ export const deleteBook = async (bookId: string): Promise<DeleteBookResult> => {
     if (bookDeliveries.length > 0) {
       db.insert(deliveries).values(bookDeliveries).run();
     }
+    persistDatabase();
 
     console.error("Failed to delete book record.", error);
     throw new AppError(500, "The book could not be deleted.");
@@ -177,7 +179,7 @@ export const importBookFile = async (file: File): Promise<ImportResult> => {
     };
   }
 
-  const bookId = crypto.randomUUID();
+  const bookId = randomUUID();
   const targetDir = bookDirectory(bookId);
   const sourceFilename = file.name;
   const filePath = path.join(targetDir, "original.epub");
@@ -186,7 +188,7 @@ export const importBookFile = async (file: File): Promise<ImportResult> => {
   await mkdir(targetDir, { recursive: true });
 
   try {
-    await Bun.write(filePath, file);
+    await writeFile(filePath, Buffer.from(await file.arrayBuffer()));
 
     const fileHash = await hashStoredFile(filePath);
     const existing = db.select().from(books).where(eq(books.fileHash, fileHash)).get();
@@ -223,6 +225,7 @@ export const importBookFile = async (file: File): Promise<ImportResult> => {
         importedAt,
       })
       .run();
+    persistDatabase();
 
     const created = db.select().from(books).where(eq(books.id, bookId)).get();
     if (!created) {

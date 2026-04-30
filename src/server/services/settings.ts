@@ -2,7 +2,7 @@ import { eq } from "drizzle-orm";
 
 import { SettingsPayload, SmtpSettings } from "../../shared/types";
 import { appConfig } from "../config";
-import { db } from "../db/client";
+import { db, persistDatabase } from "../db/client";
 import { settings } from "../db/schema";
 
 const DEFAULT_KINDLE_KEY = "default_kindle_email";
@@ -26,6 +26,7 @@ const writeSetting = (key: string, value: string) => {
       set: { value },
     })
     .run();
+  persistDatabase();
 };
 
 const normalizeText = (value: string | null | undefined) => value?.trim() ?? "";
@@ -59,6 +60,7 @@ export const saveDefaultKindleEmail = (email: string | null) => {
       set: { value: nextValue },
     })
     .run();
+  persistDatabase();
 };
 
 const getEnvironmentSmtpSettings = (): SmtpSettings => ({

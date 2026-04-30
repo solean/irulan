@@ -238,6 +238,10 @@ img {
   backdrop-filter: blur(16px);
 }
 
+.electron-shell .main-header {
+  -webkit-app-region: drag;
+}
+
 .main-header-inner {
   display: flex;
   align-items: center;
@@ -246,6 +250,21 @@ img {
   width: min(100%, 1248px);
   margin: 0 auto;
   padding: 12px 24px;
+}
+
+.electron-shell .main-header-inner {
+  min-height: calc(var(--header-height) + 16px);
+  padding-top: 20px;
+  padding-left: 112px;
+}
+
+.electron-shell .main-header a,
+.electron-shell .main-header button,
+.electron-shell .main-header input,
+.electron-shell .main-header select,
+.electron-shell .main-header textarea,
+.electron-shell .main-header [role="button"] {
+  -webkit-app-region: no-drag;
 }
 
 .main-header-home {

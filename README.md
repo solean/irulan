@@ -11,10 +11,11 @@ This project intentionally does not do format conversion.
 
 ## Stack
 
-- Bun
+- Node.js
 - Hono
 - React + Vite
 - SQLite + Drizzle
+- Electron for macOS desktop packaging
 
 ## Run It
 
@@ -48,6 +49,28 @@ The Bun API server defaults `SERVER_IDLE_TIMEOUT_SECONDS` to `120` so EPUB uploa
 bun run build
 bun run start
 ```
+
+## macOS Desktop
+
+Run the Electron app locally:
+
+```bash
+bun run electron
+```
+
+Build a packaged macOS app:
+
+```bash
+bun run electron:pack
+```
+
+Create distributable macOS artifacts:
+
+```bash
+bun run electron:dist
+```
+
+The desktop app stores its library data under the app's macOS Application Support directory instead of the repo-local `data/` and `storage/` folders.
 
 ## Kindle Delivery
 
