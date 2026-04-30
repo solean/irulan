@@ -46,5 +46,11 @@ export const ensureSchema = () => {
       key TEXT PRIMARY KEY NOT NULL,
       value TEXT NOT NULL
     );
+
+    CREATE INDEX IF NOT EXISTS books_imported_at_idx
+      ON books(imported_at);
+
+    CREATE INDEX IF NOT EXISTS deliveries_book_id_created_at_idx
+      ON deliveries(book_id, created_at);
   `);
 };

@@ -25,7 +25,7 @@ const request = async <T>(input: string, init?: RequestInit): Promise<T> => {
 };
 
 export const api = {
-  async listBooks(query: string) {
+  async listBooks(query = "") {
     const params = new URLSearchParams();
     if (query.trim()) {
       params.set("q", query.trim());

@@ -13,6 +13,7 @@ import {
   useDeferredValue,
   useEffect,
   useEffectEvent,
+  useMemo,
   useRef,
   useState,
   useSyncExternalStore,
@@ -101,6 +102,7 @@ const READER_FONT_SCALE_KEY = "ebook-manager-reader-font-scale";
 const READER_MIN_FONT_SCALE = 0.95;
 const READER_MAX_FONT_SCALE = 1.25;
 const READER_FONT_SCALE_STEP = 0.1;
+const IMPORT_BATCH_SIZE = 20;
 const DEFAULT_BOOKSHELF_SORT: BookshelfSort = {
   key: "importedAt",
   direction: "desc",
@@ -295,6 +297,25 @@ const compareBooks = (left: BookSummary, right: BookSummary, key: BookshelfSortK
     default:
       return bookshelfTextCollator.compare(left.title, right.title);
   }
+};
+
+const getVisibleBooks = (books: BookSummary[], query: string) => {
+  const normalizedQuery = query.trim().toLocaleLowerCase();
+  if (!normalizedQuery) {
+    return books;
+  }
+
+  return books.filter((book) => {
+    const title = book.title.toLocaleLowerCase();
+    const author = book.author.toLocaleLowerCase();
+    const sourceFilename = book.sourceFilename.toLocaleLowerCase();
+
+    return (
+      title.includes(normalizedQuery) ||
+      author.includes(normalizedQuery) ||
+      sourceFilename.includes(normalizedQuery)
+    );
+  });
 };
 
 const getSortedBooks = (books: BookSummary[], sort: BookshelfSort) => {
@@ -931,7 +952,7 @@ const BookshelfSortButton = ({
 };
 
 const BookshelfList = ({ books, sort, onChangeSort }: BookshelfListProps) => {
-  const sortedBooks = getSortedBooks(books, sort);
+  const sortedBooks = useMemo(() => getSortedBooks(books, sort), [books, sort]);
 
   return (
     <section aria-label="Bookshelf list" className="books-table-shell">
@@ -1227,7 +1248,6 @@ const BookshelfPage = () => {
   const [view, setView] = useState<BookshelfView>(() => getStoredBookshelfView() ?? "grid");
   const [books, setBooks] = useState<BookSummary[]>([]);
   const [listSort, setListSort] = useState<BookshelfSort>(DEFAULT_BOOKSHELF_SORT);
-  const [lastLoadedQuery, setLastLoadedQuery] = useState(searchParams.get("q") ?? "");
   const [results, setResults] = useState<ImportResult[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -1240,8 +1260,10 @@ const BookshelfPage = () => {
   const flashMessage = (location.state as { message?: string } | null)?.message ?? null;
 
   const deferredQuery = useDeferredValue(query);
+  const visibleBooks = useMemo(() => getVisibleBooks(books, deferredQuery), [books, deferredQuery]);
+  const showingFilteredResults = deferredQuery.trim().length > 0;
 
-  const loadBooks = useEffectEvent(async (term: string) => {
+  const loadBooks = useEffectEvent(async () => {
     const requestId = latestBooksRequest.current + 1;
     latestBooksRequest.current = requestId;
 
@@ -1252,7 +1274,7 @@ const BookshelfPage = () => {
 
     try {
       const [nextBooks, nextSettings] = await Promise.all([
-        api.listBooks(term),
+        api.listBooks(),
         hasLoadedSettings ? Promise.resolve<SettingsPayload | null>(null) : api.getSettings(),
       ]);
 
@@ -1261,7 +1283,6 @@ const BookshelfPage = () => {
       }
 
       setBooks(nextBooks);
-      setLastLoadedQuery(term);
 
       if (nextSettings) {
         setSettings(nextSettings);
@@ -1282,8 +1303,8 @@ const BookshelfPage = () => {
   });
 
   useEffect(() => {
-    void loadBooks(deferredQuery);
-  }, [deferredQuery]);
+    void loadBooks();
+  }, []);
 
   useEffect(() => {
     const nextQuery = searchParams.get("q") ?? "";
@@ -1308,11 +1329,19 @@ const BookshelfPage = () => {
 
     setUploading(true);
     setError(null);
+    setResults([]);
 
     try {
-      const nextResults = await api.importBooks(files);
-      setResults(nextResults);
-      await loadBooks(deferredQuery);
+      const nextResults: ImportResult[] = [];
+
+      for (let index = 0; index < files.length; index += IMPORT_BATCH_SIZE) {
+        const batch = files.slice(index, index + IMPORT_BATCH_SIZE);
+        const batchResults = await api.importBooks(batch);
+        nextResults.push(...batchResults);
+        setResults([...nextResults]);
+      }
+
+      await loadBooks();
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : "Import failed.");
     } finally {
@@ -1321,7 +1350,6 @@ const BookshelfPage = () => {
   });
 
   const showInitialBookshelfSkeleton = loading && !hasLoadedBooks;
-  const showingFilteredResults = lastLoadedQuery.trim().length > 0;
 
   return (
     <div className="page stack-lg">
@@ -1395,8 +1423,10 @@ const BookshelfPage = () => {
             </Button>
           </div>
           <div className="stat-chip">
-            <strong>{numberFormatter.format(books.length)}</strong>
-            <span>books</span>
+            <strong>{numberFormatter.format(showingFilteredResults ? visibleBooks.length : books.length)}</strong>
+            <span>
+              {showingFilteredResults ? `of ${numberFormatter.format(books.length)} books` : "books"}
+            </span>
           </div>
         </div>
       </section>
@@ -1407,7 +1437,7 @@ const BookshelfPage = () => {
 
       {showInitialBookshelfSkeleton ? (
         <BookshelfSkeleton view={view} />
-      ) : books.length === 0 ? (
+      ) : visibleBooks.length === 0 ? (
         <section className="empty-state stack-sm">
           <h2>{showingFilteredResults ? "No matching books" : "No books yet"}</h2>
           <p>
@@ -1418,9 +1448,9 @@ const BookshelfPage = () => {
         </section>
       ) : (
         view === "list" ? (
-          <BookshelfList books={books} onChangeSort={onChangeListSort} sort={listSort} />
+          <BookshelfList books={visibleBooks} onChangeSort={onChangeListSort} sort={listSort} />
         ) : (
-          <BookshelfGrid books={books} />
+          <BookshelfGrid books={visibleBooks} />
         )
       )}
     </div>

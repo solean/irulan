@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
-import { mkdir, rename, rm, writeFile } from "node:fs/promises";
+import { createReadStream } from "node:fs";
+import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 import { desc, eq, like, or } from "drizzle-orm";
@@ -20,6 +21,16 @@ const preparedReaderRequests = new Map<string, Promise<PreparedBookReader>>();
 
 const fallbackTitle = (filename: string) =>
   path.basename(filename, path.extname(filename)).replace(/[_-]+/g, " ").trim();
+
+const hashStoredFile = async (filePath: string) => {
+  const hash = createHash("sha256");
+
+  for await (const chunk of createReadStream(filePath)) {
+    hash.update(chunk);
+  }
+
+  return hash.digest("hex");
+};
 
 export const serializeBook = (book: BookRecord): BookSummary => ({
   id: book.id,
@@ -166,31 +177,31 @@ export const importBookFile = async (file: File): Promise<ImportResult> => {
     };
   }
 
-  const fileBytes = new Uint8Array(await file.arrayBuffer());
-  const fileHash = createHash("sha256").update(fileBytes).digest("hex");
-
-  const existing = db.select().from(books).where(eq(books.fileHash, fileHash)).get();
-  if (existing) {
-    return {
-      status: "duplicate",
-      message: `${file.name} is already in your library.`,
-      book: serializeBook(existing),
-    };
-  }
-
-  const metadata = await extractEpubMetadata(fileBytes);
   const bookId = crypto.randomUUID();
   const targetDir = bookDirectory(bookId);
   const sourceFilename = file.name;
-  const title = metadata.title ?? (fallbackTitle(sourceFilename) || "Untitled Book");
-  const author = metadata.author ?? "Unknown Author";
   const filePath = path.join(targetDir, "original.epub");
   let coverPath: string | null = null;
 
   await mkdir(targetDir, { recursive: true });
 
   try {
-    await writeFile(filePath, fileBytes);
+    await Bun.write(filePath, file);
+
+    const fileHash = await hashStoredFile(filePath);
+    const existing = db.select().from(books).where(eq(books.fileHash, fileHash)).get();
+    if (existing) {
+      await rm(targetDir, { recursive: true, force: true });
+      return {
+        status: "duplicate",
+        message: `${file.name} is already in your library.`,
+        book: serializeBook(existing),
+      };
+    }
+
+    const metadata = await extractEpubMetadata(await readFile(filePath));
+    const title = metadata.title ?? (fallbackTitle(sourceFilename) || "Untitled Book");
+    const author = metadata.author ?? "Unknown Author";
 
     if (metadata.coverBuffer && metadata.coverExtension) {
       coverPath = path.join(targetDir, `cover${metadata.coverExtension}`);
