@@ -229,6 +229,16 @@ img {
   min-height: 100vh;
 }
 
+.electron-shell .app-shell {
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.electron-shell :is(input, textarea, [contenteditable="true"], .reader-body, .reader-body *) {
+  -webkit-user-select: text;
+  user-select: text;
+}
+
 .main-header {
   position: sticky;
   top: 0;
