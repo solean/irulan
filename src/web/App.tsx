@@ -4,6 +4,7 @@ import type {
   FormEvent,
   KeyboardEvent as ReactKeyboardEvent,
   MouseEvent,
+  ReactNode,
 } from "react";
 import {
   createContext,
@@ -65,6 +66,14 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import {
+  Toast,
+  ToastClose,
+  ToastDescription,
+  ToastProvider as RadixToastProvider,
+  ToastTitle,
+  ToastViewport,
+} from "@/components/ui/toast";
 import { cn } from "@/lib/utils";
 
 import type {
@@ -94,6 +103,14 @@ type BookshelfSort = {
   key: BookshelfSortKey;
   direction: SortDirection;
 };
+type ToastVariant = "default" | "success" | "warning" | "error";
+type ToastNotice = {
+  id: string;
+  title: string;
+  description?: string;
+  variant: ToastVariant;
+};
+type ToastInput = Omit<ToastNotice, "id">;
 
 const THEME_KEY = "ebook-manager-theme";
 const BOOKSHELF_VIEW_KEY = "ebook-manager-bookshelf-view";
@@ -178,6 +195,57 @@ const ThemeContext = createContext<{ theme: Theme; toggle: () => void }>({
   theme: "dark",
   toggle: () => {},
 });
+const ToastContext = createContext<((toast: ToastInput) => void) | null>(null);
+
+function createToastId() {
+  return typeof crypto !== "undefined" && "randomUUID" in crypto
+    ? crypto.randomUUID()
+    : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
+function useToast() {
+  const toast = useContext(ToastContext);
+  if (!toast) {
+    throw new Error("useToast must be used within AppToastProvider.");
+  }
+  return toast;
+}
+
+function AppToastProvider({ children }: { children: ReactNode }) {
+  const [toasts, setToasts] = useState<ToastNotice[]>([]);
+
+  const notify = useCallback((toast: ToastInput) => {
+    setToasts((current) => [...current, { ...toast, id: createToastId() }]);
+  }, []);
+
+  const removeToast = useCallback((id: string) => {
+    setToasts((current) => current.filter((toast) => toast.id !== id));
+  }, []);
+
+  return (
+    <RadixToastProvider>
+      <ToastContext.Provider value={notify}>
+        {children}
+        {toasts.map((toast) => (
+          <Toast
+            key={toast.id}
+            onOpenChange={(open) => {
+              if (!open) removeToast(toast.id);
+            }}
+            variant={toast.variant}
+          >
+            <ToastTitle>{toast.title}</ToastTitle>
+            {toast.description ? (
+              <ToastDescription>{toast.description}</ToastDescription>
+            ) : null}
+            <ToastClose />
+          </Toast>
+        ))}
+        <ToastViewport />
+      </ToastContext.Provider>
+    </RadixToastProvider>
+  );
+}
 
 function useMediaQuery(query: string) {
   const subscribe = useCallback(
@@ -429,6 +497,18 @@ const getStatusBadgeVariant = (
   if (status === "failed" || status === "missing") return "destructive";
   if (status === "pending") return "outline";
   return "secondary";
+};
+
+const getImportToastVariant = (status: ImportResult["status"]): ToastVariant => {
+  if (status === "imported") return "success";
+  if (status === "duplicate") return "warning";
+  return "error";
+};
+
+const getImportToastTitle = (status: ImportResult["status"]) => {
+  if (status === "imported") return "Imported";
+  if (status === "duplicate") return "Already in library";
+  return "Import failed";
 };
 
 type SmtpFormState = {
@@ -872,32 +952,6 @@ const OverflowMenu = ({ label, items }: OverflowMenuProps) => {
   );
 };
 
-const UploadResults = ({ results }: { results: ImportResult[] }) => {
-  if (results.length === 0) return null;
-
-  return (
-    <Card aria-live="polite">
-      <CardHeader className="section-heading border-b">
-        <CardTitle>Import results</CardTitle>
-        <span>{numberFormatter.format(results.length)} file(s)</span>
-      </CardHeader>
-      <CardContent>
-        <ul className="result-list">
-          {results.map((result, index) => (
-            <li
-              className={`result-item result-${result.status}`}
-              key={`${result.status}-${index}-${result.message}`}
-            >
-              <strong>{result.status}</strong>
-              <span>{result.message}</span>
-            </li>
-          ))}
-        </ul>
-      </CardContent>
-    </Card>
-  );
-};
-
 const SkeletonLine = ({ className = "" }: { className?: string }) => (
   <Skeleton aria-hidden="true" className={`skeleton-line${className ? ` ${className}` : ""}`} />
 );
@@ -1317,12 +1371,13 @@ const BookshelfPage = () => {
   useDocumentTitle("Bookshelf \u2022 Irulan");
 
   const location = useLocation();
+  const navigate = useNavigate();
+  const toast = useToast();
   const [searchParams, setSearchParams] = useSearchParams();
   const [query, setQuery] = useState(searchParams.get("q") ?? "");
   const [view, setView] = useState<BookshelfView>(() => getStoredBookshelfView() ?? "grid");
   const [books, setBooks] = useState<BookSummary[]>([]);
   const [listSort, setListSort] = useState<BookshelfSort>(DEFAULT_BOOKSHELF_SORT);
-  const [results, setResults] = useState<ImportResult[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
@@ -1385,6 +1440,20 @@ const BookshelfPage = () => {
     setQuery((current) => (current === nextQuery ? current : nextQuery));
   }, [searchParams]);
 
+  useEffect(() => {
+    if (!flashMessage) return;
+
+    toast({
+      title: "Deleted",
+      description: flashMessage,
+      variant: "success",
+    });
+    navigate(
+      { pathname: location.pathname, search: location.search },
+      { replace: true, state: null },
+    );
+  }, [flashMessage, location.pathname, location.search, navigate, toast]);
+
   const onChangeView = useCallback((nextView: BookshelfView) => {
     setView(nextView);
     try {
@@ -1403,21 +1472,27 @@ const BookshelfPage = () => {
 
     setUploading(true);
     setError(null);
-    setResults([]);
 
     try {
-      const nextResults: ImportResult[] = [];
-
       for (let index = 0; index < files.length; index += IMPORT_BATCH_SIZE) {
         const batch = files.slice(index, index + IMPORT_BATCH_SIZE);
         const batchResults = await api.importBooks(batch);
-        nextResults.push(...batchResults);
-        setResults([...nextResults]);
+        for (const result of batchResults) {
+          toast({
+            title: getImportToastTitle(result.status),
+            description: result.message,
+            variant: getImportToastVariant(result.status),
+          });
+        }
       }
 
       await loadBooks();
     } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : "Import failed.");
+      toast({
+        title: "Import failed",
+        description: requestError instanceof Error ? requestError.message : "Import failed.",
+        variant: "error",
+      });
     } finally {
       setUploading(false);
     }
@@ -1426,7 +1501,11 @@ const BookshelfPage = () => {
   const onDropBookshelfFiles = useEffectEvent((files: File[]) => {
     const importableFiles = getImportableFiles(files);
     if (importableFiles.length === 0) {
-      setError(INVALID_IMPORT_FILES_MESSAGE);
+      toast({
+        title: "Import unavailable",
+        description: INVALID_IMPORT_FILES_MESSAGE,
+        variant: "error",
+      });
       return;
     }
 
@@ -1495,7 +1574,13 @@ const BookshelfPage = () => {
           onImportFiles={(files) => {
             void importFiles(files);
           }}
-          onRejectFiles={() => setError(INVALID_IMPORT_FILES_MESSAGE)}
+          onRejectFiles={() =>
+            toast({
+              title: "Import unavailable",
+              description: INVALID_IMPORT_FILES_MESSAGE,
+              variant: "error",
+            })
+          }
           open={isImportModalOpen}
         />
 
@@ -1553,9 +1638,7 @@ const BookshelfPage = () => {
           </div>
         </section>
 
-        {flashMessage ? <p className="inline-success">{flashMessage}</p> : null}
         {error ? <p className="inline-error">{error}</p> : null}
-        <UploadResults results={results} />
 
         {showInitialBookshelfSkeleton ? (
           <BookshelfSkeleton view={view} />
@@ -1581,6 +1664,7 @@ const BookshelfPage = () => {
 const BookDetailPage = () => {
   const { bookId = "" } = useParams();
   const navigate = useNavigate();
+  const toast = useToast();
   useDocumentTitle("Book detail \u2022 Irulan");
 
   const [book, setBook] = useState<BookDetail | null>(null);
@@ -1592,7 +1676,6 @@ const BookDetailPage = () => {
   const [sending, setSending] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
-  const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [copyState, setCopyState] = useState<"idle" | "copied" | "failed">("idle");
@@ -1629,7 +1712,6 @@ const BookDetailPage = () => {
     setBook(null);
     setDeliveries([]);
     setSettings(null);
-    setMessage(null);
     setRecipientEmail("");
     setEditingRecipient(false);
     setDeleteError(null);
@@ -1663,20 +1745,26 @@ const BookDetailPage = () => {
 
     setSending(true);
     setError(null);
-    setMessage(null);
 
     try {
       const delivery = await api.sendBook(bookId, recipientEmail);
       setDeliveries((current) => [delivery, ...current]);
-      setMessage(
-        "Email accepted by SMTP. Amazon may still reject it if the sender is not approved.",
-      );
+      toast({
+        title: "Email accepted",
+        description:
+          "Amazon may still reject it if the sender is not approved.",
+        variant: "success",
+      });
       setEditingRecipient(false);
       window.requestAnimationFrame(() => {
         historyRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
       });
     } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : "Send failed.");
+      toast({
+        title: "Send failed",
+        description: requestError instanceof Error ? requestError.message : "Send failed.",
+        variant: "error",
+      });
     } finally {
       setSending(false);
     }
@@ -1984,14 +2072,6 @@ const BookDetailPage = () => {
               ) : null}
             </div>
 
-            {message ? (
-              <p aria-live="polite" className="inline-success send-card-message">
-                {message}
-              </p>
-            ) : null}
-            {error ? (
-              <p className="inline-error send-card-message">{error}</p>
-            ) : null}
           </div>
 
           <Link className="detail-secondary-link" to="/settings">
@@ -2878,6 +2958,7 @@ const ReaderPage = () => {
 
 const SettingsPage = () => {
   useDocumentTitle("Settings \u2022 Irulan");
+  const toast = useToast();
 
   const [settings, setSettings] = useState<SettingsPayload | null>(null);
   const [defaultEmail, setDefaultEmail] = useState("");
@@ -2894,10 +2975,6 @@ const SettingsPage = () => {
   const [savingSmtp, setSavingSmtp] = useState(false);
   const [testing, setTesting] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [kindleMessage, setKindleMessage] = useState<string | null>(null);
-  const [kindleError, setKindleError] = useState<string | null>(null);
-  const [smtpMessage, setSmtpMessage] = useState<string | null>(null);
-  const [smtpError, setSmtpError] = useState<string | null>(null);
 
   const loadSettings = useEffectEvent(async () => {
     setLoading(true);
@@ -2924,18 +3001,23 @@ const SettingsPage = () => {
   const onSaveKindle = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setSavingKindle(true);
-    setKindleError(null);
-    setKindleMessage(null);
 
     try {
       const payload = await api.saveSettings(defaultEmail.trim() || null);
       setSettings(payload);
       setDefaultEmail(payload.defaultKindleEmail ?? "");
-      setKindleMessage("Default Kindle address saved.");
+      toast({
+        title: "Kindle address saved",
+        description: "Default Kindle address saved.",
+        variant: "success",
+      });
     } catch (requestError) {
-      setKindleError(
-        requestError instanceof Error ? requestError.message : "Could not save settings.",
-      );
+      toast({
+        title: "Could not save settings",
+        description:
+          requestError instanceof Error ? requestError.message : "Could not save settings.",
+        variant: "error",
+      });
     } finally {
       setSavingKindle(false);
     }
@@ -2944,13 +3026,15 @@ const SettingsPage = () => {
   const onSaveSmtp = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setSavingSmtp(true);
-    setSmtpError(null);
-    setSmtpMessage(null);
 
     const nextPort = Number.parseInt(smtpForm.port.trim(), 10);
     if (!Number.isInteger(nextPort) || nextPort < 1 || nextPort > 65535) {
       setSavingSmtp(false);
-      setSmtpError("SMTP port must be a whole number between 1 and 65535.");
+      toast({
+        title: "Invalid SMTP port",
+        description: "SMTP port must be a whole number between 1 and 65535.",
+        variant: "error",
+      });
       return;
     }
 
@@ -2965,15 +3049,22 @@ const SettingsPage = () => {
       });
       setSettings(payload);
       setSmtpForm(toSmtpFormState(payload.smtp));
-      setSmtpMessage(
-        payload.smtp.configured
+      toast({
+        title: "SMTP settings saved",
+        description: payload.smtp.configured
           ? "SMTP settings saved."
-          : "SMTP settings saved. Add at least a host and sender address to finish setup.",
-      );
+          : "Add at least a host and sender address to finish setup.",
+        variant: payload.smtp.configured ? "success" : "warning",
+      });
     } catch (requestError) {
-      setSmtpError(
-        requestError instanceof Error ? requestError.message : "Could not save SMTP settings.",
-      );
+      toast({
+        title: "Could not save SMTP",
+        description:
+          requestError instanceof Error
+            ? requestError.message
+            : "Could not save SMTP settings.",
+        variant: "error",
+      });
     } finally {
       setSavingSmtp(false);
     }
@@ -2981,16 +3072,23 @@ const SettingsPage = () => {
 
   const onSendTest = async () => {
     setTesting(true);
-    setKindleError(null);
-    setKindleMessage(null);
 
     try {
       await api.sendTestEmail(defaultEmail.trim());
-      setKindleMessage("SMTP test email sent.");
+      toast({
+        title: "Test email sent",
+        description: "SMTP test email sent.",
+        variant: "success",
+      });
     } catch (requestError) {
-      setKindleError(
-        requestError instanceof Error ? requestError.message : "Could not send the test email.",
-      );
+      toast({
+        title: "Could not send test email",
+        description:
+          requestError instanceof Error
+            ? requestError.message
+            : "Could not send the test email.",
+        variant: "error",
+      });
     } finally {
       setTesting(false);
     }
@@ -3271,12 +3369,6 @@ const SettingsPage = () => {
               {savingSmtp ? "Saving\u2026" : "Save SMTP"}
             </Button>
           </div>
-          {smtpMessage ? (
-            <p aria-live="polite" className="inline-success">
-              {smtpMessage}
-            </p>
-          ) : null}
-          {smtpError ? <p className="inline-error">{smtpError}</p> : null}
         </form>
       </Card>
 
@@ -3327,12 +3419,6 @@ const SettingsPage = () => {
               {testing ? "Sending\u2026" : "Send test email"}
             </Button>
           </div>
-          {kindleMessage ? (
-            <p aria-live="polite" className="inline-success">
-              {kindleMessage}
-            </p>
-          ) : null}
-          {kindleError ? <p className="inline-error">{kindleError}</p> : null}
         </form>
       </Card>
     </div>
@@ -3355,7 +3441,9 @@ export default function App() {
 
   return (
     <ThemeContext.Provider value={themeValue}>
-      <AppRoutes />
+      <AppToastProvider>
+        <AppRoutes />
+      </AppToastProvider>
     </ThemeContext.Provider>
   );
 }
