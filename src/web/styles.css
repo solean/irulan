@@ -2872,6 +2872,15 @@ code {
   animation: fade-in 120ms ease;
 }
 
+.context-menu-popover {
+  position: fixed;
+  right: auto;
+  top: auto;
+  z-index: 45;
+  width: 220px;
+  max-width: calc(100vw - 16px);
+}
+
 .overflow-menu-item {
   display: flex;
   align-items: center;

@@ -103,6 +103,11 @@ type BookshelfSort = {
   key: BookshelfSortKey;
   direction: SortDirection;
 };
+type BookshelfContextMenuState = {
+  book: BookSummary;
+  x: number;
+  y: number;
+};
 type ToastVariant = "default" | "success" | "warning" | "error";
 type ToastNotice = {
   id: string;
@@ -397,6 +402,22 @@ const getAriaSort = (
   key: BookshelfSortKey,
 ): "ascending" | "descending" | "none" =>
   sort.key === key ? (sort.direction === "asc" ? "ascending" : "descending") : "none";
+
+const getContextMenuPosition = (x: number, y: number) => {
+  const padding = 8;
+  const menuWidth = 220;
+  const menuHeight = 160;
+  const maxX = Math.max(padding, window.innerWidth - menuWidth - padding);
+  const maxY = Math.max(padding, window.innerHeight - menuHeight - padding);
+
+  return {
+    x: Math.min(Math.max(padding, x), maxX),
+    y: Math.min(Math.max(padding, y), maxY),
+  };
+};
+
+const isContextMenuKey = (event: ReactKeyboardEvent<HTMLElement>) =>
+  event.key === "ContextMenu" || (event.shiftKey && event.key === "F10");
 
 const isFileDrag = (dataTransfer: DataTransfer | null) =>
   Array.from(dataTransfer?.items ?? []).some((item) => item.kind === "file") ||
@@ -874,6 +895,81 @@ const DeleteBookModal = ({
   </AlertDialog>
 );
 
+type SendBookModalProps = {
+  open: boolean;
+  sending: boolean;
+  error: string | null;
+  bookTitle: string;
+  recipientEmail: string;
+  onClose: () => void;
+  onConfirm: () => void;
+};
+
+const SendBookModal = ({
+  open,
+  sending,
+  error,
+  bookTitle,
+  recipientEmail,
+  onClose,
+  onConfirm,
+}: SendBookModalProps) => (
+  <AlertDialog
+    onOpenChange={(nextOpen) => {
+      if (!sending && !nextOpen) {
+        onClose();
+      }
+    }}
+    open={open}
+  >
+    <AlertDialogContent
+      className="confirm-modal gap-6 sm:max-w-[460px]"
+      onEscapeKeyDown={(event) => {
+        if (sending) {
+          event.preventDefault();
+        }
+      }}
+    >
+      <div className="stack-sm">
+        <div className="stack-xs">
+          <p className="eyebrow">Send to Kindle</p>
+          <AlertDialogTitle className="text-left text-[20px] font-semibold tracking-[-0.02em]">
+            Send this book to your Kindle?
+          </AlertDialogTitle>
+        </div>
+        <AlertDialogDescription className="confirm-modal-copy text-left">
+          <strong className="font-semibold text-[var(--text-primary)]">{bookTitle}</strong> will be
+          emailed to <strong className="font-semibold text-[var(--text-primary)]">{recipientEmail}</strong>.
+          Amazon may still reject it if the sender is not approved.
+        </AlertDialogDescription>
+      </div>
+
+      {error ? (
+        <p aria-live="polite" className="inline-error">
+          {error}
+        </p>
+      ) : null}
+
+      <div className="confirm-modal-actions">
+        <AlertDialogCancel disabled={sending} onClick={onClose}>
+          Cancel
+        </AlertDialogCancel>
+        <AlertDialogAction
+          disabled={sending}
+          onClick={(event) => {
+            event.preventDefault();
+            if (!sending) {
+              onConfirm();
+            }
+          }}
+        >
+          {sending ? "Sending\u2026" : "Send to Kindle"}
+        </AlertDialogAction>
+      </div>
+    </AlertDialogContent>
+  </AlertDialog>
+);
+
 type OverflowMenuItem = {
   id: string;
   label: string;
@@ -885,6 +981,13 @@ type OverflowMenuItem = {
 type OverflowMenuProps = {
   label: string;
   items: OverflowMenuItem[];
+};
+
+type BookActionMenuProps = {
+  items: OverflowMenuItem[];
+  onClose: () => void;
+  x: number;
+  y: number;
 };
 
 const OverflowMenu = ({ label, items }: OverflowMenuProps) => {
@@ -948,6 +1051,73 @@ const OverflowMenu = ({ label, items }: OverflowMenuProps) => {
           ))}
         </div>
       ) : null}
+    </div>
+  );
+};
+
+const BookActionMenu = ({ items, onClose, x, y }: BookActionMenuProps) => {
+  const containerRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    const firstItem = containerRef.current?.querySelector<HTMLButtonElement>(
+      "button:not(:disabled)",
+    );
+    firstItem?.focus({ preventScroll: true });
+  }, []);
+
+  useEffect(() => {
+    const onPointerDown = (event: PointerEvent) => {
+      if (
+        containerRef.current &&
+        !containerRef.current.contains(event.target as Node)
+      ) {
+        onClose();
+      }
+    };
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onClose();
+    };
+    const closeOnViewportChange = () => onClose();
+
+    window.addEventListener("pointerdown", onPointerDown);
+    window.addEventListener("keydown", onKey);
+    window.addEventListener("scroll", closeOnViewportChange, true);
+    window.addEventListener("resize", closeOnViewportChange);
+    return () => {
+      window.removeEventListener("pointerdown", onPointerDown);
+      window.removeEventListener("keydown", onKey);
+      window.removeEventListener("scroll", closeOnViewportChange, true);
+      window.removeEventListener("resize", closeOnViewportChange);
+    };
+  }, [onClose]);
+
+  return (
+    <div
+      aria-label="Book actions"
+      className="overflow-menu-popover context-menu-popover"
+      ref={containerRef}
+      role="menu"
+      style={{ left: x, top: y }}
+    >
+      {items.map((item) => (
+        <button
+          className={cn(
+            "overflow-menu-item",
+            item.variant === "destructive" && "destructive",
+          )}
+          disabled={item.disabled}
+          key={item.id}
+          onClick={() => {
+            if (item.disabled) return;
+            onClose();
+            item.onSelect();
+          }}
+          role="menuitem"
+          type="button"
+        >
+          {item.label}
+        </button>
+      ))}
     </div>
   );
 };
@@ -1032,10 +1202,25 @@ const BookshelfSkeleton = ({ view }: { view: BookshelfView }) => {
   );
 };
 
-const BookshelfGrid = ({ books }: { books: BookSummary[] }) => (
+type BookshelfBookActionProps = {
+  onBookContextKeyDown: (book: BookSummary, event: ReactKeyboardEvent<HTMLElement>) => void;
+  onBookContextMenu: (book: BookSummary, event: MouseEvent<HTMLElement>) => void;
+};
+
+const BookshelfGrid = ({
+  books,
+  onBookContextKeyDown,
+  onBookContextMenu,
+}: { books: BookSummary[] } & BookshelfBookActionProps) => (
   <section aria-label="Bookshelf grid" className="books-grid">
     {books.map((book) => (
-      <Link className="book-card" key={book.id} to={`/books/${book.id}`}>
+      <Link
+        className="book-card"
+        key={book.id}
+        onContextMenu={(event) => onBookContextMenu(book, event)}
+        onKeyDown={(event) => onBookContextKeyDown(book, event)}
+        to={`/books/${book.id}`}
+      >
         <BookCover book={book} />
         <div className="book-card-copy stack-xs">
           <strong className="book-title">{book.title}</strong>
@@ -1051,7 +1236,7 @@ type BookshelfListProps = {
   books: BookSummary[];
   sort: BookshelfSort;
   onChangeSort: (key: BookshelfSortKey) => void;
-};
+} & BookshelfBookActionProps;
 
 const BookshelfSortButton = ({
   label,
@@ -1079,7 +1264,13 @@ const BookshelfSortButton = ({
   );
 };
 
-const BookshelfList = ({ books, sort, onChangeSort }: BookshelfListProps) => {
+const BookshelfList = ({
+  books,
+  sort,
+  onBookContextKeyDown,
+  onBookContextMenu,
+  onChangeSort,
+}: BookshelfListProps) => {
   const sortedBooks = useMemo(() => getSortedBooks(books, sort), [books, sort]);
 
   return (
@@ -1142,18 +1333,27 @@ const BookshelfList = ({ books, sort, onChangeSort }: BookshelfListProps) => {
         </TableHeader>
         <TableBody>
           {sortedBooks.map((book) => (
-            <TableRow className="books-table-row border-0" key={book.id}>
+            <TableRow
+              className="books-table-row border-0"
+              key={book.id}
+              onContextMenu={(event) => onBookContextMenu(book, event)}
+            >
               <TableCell className="books-table-title-cell">
                 <div className="books-table-title-content">
                   <Link
                     aria-label={`Open ${book.title}`}
                     className="books-table-cover"
+                    onKeyDown={(event) => onBookContextKeyDown(book, event)}
                     to={`/books/${book.id}`}
                   >
                     <BookCover book={book} />
                   </Link>
                   <div className="books-table-title-stack">
-                    <Link className="books-table-title-link" to={`/books/${book.id}`}>
+                    <Link
+                      className="books-table-title-link"
+                      onKeyDown={(event) => onBookContextKeyDown(book, event)}
+                      to={`/books/${book.id}`}
+                    >
                       {book.title}
                     </Link>
                   </div>
@@ -1385,12 +1585,22 @@ const BookshelfPage = () => {
   const [settings, setSettings] = useState<SettingsPayload | null>(null);
   const [hasLoadedBooks, setHasLoadedBooks] = useState(false);
   const [hasLoadedSettings, setHasLoadedSettings] = useState(false);
+  const [bookActionMenu, setBookActionMenu] = useState<BookshelfContextMenuState | null>(null);
+  const [sendingBookId, setSendingBookId] = useState<string | null>(null);
+  const [bookPendingSend, setBookPendingSend] = useState<BookSummary | null>(null);
+  const [sendError, setSendError] = useState<string | null>(null);
+  const [bookPendingDelete, setBookPendingDelete] = useState<BookSummary | null>(null);
+  const [deletingBookId, setDeletingBookId] = useState<string | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
   const latestBooksRequest = useRef(0);
   const flashMessage = (location.state as { message?: string } | null)?.message ?? null;
 
   const deferredQuery = useDeferredValue(query);
   const visibleBooks = useMemo(() => getVisibleBooks(books, deferredQuery), [books, deferredQuery]);
   const showingFilteredResults = deferredQuery.trim().length > 0;
+  const canSendToKindleFromShelf = Boolean(
+    settings?.smtp.configured && settings.defaultKindleEmail?.trim(),
+  );
 
   const loadBooks = useEffectEvent(async () => {
     const requestId = latestBooksRequest.current + 1;
@@ -1454,6 +1664,13 @@ const BookshelfPage = () => {
     );
   }, [flashMessage, location.pathname, location.search, navigate, toast]);
 
+  useEffect(() => {
+    if (!bookActionMenu) return;
+    if (!visibleBooks.some((book) => book.id === bookActionMenu.book.id)) {
+      setBookActionMenu(null);
+    }
+  }, [bookActionMenu, visibleBooks]);
+
   const onChangeView = useCallback((nextView: BookshelfView) => {
     setView(nextView);
     try {
@@ -1466,6 +1683,82 @@ const BookshelfPage = () => {
   const onChangeListSort = useCallback((key: BookshelfSortKey) => {
     setListSort((current) => getNextBookshelfSort(current, key));
   }, []);
+
+  const openBookActionMenu = useCallback((book: BookSummary, x: number, y: number) => {
+    setBookActionMenu({ book, ...getContextMenuPosition(x, y) });
+  }, []);
+
+  const onBookContextMenu = useCallback(
+    (book: BookSummary, event: MouseEvent<HTMLElement>) => {
+      event.preventDefault();
+      event.stopPropagation();
+      openBookActionMenu(book, event.clientX, event.clientY);
+    },
+    [openBookActionMenu],
+  );
+
+  const onBookContextKeyDown = useCallback(
+    (book: BookSummary, event: ReactKeyboardEvent<HTMLElement>) => {
+      if (!isContextMenuKey(event)) return;
+
+      event.preventDefault();
+      event.stopPropagation();
+      const rect = event.currentTarget.getBoundingClientRect();
+      openBookActionMenu(book, rect.left + 24, rect.top + 24);
+    },
+    [openBookActionMenu],
+  );
+
+  const sendBookFromShelf = useEffectEvent(async () => {
+    if (!bookPendingSend || sendingBookId || !canSendToKindleFromShelf) return;
+
+    setSendingBookId(bookPendingSend.id);
+    setSendError(null);
+    setError(null);
+
+    try {
+      await api.sendBook(bookPendingSend.id);
+      setBookPendingSend(null);
+      toast({
+        title: "Email accepted",
+        description:
+          "Amazon may still reject it if the sender is not approved.",
+        variant: "success",
+      });
+    } catch (requestError) {
+      const message = requestError instanceof Error ? requestError.message : "Send failed.";
+      setSendError(message);
+      toast({
+        title: "Send failed",
+        description: message,
+        variant: "error",
+      });
+    } finally {
+      setSendingBookId(null);
+    }
+  });
+
+  const deleteBookFromShelf = useEffectEvent(async () => {
+    if (!bookPendingDelete || deletingBookId) return;
+
+    setDeletingBookId(bookPendingDelete.id);
+    setDeleteError(null);
+
+    try {
+      const deletion = await api.deleteBook(bookPendingDelete.id);
+      setBooks((current) => current.filter((book) => book.id !== bookPendingDelete.id));
+      setBookPendingDelete(null);
+      toast({
+        title: "Deleted",
+        description: deletion.message,
+        variant: "success",
+      });
+    } catch (requestError) {
+      setDeleteError(requestError instanceof Error ? requestError.message : "Delete failed.");
+    } finally {
+      setDeletingBookId(null);
+    }
+  });
 
   const importFiles = useEffectEvent(async (files: File[]) => {
     if (files.length === 0 || uploading) return;
@@ -1519,6 +1812,39 @@ const BookshelfPage = () => {
 
   const showInitialBookshelfSkeleton = loading && !hasLoadedBooks;
   const showEmptyBookshelf = !showInitialBookshelfSkeleton && visibleBooks.length === 0;
+  const activeBookMenuItems: OverflowMenuItem[] = bookActionMenu
+    ? [
+        ...(canSendToKindleFromShelf
+          ? [
+              {
+                id: "send",
+                label:
+                  sendingBookId === bookActionMenu.book.id ? "Sending\u2026" : "Send to Kindle",
+                disabled: sendingBookId !== null || deletingBookId !== null,
+                onSelect: () => {
+                  setSendError(null);
+                  setBookPendingSend(bookActionMenu.book);
+                },
+              },
+            ]
+          : []),
+        {
+          id: "read",
+          label: "Read book",
+          onSelect: () => navigate(`/books/${bookActionMenu.book.id}/read`),
+        },
+        {
+          id: "delete",
+          label: "Delete book",
+          disabled: sendingBookId !== null || deletingBookId !== null,
+          onSelect: () => {
+            setDeleteError(null);
+            setBookPendingDelete(bookActionMenu.book);
+          },
+          variant: "destructive",
+        },
+      ]
+    : [];
 
   return (
     <div
@@ -1531,6 +1857,48 @@ const BookshelfPage = () => {
       onDragOver={bookshelfDropTarget.onDragOver}
       onDrop={bookshelfDropTarget.onDrop}
     >
+      {bookActionMenu ? (
+        <BookActionMenu
+          items={activeBookMenuItems}
+          onClose={() => setBookActionMenu(null)}
+          x={bookActionMenu.x}
+          y={bookActionMenu.y}
+        />
+      ) : null}
+
+      <SendBookModal
+        bookTitle={bookPendingSend?.title ?? ""}
+        error={sendError}
+        onClose={() => {
+          if (!sendingBookId) {
+            setSendError(null);
+            setBookPendingSend(null);
+          }
+        }}
+        onConfirm={() => {
+          void sendBookFromShelf();
+        }}
+        open={bookPendingSend !== null}
+        recipientEmail={settings?.defaultKindleEmail ?? ""}
+        sending={sendingBookId !== null}
+      />
+
+      <DeleteBookModal
+        bookTitle={bookPendingDelete?.title ?? ""}
+        deleting={deletingBookId !== null}
+        error={deleteError}
+        onClose={() => {
+          if (!deletingBookId) {
+            setDeleteError(null);
+            setBookPendingDelete(null);
+          }
+        }}
+        onConfirm={() => {
+          void deleteBookFromShelf();
+        }}
+        open={bookPendingDelete !== null}
+      />
+
       <div
         aria-hidden={!bookshelfDropTarget.isActive}
         className={cn("bookshelf-dropzone-overlay", bookshelfDropTarget.isActive && "visible")}
@@ -1652,9 +2020,19 @@ const BookshelfPage = () => {
             </p>
           </section>
         ) : view === "list" ? (
-          <BookshelfList books={visibleBooks} onChangeSort={onChangeListSort} sort={listSort} />
+          <BookshelfList
+            books={visibleBooks}
+            onBookContextKeyDown={onBookContextKeyDown}
+            onBookContextMenu={onBookContextMenu}
+            onChangeSort={onChangeListSort}
+            sort={listSort}
+          />
         ) : (
-          <BookshelfGrid books={visibleBooks} />
+          <BookshelfGrid
+            books={visibleBooks}
+            onBookContextKeyDown={onBookContextKeyDown}
+            onBookContextMenu={onBookContextMenu}
+          />
         )}
       </div>
     </div>
