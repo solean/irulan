@@ -103,6 +103,7 @@ const READER_MIN_FONT_SCALE = 0.95;
 const READER_MAX_FONT_SCALE = 1.25;
 const READER_FONT_SCALE_STEP = 0.1;
 const IMPORT_BATCH_SIZE = 20;
+const INVALID_IMPORT_FILES_MESSAGE = "Only EPUB files are supported.";
 const DEFAULT_BOOKSHELF_SORT: BookshelfSort = {
   key: "importedAt",
   direction: "desc",
@@ -333,6 +334,89 @@ const isFileDrag = (dataTransfer: DataTransfer | null) =>
   Array.from(dataTransfer?.items ?? []).some((item) => item.kind === "file") ||
   Array.from(dataTransfer?.types ?? []).includes("Files");
 
+const isEpubFile = (file: File) =>
+  file.name.toLowerCase().endsWith(".epub") || file.type === "application/epub+zip";
+
+const getImportableFiles = (files: Iterable<File>) => Array.from(files).filter(isEpubFile);
+
+type FileDropTargetOptions = {
+  enabled?: boolean;
+  onDropFiles: (files: File[]) => void;
+};
+
+const useFileDropTarget = ({ enabled = true, onDropFiles }: FileDropTargetOptions) => {
+  const dragDepthRef = useRef(0);
+  const [isActive, setIsActive] = useState(false);
+
+  const reset = useCallback(() => {
+    dragDepthRef.current = 0;
+    setIsActive(false);
+  }, []);
+
+  useEffect(() => {
+    if (!enabled) {
+      reset();
+    }
+  }, [enabled, reset]);
+
+  const onDragEnter = useCallback(
+    (event: DragEvent<HTMLElement>) => {
+      if (!enabled || !isFileDrag(event.dataTransfer)) return;
+
+      event.preventDefault();
+      dragDepthRef.current += 1;
+      setIsActive(true);
+    },
+    [enabled],
+  );
+
+  const onDragOver = useCallback(
+    (event: DragEvent<HTMLElement>) => {
+      if (!enabled || !isFileDrag(event.dataTransfer)) return;
+
+      event.preventDefault();
+      event.dataTransfer.dropEffect = "copy";
+
+      if (!isActive) {
+        setIsActive(true);
+      }
+    },
+    [enabled, isActive],
+  );
+
+  const onDragLeave = useCallback(
+    (event: DragEvent<HTMLElement>) => {
+      if (!enabled || !isFileDrag(event.dataTransfer)) return;
+
+      dragDepthRef.current = Math.max(0, dragDepthRef.current - 1);
+      if (dragDepthRef.current === 0) {
+        setIsActive(false);
+      }
+    },
+    [enabled],
+  );
+
+  const onDrop = useCallback(
+    (event: DragEvent<HTMLElement>) => {
+      if (!enabled || !isFileDrag(event.dataTransfer)) return;
+
+      event.preventDefault();
+      reset();
+      onDropFiles(Array.from(event.dataTransfer.files));
+    },
+    [enabled, onDropFiles, reset],
+  );
+
+  return {
+    isActive,
+    onDragEnter,
+    onDragLeave,
+    onDragOver,
+    onDrop,
+    reset,
+  };
+};
+
 const useDocumentTitle = (title: string) => {
   useEffect(() => {
     document.title = title;
@@ -502,25 +586,51 @@ const BookCover = ({ book, large = false }: { book: BookSummary; large?: boolean
 );
 
 type ImportBooksModalProps = {
+  disabled?: boolean;
   open: boolean;
   onClose: () => void;
   onImportFiles: (files: File[]) => void;
+  onRejectFiles?: () => void;
 };
 
-const ImportBooksModal = ({ open, onClose, onImportFiles }: ImportBooksModalProps) => {
+const ImportBooksModal = ({
+  disabled = false,
+  open,
+  onClose,
+  onImportFiles,
+  onRejectFiles,
+}: ImportBooksModalProps) => {
   const browseButtonRef = useRef<HTMLButtonElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
-  const dragDepthRef = useRef(0);
-  const [isDropTargetActive, setIsDropTargetActive] = useState(false);
+  const submitFiles = useCallback(
+    (files: File[]) => {
+      const importableFiles = getImportableFiles(files);
+      if (importableFiles.length === 0) {
+        onRejectFiles?.();
+        onClose();
+        return;
+      }
 
-  const resetDropTarget = useCallback(() => {
-    dragDepthRef.current = 0;
-    setIsDropTargetActive(false);
-  }, []);
+      onImportFiles(importableFiles);
+      onClose();
+    },
+    [onClose, onImportFiles, onRejectFiles],
+  );
+  const {
+    isActive: isDropTargetActive,
+    onDragEnter,
+    onDragLeave,
+    onDragOver,
+    onDrop,
+    reset,
+  } = useFileDropTarget({
+    enabled: open && !disabled,
+    onDropFiles: submitFiles,
+  });
 
   useEffect(() => {
     if (!open) {
-      resetDropTarget();
+      reset();
       return;
     }
 
@@ -533,55 +643,12 @@ const ImportBooksModal = ({ open, onClose, onImportFiles }: ImportBooksModalProp
 
     return () => {
       document.body.style.overflow = previousOverflow;
-      resetDropTarget();
+      reset();
       previousActiveElement?.focus();
     };
-  }, [open, resetDropTarget]);
+  }, [open, reset]);
 
   if (!open) return null;
-
-  const submitFiles = (files: File[]) => {
-    if (files.length === 0) return;
-
-    onImportFiles(files);
-    onClose();
-  };
-
-  const onDragEnterDropzone = (event: DragEvent<HTMLDivElement>) => {
-    if (!isFileDrag(event.dataTransfer)) return;
-
-    event.preventDefault();
-    dragDepthRef.current += 1;
-    setIsDropTargetActive(true);
-  };
-
-  const onDragOverDropzone = (event: DragEvent<HTMLDivElement>) => {
-    if (!isFileDrag(event.dataTransfer)) return;
-
-    event.preventDefault();
-    event.dataTransfer.dropEffect = "copy";
-
-    if (!isDropTargetActive) {
-      setIsDropTargetActive(true);
-    }
-  };
-
-  const onDragLeaveDropzone = (event: DragEvent<HTMLDivElement>) => {
-    if (!isFileDrag(event.dataTransfer)) return;
-
-    dragDepthRef.current = Math.max(0, dragDepthRef.current - 1);
-    if (dragDepthRef.current === 0) {
-      setIsDropTargetActive(false);
-    }
-  };
-
-  const onDropDropzone = (event: DragEvent<HTMLDivElement>) => {
-    if (!isFileDrag(event.dataTransfer)) return;
-
-    event.preventDefault();
-    resetDropTarget();
-    submitFiles(Array.from(event.dataTransfer.files));
-  };
 
   return (
     <Dialog
@@ -613,10 +680,10 @@ const ImportBooksModal = ({ open, onClose, onImportFiles }: ImportBooksModalProp
 
         <div
           className={cn("import-dropzone", isDropTargetActive && "import-dropzone-active")}
-          onDragEnter={onDragEnterDropzone}
-          onDragLeave={onDragLeaveDropzone}
-          onDragOver={onDragOverDropzone}
-          onDrop={onDropDropzone}
+          onDragEnter={onDragEnter}
+          onDragLeave={onDragLeave}
+          onDragOver={onDragOver}
+          onDrop={onDrop}
         >
           <div className="import-dropzone-icon">
             <UploadIcon />
@@ -625,13 +692,20 @@ const ImportBooksModal = ({ open, onClose, onImportFiles }: ImportBooksModalProp
             {isDropTargetActive ? "Release to upload" : "Drag and Drop here"}
           </p>
           <p className="import-dropzone-divider">or</p>
-          <Button onClick={() => fileInputRef.current?.click()} ref={browseButtonRef} size="lg" type="button">
+          <Button
+            disabled={disabled}
+            onClick={() => fileInputRef.current?.click()}
+            ref={browseButtonRef}
+            size="lg"
+            type="button"
+          >
             Browse files
           </Button>
           <input
             accept=".epub,application/epub+zip"
             aria-hidden="true"
             className="sr-only"
+            disabled={disabled}
             multiple
             onChange={(event) => {
               submitFiles(Array.from(event.currentTarget.files ?? []));
@@ -1325,7 +1399,7 @@ const BookshelfPage = () => {
   }, []);
 
   const importFiles = useEffectEvent(async (files: File[]) => {
-    if (files.length === 0) return;
+    if (files.length === 0 || uploading) return;
 
     setUploading(true);
     setError(null);
@@ -1349,110 +1423,157 @@ const BookshelfPage = () => {
     }
   });
 
+  const onDropBookshelfFiles = useEffectEvent((files: File[]) => {
+    const importableFiles = getImportableFiles(files);
+    if (importableFiles.length === 0) {
+      setError(INVALID_IMPORT_FILES_MESSAGE);
+      return;
+    }
+
+    void importFiles(importableFiles);
+  });
+
+  const bookshelfDropTarget = useFileDropTarget({
+    enabled: !uploading && !isImportModalOpen,
+    onDropFiles: onDropBookshelfFiles,
+  });
+
   const showInitialBookshelfSkeleton = loading && !hasLoadedBooks;
+  const showEmptyBookshelf = !showInitialBookshelfSkeleton && visibleBooks.length === 0;
 
   return (
-    <div className="page stack-lg">
-      <section className="hero-panel">
-        <div className="hero-copy">
-          <h2>Your bookshelf</h2>
-        </div>
-        <div className="hero-actions">
-          <Button disabled={uploading} onClick={() => setIsImportModalOpen(true)} type="button">
-            {uploading ? "Importing\u2026" : "Add EPUBs"}
-          </Button>
-          {hasLoadedSettings && !settings?.defaultKindleEmail && (
-            <Button asChild variant="outline">
-              <Link to="/settings">Add Kindle address</Link>
-            </Button>
-          )}
-        </div>
-      </section>
-
-      <ImportBooksModal
-        onClose={() => setIsImportModalOpen(false)}
-        onImportFiles={(files) => {
-          void importFiles(files);
-        }}
-        open={isImportModalOpen}
-      />
-
-      <section className="toolbar">
-        <div className="searchbox">
-          <Input
-            aria-label="Search library"
-            autoComplete="off"
-            id="library-search"
-            inputMode="search"
-            name="library_search"
-            onChange={(event) => {
-              const nextValue = event.currentTarget.value;
-              setQuery(nextValue);
-              startTransition(() => {
-                setSearchParams(nextValue ? { q: nextValue } : {});
-              });
-            }}
-            placeholder={"Search by title, author\u2026"}
-            type="search"
-            value={query}
-          />
-        </div>
-        <div className="toolbar-actions">
-          <div aria-label="Bookshelf view" className="view-toggle" role="group">
-            <Button
-              aria-pressed={view === "grid"}
-              className={cn("view-toggle-button", view === "grid" && "active")}
-              onClick={() => onChangeView("grid")}
-              size="sm"
-              type="button"
-              variant="ghost"
-            >
-              <GridIcon />
-              Grid
-            </Button>
-            <Button
-              aria-pressed={view === "list"}
-              className={cn("view-toggle-button", view === "list" && "active")}
-              onClick={() => onChangeView("list")}
-              size="sm"
-              type="button"
-              variant="ghost"
-            >
-              <ListIcon />
-              List
-            </Button>
+    <div
+      className={cn(
+        "page bookshelf-dropzone-shell",
+        showEmptyBookshelf && "bookshelf-dropzone-shell-empty",
+      )}
+      onDragEnter={bookshelfDropTarget.onDragEnter}
+      onDragLeave={bookshelfDropTarget.onDragLeave}
+      onDragOver={bookshelfDropTarget.onDragOver}
+      onDrop={bookshelfDropTarget.onDrop}
+    >
+      <div
+        aria-hidden={!bookshelfDropTarget.isActive}
+        className={cn("bookshelf-dropzone-overlay", bookshelfDropTarget.isActive && "visible")}
+      >
+        <div className="bookshelf-dropzone-callout">
+          <div className="import-dropzone-icon">
+            <UploadIcon />
           </div>
-          <div className="stat-chip">
-            <strong>{numberFormatter.format(showingFilteredResults ? visibleBooks.length : books.length)}</strong>
-            <span>
-              {showingFilteredResults ? `of ${numberFormatter.format(books.length)} books` : "books"}
-            </span>
-          </div>
-        </div>
-      </section>
-
-      {flashMessage ? <p className="inline-success">{flashMessage}</p> : null}
-      {error ? <p className="inline-error">{error}</p> : null}
-      <UploadResults results={results} />
-
-      {showInitialBookshelfSkeleton ? (
-        <BookshelfSkeleton view={view} />
-      ) : visibleBooks.length === 0 ? (
-        <section className="empty-state stack-sm">
-          <h2>{showingFilteredResults ? "No matching books" : "No books yet"}</h2>
-          <p>
-            {showingFilteredResults
-              ? "Try a different title or author."
-              : "Import EPUB files to populate your shelf."}
+          <p className="bookshelf-dropzone-title">Drop EPUBs to import</p>
+          <p className="bookshelf-dropzone-copy">
+            Release anywhere on the shelf to add them to your library.
           </p>
+        </div>
+      </div>
+
+      <div
+        className={cn(
+          "stack-lg bookshelf-dropzone-content",
+          bookshelfDropTarget.isActive && "bookshelf-dropzone-content-muted",
+        )}
+      >
+        <section className="hero-panel">
+          <div className="hero-copy">
+            <h2>Your bookshelf</h2>
+          </div>
+          <div className="hero-actions">
+            <Button disabled={uploading} onClick={() => setIsImportModalOpen(true)} type="button">
+              {uploading ? "Importing\u2026" : "Add EPUBs"}
+            </Button>
+            {hasLoadedSettings && !settings?.defaultKindleEmail && (
+              <Button asChild variant="outline">
+                <Link to="/settings">Add Kindle address</Link>
+              </Button>
+            )}
+          </div>
         </section>
-      ) : (
-        view === "list" ? (
+
+        <ImportBooksModal
+          disabled={uploading}
+          onClose={() => setIsImportModalOpen(false)}
+          onImportFiles={(files) => {
+            void importFiles(files);
+          }}
+          onRejectFiles={() => setError(INVALID_IMPORT_FILES_MESSAGE)}
+          open={isImportModalOpen}
+        />
+
+        <section className="toolbar">
+          <div className="searchbox">
+            <Input
+              aria-label="Search library"
+              autoComplete="off"
+              id="library-search"
+              inputMode="search"
+              name="library_search"
+              onChange={(event) => {
+                const nextValue = event.currentTarget.value;
+                setQuery(nextValue);
+                startTransition(() => {
+                  setSearchParams(nextValue ? { q: nextValue } : {});
+                });
+              }}
+              placeholder={"Search by title, author\u2026"}
+              type="search"
+              value={query}
+            />
+          </div>
+          <div className="toolbar-actions">
+            <div aria-label="Bookshelf view" className="view-toggle" role="group">
+              <Button
+                aria-pressed={view === "grid"}
+                className={cn("view-toggle-button", view === "grid" && "active")}
+                onClick={() => onChangeView("grid")}
+                size="sm"
+                type="button"
+                variant="ghost"
+              >
+                <GridIcon />
+                Grid
+              </Button>
+              <Button
+                aria-pressed={view === "list"}
+                className={cn("view-toggle-button", view === "list" && "active")}
+                onClick={() => onChangeView("list")}
+                size="sm"
+                type="button"
+                variant="ghost"
+              >
+                <ListIcon />
+                List
+              </Button>
+            </div>
+            <div className="stat-chip">
+              <strong>{numberFormatter.format(showingFilteredResults ? visibleBooks.length : books.length)}</strong>
+              <span>
+                {showingFilteredResults ? `of ${numberFormatter.format(books.length)} books` : "books"}
+              </span>
+            </div>
+          </div>
+        </section>
+
+        {flashMessage ? <p className="inline-success">{flashMessage}</p> : null}
+        {error ? <p className="inline-error">{error}</p> : null}
+        <UploadResults results={results} />
+
+        {showInitialBookshelfSkeleton ? (
+          <BookshelfSkeleton view={view} />
+        ) : visibleBooks.length === 0 ? (
+          <section className="empty-state stack-sm">
+            <h2>{showingFilteredResults ? "No matching books" : "No books yet"}</h2>
+            <p>
+              {showingFilteredResults
+                ? "Try a different title or author."
+                : "Import EPUB files to populate your shelf."}
+            </p>
+          </section>
+        ) : view === "list" ? (
           <BookshelfList books={visibleBooks} onChangeSort={onChangeListSort} sort={listSort} />
         ) : (
           <BookshelfGrid books={visibleBooks} />
-        )
-      )}
+        )}
+      </div>
     </div>
   );
 };
