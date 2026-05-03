@@ -1083,6 +1083,64 @@ input::placeholder {
   cursor: default;
 }
 
+/* ─── Bookshelf switcher ─── */
+
+.bookshelf-switcher {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding: 2px 0 4px;
+  scrollbar-width: thin;
+}
+
+.bookshelf-switcher-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 36px;
+  max-width: 220px;
+  padding: 0 12px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  background: var(--bg-surface);
+  color: var(--text-secondary);
+  cursor: pointer;
+  white-space: nowrap;
+  transition:
+    background-color 120ms ease,
+    border-color 120ms ease,
+    color 120ms ease;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+
+.bookshelf-switcher-item:hover,
+.bookshelf-switcher-item.active {
+  border-color: var(--border-hover);
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.bookshelf-switcher-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.bookshelf-switcher-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 7px;
+  border-radius: 999px;
+  background: var(--bg-elevated);
+  color: var(--text-tertiary);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
 /* ─── Section heading ─── */
 
 .section-heading,
@@ -1929,6 +1987,42 @@ input::placeholder {
   gap: 12px;
 }
 
+.settings-bookshelf-list {
+  display: grid;
+  gap: 12px;
+}
+
+.settings-bookshelf-row,
+.settings-bookshelf-create {
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  background: var(--bg-base);
+}
+
+.settings-bookshelf-create {
+  border-style: dashed;
+  background: color-mix(in srgb, var(--bg-base) 74%, var(--bg-surface));
+}
+
+.settings-bookshelf-fields {
+  display: grid;
+  grid-template-columns: minmax(180px, 0.8fr) minmax(220px, 1fr);
+  gap: 12px;
+  align-items: start;
+}
+
+.settings-bookshelf-meta {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  color: var(--text-tertiary);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
 .smtp-onboarding-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -2227,8 +2321,16 @@ code {
 }
 
 .hero-copy h2 {
+  margin: 0;
   font-size: 20px;
   letter-spacing: -0.02em;
+}
+
+.hero-copy p {
+  margin: 4px 0 0;
+  color: var(--text-tertiary);
+  font-size: 13px;
+  overflow-wrap: anywhere;
 }
 
 .hero-copy .lede {
@@ -2614,6 +2716,77 @@ code {
   stroke-width: 1.6;
   stroke-linecap: round;
   stroke-linejoin: round;
+}
+
+.bookshelf-chip-row {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.bookshelf-chip {
+  display: inline-flex;
+  align-items: center;
+  max-width: 180px;
+  min-height: 24px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--bg-elevated);
+  color: var(--text-secondary);
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bookshelf-membership-list {
+  display: grid;
+  gap: 8px;
+}
+
+.bookshelf-membership-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 48px;
+  padding: 10px 12px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  background: var(--bg-base);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+
+.bookshelf-membership-row:focus-within {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.bookshelf-membership-row input {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  accent-color: var(--accent);
+}
+
+.bookshelf-membership-copy {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.bookshelf-membership-name {
+  color: var(--text-primary);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.bookshelf-membership-email {
+  color: var(--text-tertiary);
+  font-size: 12px;
+  overflow-wrap: anywhere;
 }
 
 /* ─── Delivery history (redesigned) ─── */
@@ -3079,12 +3252,12 @@ code {
     font-size: 13px;
   }
 
-  .about-grid > div:nth-child(4) {
+  .about-grid > div:nth-child(5) {
     grid-template-columns: 1fr;
     gap: 4px;
   }
 
-  .about-grid > div:nth-child(4) dd {
+  .about-grid > div:nth-child(5) dd {
     justify-self: stretch;
   }
 
@@ -3162,6 +3335,10 @@ code {
   .smtp-onboarding-step {
     gap: 12px;
     padding: 14px;
+  }
+
+  .settings-bookshelf-fields {
+    grid-template-columns: 1fr;
   }
 }
 

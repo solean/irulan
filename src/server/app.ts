@@ -6,6 +6,7 @@ import { Hono } from "hono";
 
 import { appConfig } from "./config";
 import { booksRoutes } from "./routes/books";
+import { bookshelvesRoutes } from "./routes/bookshelves";
 import { settingsRoutes } from "./routes/settings";
 
 export const app = new Hono();
@@ -68,6 +69,7 @@ app.get("/api/health", (c) =>
 );
 
 app.route("/api/books", booksRoutes);
+app.route("/api/bookshelves", bookshelvesRoutes);
 app.route("/api/settings", settingsRoutes);
 
 app.get("/assets/*", async (c) => {

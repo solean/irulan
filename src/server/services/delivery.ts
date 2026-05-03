@@ -9,6 +9,7 @@ import { db, persistDatabase } from "../db/client";
 import { deliveries } from "../db/schema";
 import { AppError } from "../errors";
 import { getBookRecord } from "./books";
+import { getBookshelfRecord } from "./bookshelves";
 import { getDefaultKindleEmail, getSmtpSettings } from "./settings";
 
 const emailSchema = z.string().trim().email();
@@ -17,6 +18,7 @@ type DeliveryRow = typeof deliveries.$inferSelect;
 
 const serializeDelivery = (delivery: DeliveryRow): DeliveryRecord => ({
   id: delivery.id,
+  bookshelfId: delivery.bookshelfId ?? null,
   recipientEmail: delivery.recipientEmail,
   status: delivery.status,
   errorMessage: delivery.errorMessage,
@@ -45,12 +47,16 @@ const requireTransport = () => {
   });
 };
 
-const resolveRecipient = (recipientEmail?: string | null) => {
-  const candidate = recipientEmail?.trim() || getDefaultKindleEmail();
+const resolveRecipient = (recipientEmail?: string | null, bookshelfId?: string | null) => {
+  const bookshelf = bookshelfId?.trim() ? getBookshelfRecord(bookshelfId.trim()) : null;
+  const candidate = recipientEmail?.trim() || bookshelf?.kindleEmail?.trim() || getDefaultKindleEmail();
   if (!candidate) {
     throw new AppError(400, "Add a Kindle email address before sending a book.");
   }
-  return emailSchema.parse(candidate);
+  return {
+    bookshelfId: bookshelf?.id ?? null,
+    recipient: emailSchema.parse(candidate),
+  };
 };
 
 const attachmentName = (filename: string) =>
@@ -65,9 +71,18 @@ export const listDeliveriesForBook = (bookId: string) =>
     .all()
     .map(serializeDelivery);
 
-export const sendBookToKindle = async (bookId: string, recipientEmail?: string | null) => {
+export const sendBookToKindle = async (
+  bookId: string,
+  {
+    bookshelfId,
+    recipientEmail,
+  }: {
+    bookshelfId?: string | null;
+    recipientEmail?: string | null;
+  } = {},
+) => {
   const book = getBookRecord(bookId);
-  const recipient = resolveRecipient(recipientEmail);
+  const deliveryTarget = resolveRecipient(recipientEmail, bookshelfId);
   const createdAt = new Date();
   const deliveryId = randomUUID();
 
@@ -75,7 +90,8 @@ export const sendBookToKindle = async (bookId: string, recipientEmail?: string |
     .values({
       id: deliveryId,
       bookId,
-      recipientEmail: recipient,
+      bookshelfId: deliveryTarget.bookshelfId,
+      recipientEmail: deliveryTarget.recipient,
       status: "pending",
       createdAt,
     })
@@ -87,7 +103,7 @@ export const sendBookToKindle = async (bookId: string, recipientEmail?: string |
     const transporter = requireTransport();
     const result = await transporter.sendMail({
       from: smtp.from,
-      to: recipient,
+      to: deliveryTarget.recipient,
       subject: `Send to Kindle: ${book.title}`,
       text: [
         `Attached is "${book.title}" by ${book.author}.`,

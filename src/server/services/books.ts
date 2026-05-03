@@ -3,15 +3,20 @@ import { createReadStream } from "node:fs";
 import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 
-import { desc, eq, like, or } from "drizzle-orm";
+import { and, desc, eq, like, or } from "drizzle-orm";
 
 import { BookDetail, BookReader, BookSummary, DeleteBookResult, ImportResult } from "../../shared/types";
 import { appConfig } from "../config";
 import { db, persistDatabase } from "../db/client";
-import { books, deliveries } from "../db/schema";
+import { books, bookShelves, deliveries } from "../db/schema";
 import { AppError } from "../errors";
 import { bookDirectory, readerDirectory } from "../lib/storage";
 import { extractEpubMetadata, prepareEpubReader, resolveEpubReaderAssetPath } from "./epub";
+import {
+  addBookToResolvedBookshelf,
+  listBookshelvesForBook,
+  resolveBookshelfRecord,
+} from "./bookshelves";
 
 type BookRecord = typeof books.$inferSelect;
 type DeliveryRecord = typeof deliveries.$inferSelect;
@@ -40,24 +45,54 @@ export const serializeBook = (book: BookRecord): BookSummary => ({
   fileSizeBytes: book.fileSizeBytes,
   importedAt: book.importedAt.toISOString(),
   coverUrl: book.coverPath ? `/api/books/${book.id}/cover` : null,
+  bookshelves: listBookshelvesForBook(book.id),
 });
 
-export const listBooks = (searchTerm?: string): BookSummary[] => {
+export const listBooks = (searchTerm?: string, bookshelfId?: string | null): BookSummary[] => {
   const trimmed = searchTerm?.trim();
+  const searchClause = trimmed
+    ? or(
+        like(books.title, `%${trimmed}%`),
+        like(books.author, `%${trimmed}%`),
+        like(books.sourceFilename, `%${trimmed}%`),
+      )
+    : undefined;
 
-  const query = db.select().from(books);
-  const rows = trimmed
-    ? query
-        .where(
-          or(
-            like(books.title, `%${trimmed}%`),
-            like(books.author, `%${trimmed}%`),
-            like(books.sourceFilename, `%${trimmed}%`),
-          ),
-        )
+  if (bookshelfId?.trim()) {
+    resolveBookshelfRecord(bookshelfId);
+    const rows = db
+      .select({
+        id: books.id,
+        title: books.title,
+        author: books.author,
+        filePath: books.filePath,
+        coverPath: books.coverPath,
+        fileHash: books.fileHash,
+        sourceFilename: books.sourceFilename,
+        fileSizeBytes: books.fileSizeBytes,
+        importedAt: books.importedAt,
+      })
+      .from(books)
+      .innerJoin(bookShelves, eq(bookShelves.bookId, books.id))
+      .where(
+        searchClause
+          ? and(eq(bookShelves.bookshelfId, bookshelfId.trim()), searchClause)
+          : eq(bookShelves.bookshelfId, bookshelfId.trim()),
+      )
+      .orderBy(desc(books.importedAt))
+      .all();
+
+    return rows.map(serializeBook);
+  }
+
+  const rows = searchClause
+    ? db
+        .select()
+        .from(books)
+        .where(searchClause)
         .orderBy(desc(books.importedAt))
         .all()
-    : query.orderBy(desc(books.importedAt)).all();
+    : db.select().from(books).orderBy(desc(books.importedAt)).all();
 
   return rows.map(serializeBook);
 };
@@ -140,6 +175,7 @@ export const deleteBook = async (bookId: string): Promise<DeleteBookResult> => {
 
   try {
     db.delete(deliveries).where(eq(deliveries.bookId, book.id)).run();
+    db.delete(bookShelves).where(eq(bookShelves.bookId, book.id)).run();
     db.delete(books).where(eq(books.id, book.id)).run();
     persistDatabase();
   } catch (error) {
@@ -171,7 +207,12 @@ export const deleteBook = async (bookId: string): Promise<DeleteBookResult> => {
   };
 };
 
-export const importBookFile = async (file: File): Promise<ImportResult> => {
+export const importBookFile = async (
+  file: File,
+  bookshelfId?: string | null,
+): Promise<ImportResult> => {
+  const bookshelf = resolveBookshelfRecord(bookshelfId);
+
   if (!file.name.toLowerCase().endsWith(".epub")) {
     return {
       status: "failed",
@@ -193,10 +234,11 @@ export const importBookFile = async (file: File): Promise<ImportResult> => {
     const fileHash = await hashStoredFile(filePath);
     const existing = db.select().from(books).where(eq(books.fileHash, fileHash)).get();
     if (existing) {
+      addBookToResolvedBookshelf(existing.id, bookshelf.id);
       await rm(targetDir, { recursive: true, force: true });
       return {
         status: "duplicate",
-        message: `${file.name} is already in your library.`,
+        message: `${file.name} is already in your library and is now on ${bookshelf.name}.`,
         book: serializeBook(existing),
       };
     }
@@ -225,6 +267,7 @@ export const importBookFile = async (file: File): Promise<ImportResult> => {
         importedAt,
       })
       .run();
+    addBookToResolvedBookshelf(bookId, bookshelf.id);
     persistDatabase();
 
     const created = db.select().from(books).where(eq(books.id, bookId)).get();

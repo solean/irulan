@@ -2,7 +2,9 @@ import type {
   BookDetail,
   BookReader,
   BookSummary,
+  BookshelfSummary,
   DeleteBookResult,
+  DeleteBookshelfResult,
   DeliveryRecord,
   ImportResult,
   SmtpSettings,
@@ -25,10 +27,13 @@ const request = async <T>(input: string, init?: RequestInit): Promise<T> => {
 };
 
 export const api = {
-  async listBooks(query = "") {
+  async listBooks(query = "", bookshelfId?: string | null) {
     const params = new URLSearchParams();
     if (query.trim()) {
       params.set("q", query.trim());
+    }
+    if (bookshelfId?.trim()) {
+      params.set("bookshelfId", bookshelfId.trim());
     }
 
     const suffix = params.size > 0 ? `?${params.toString()}` : "";
@@ -36,13 +41,19 @@ export const api = {
     return payload.books;
   },
 
-  async importBooks(files: File[]) {
+  async importBooks(files: File[], bookshelfId?: string | null) {
     const formData = new FormData();
     for (const file of files) {
       formData.append("files", file);
     }
 
-    const payload = await request<{ results: ImportResult[] }>("/api/books/import", {
+    const params = new URLSearchParams();
+    if (bookshelfId?.trim()) {
+      params.set("bookshelfId", bookshelfId.trim());
+    }
+    const suffix = params.size > 0 ? `?${params.toString()}` : "";
+
+    const payload = await request<{ results: ImportResult[] }>(`/api/books/import${suffix}`, {
       method: "POST",
       body: formData,
     });
@@ -67,6 +78,17 @@ export const api = {
     return payload.reader;
   },
 
+  async saveBookBookshelves(bookId: string, bookshelfIds: string[]) {
+    const payload = await request<{ book: BookDetail }>(`/api/books/${bookId}/bookshelves`, {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ bookshelfIds }),
+    });
+    return payload.book;
+  },
+
   async getDeliveries(bookId: string) {
     const payload = await request<{ deliveries: DeliveryRecord[] }>(
       `/api/books/${bookId}/deliveries`,
@@ -74,18 +96,59 @@ export const api = {
     return payload.deliveries;
   },
 
-  async sendBook(bookId: string, recipientEmail?: string) {
+  async sendBook(bookId: string, recipientEmail?: string, bookshelfId?: string | null) {
     const payload = await request<{ delivery: DeliveryRecord }>(`/api/books/${bookId}/send`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
+        bookshelfId: bookshelfId?.trim() || null,
         recipientEmail: recipientEmail?.trim() || null,
       }),
     });
 
     return payload.delivery;
+  },
+
+  async listBookshelves() {
+    const payload = await request<{ bookshelves: BookshelfSummary[] }>("/api/bookshelves");
+    return payload.bookshelves;
+  },
+
+  async createBookshelf(name: string, kindleEmail: string | null) {
+    const payload = await request<{ bookshelf: BookshelfSummary }>("/api/bookshelves", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ name, kindleEmail }),
+    });
+    return payload.bookshelf;
+  },
+
+  async updateBookshelf(bookshelfId: string, name: string, kindleEmail: string | null) {
+    const payload = await request<{ bookshelf: BookshelfSummary }>(
+      `/api/bookshelves/${bookshelfId}`,
+      {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ name, kindleEmail }),
+      },
+    );
+    return payload.bookshelf;
+  },
+
+  async deleteBookshelf(bookshelfId: string) {
+    const payload = await request<{ deletion: DeleteBookshelfResult }>(
+      `/api/bookshelves/${bookshelfId}`,
+      {
+        method: "DELETE",
+      },
+    );
+    return payload.deletion;
   },
 
   async getSettings() {

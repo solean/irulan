@@ -14,10 +14,16 @@ import {
   importBookFile,
   listBooks,
 } from "../services/books";
+import { replaceBookBookshelves } from "../services/bookshelves";
 import { listDeliveriesForBook, sendBookToKindle } from "../services/delivery";
 
 const sendSchema = z.object({
+  bookshelfId: z.string().trim().min(1).nullish(),
   recipientEmail: z.string().trim().email().nullish(),
+});
+
+const bookBookshelvesSchema = z.object({
+  bookshelfIds: z.array(z.string().trim().min(1)).min(1),
 });
 
 const routeError = (error: unknown) => {
@@ -55,7 +61,8 @@ const getReaderAssetRequestPath = (requestPath: string, bookId: string) => {
 
 booksRoutes.get("/", (c) => {
   const query = c.req.query("q") ?? "";
-  return c.json({ books: listBooks(query) });
+  const bookshelfId = c.req.query("bookshelfId") ?? null;
+  return c.json({ books: listBooks(query, bookshelfId === "all" ? null : bookshelfId) });
 });
 
 booksRoutes.post("/import", async (c) => {
@@ -69,7 +76,7 @@ booksRoutes.post("/import", async (c) => {
 
     const results = [];
     for (const file of files) {
-      results.push(await importBookFile(file));
+      results.push(await importBookFile(file, c.req.query("bookshelfId") ?? null));
     }
 
     return c.json({ results });
@@ -143,6 +150,17 @@ booksRoutes.get("/:id/deliveries", (c) => {
   }
 });
 
+booksRoutes.put("/:id/bookshelves", async (c) => {
+  try {
+    const body = await c.req.json();
+    const payload = bookBookshelvesSchema.parse(body);
+    replaceBookBookshelves(c.req.param("id"), payload.bookshelfIds);
+    return c.json({ book: getBook(c.req.param("id")) });
+  } catch (error) {
+    return routeError(error);
+  }
+});
+
 booksRoutes.get("/:id", (c) => {
   try {
     return c.json({ book: getBook(c.req.param("id")) });
@@ -155,7 +173,10 @@ booksRoutes.post("/:id/send", async (c) => {
   try {
     const body = await c.req.json().catch(() => ({}));
     const payload = sendSchema.parse(body);
-    const delivery = await sendBookToKindle(c.req.param("id"), payload.recipientEmail ?? null);
+    const delivery = await sendBookToKindle(c.req.param("id"), {
+      bookshelfId: payload.bookshelfId ?? null,
+      recipientEmail: payload.recipientEmail ?? null,
+    });
     return c.json({ delivery });
   } catch (error) {
     return routeError(error);

@@ -81,6 +81,7 @@ import type {
   BookReader,
   BookReaderSection,
   BookSummary,
+  BookshelfSummary,
   DeliveryRecord,
   ImportResult,
   SmtpSettings,
@@ -119,6 +120,7 @@ type ToastInput = Omit<ToastNotice, "id">;
 
 const THEME_KEY = "ebook-manager-theme";
 const BOOKSHELF_VIEW_KEY = "ebook-manager-bookshelf-view";
+const ALL_BOOKSHELVES_ID = "all";
 const READER_TONE_KEY = "ebook-manager-reader-tone";
 const READER_FONT_SCALE_KEY = "ebook-manager-reader-font-scale";
 const READER_MIN_FONT_SCALE = 0.95;
@@ -397,6 +399,24 @@ const getSortedBooks = (books: BookSummary[], sort: BookshelfSort) => {
   return [...books].sort((left, right) => compareBooks(left, right, sort.key) * direction);
 };
 
+const getBookshelfHref = (bookshelfId?: string | null) => {
+  if (!bookshelfId) return "/";
+  const params = new URLSearchParams({ shelf: bookshelfId });
+  return `/?${params.toString()}`;
+};
+
+const getBookHref = (bookId: string, bookshelfId?: string | null) => {
+  if (!bookshelfId) return `/books/${bookId}`;
+  const params = new URLSearchParams({ shelf: bookshelfId });
+  return `/books/${bookId}?${params.toString()}`;
+};
+
+const getReaderHref = (bookId: string, bookshelfId?: string | null) => {
+  if (!bookshelfId) return `/books/${bookId}/read`;
+  const params = new URLSearchParams({ shelf: bookshelfId });
+  return `/books/${bookId}/read?${params.toString()}`;
+};
+
 const getAriaSort = (
   sort: BookshelfSort,
   key: BookshelfSortKey,
@@ -541,6 +561,11 @@ type SmtpFormState = {
   from: string;
 };
 
+type BookshelfFormState = {
+  name: string;
+  kindleEmail: string;
+};
+
 const toSmtpFormState = (smtp: SettingsPayload["smtp"]): SmtpFormState => ({
   host: smtp.host,
   port: String(smtp.port),
@@ -549,6 +574,16 @@ const toSmtpFormState = (smtp: SettingsPayload["smtp"]): SmtpFormState => ({
   pass: smtp.pass,
   from: smtp.from,
 });
+
+const toBookshelfFormState = (bookshelf: BookshelfSummary): BookshelfFormState => ({
+  name: bookshelf.name,
+  kindleEmail: bookshelf.kindleEmail ?? "",
+});
+
+const toBookshelfFormMap = (bookshelves: BookshelfSummary[]) =>
+  Object.fromEntries(
+    bookshelves.map((bookshelf) => [bookshelf.id, toBookshelfFormState(bookshelf)]),
+  );
 
 const BookIcon = () => (
   <svg viewBox="0 0 16 16" aria-hidden="true">
@@ -1209,9 +1244,10 @@ type BookshelfBookActionProps = {
 
 const BookshelfGrid = ({
   books,
+  bookshelfId,
   onBookContextKeyDown,
   onBookContextMenu,
-}: { books: BookSummary[] } & BookshelfBookActionProps) => (
+}: { books: BookSummary[]; bookshelfId?: string | null } & BookshelfBookActionProps) => (
   <section aria-label="Bookshelf grid" className="books-grid">
     {books.map((book) => (
       <Link
@@ -1219,7 +1255,7 @@ const BookshelfGrid = ({
         key={book.id}
         onContextMenu={(event) => onBookContextMenu(book, event)}
         onKeyDown={(event) => onBookContextKeyDown(book, event)}
-        to={`/books/${book.id}`}
+        to={getBookHref(book.id, bookshelfId)}
       >
         <BookCover book={book} />
         <div className="book-card-copy stack-xs">
@@ -1234,6 +1270,7 @@ const BookshelfGrid = ({
 
 type BookshelfListProps = {
   books: BookSummary[];
+  bookshelfId?: string | null;
   sort: BookshelfSort;
   onChangeSort: (key: BookshelfSortKey) => void;
 } & BookshelfBookActionProps;
@@ -1266,6 +1303,7 @@ const BookshelfSortButton = ({
 
 const BookshelfList = ({
   books,
+  bookshelfId,
   sort,
   onBookContextKeyDown,
   onBookContextMenu,
@@ -1344,7 +1382,7 @@ const BookshelfList = ({
                     aria-label={`Open ${book.title}`}
                     className="books-table-cover"
                     onKeyDown={(event) => onBookContextKeyDown(book, event)}
-                    to={`/books/${book.id}`}
+                    to={getBookHref(book.id, bookshelfId)}
                   >
                     <BookCover book={book} />
                   </Link>
@@ -1352,7 +1390,7 @@ const BookshelfList = ({
                     <Link
                       className="books-table-title-link"
                       onKeyDown={(event) => onBookContextKeyDown(book, event)}
-                      to={`/books/${book.id}`}
+                      to={getBookHref(book.id, bookshelfId)}
                     >
                       {book.title}
                     </Link>
@@ -1382,6 +1420,50 @@ const BookshelfList = ({
     </section>
   );
 };
+
+type BookshelfSwitcherProps = {
+  activeBookshelfId: string | null;
+  bookshelves: BookshelfSummary[];
+  onSelect: (bookshelfId: string) => void;
+};
+
+const BookshelfSwitcher = ({
+  activeBookshelfId,
+  bookshelves,
+  onSelect,
+}: BookshelfSwitcherProps) => (
+  <div aria-label="Bookshelves" className="bookshelf-switcher" role="group">
+    <button
+      aria-pressed={activeBookshelfId === ALL_BOOKSHELVES_ID}
+      className={cn(
+        "bookshelf-switcher-item",
+        activeBookshelfId === ALL_BOOKSHELVES_ID && "active",
+      )}
+      onClick={() => onSelect(ALL_BOOKSHELVES_ID)}
+      type="button"
+    >
+      <span className="bookshelf-switcher-name">All books</span>
+    </button>
+    {bookshelves.map((bookshelf) => (
+      <button
+        aria-pressed={activeBookshelfId === bookshelf.id}
+        className={cn(
+          "bookshelf-switcher-item",
+          activeBookshelfId === bookshelf.id && "active",
+        )}
+        key={bookshelf.id}
+        onClick={() => onSelect(bookshelf.id)}
+        title={bookshelf.kindleEmail ?? undefined}
+        type="button"
+      >
+        <span className="bookshelf-switcher-name">{bookshelf.name}</span>
+        <span className="bookshelf-switcher-count">
+          {numberFormatter.format(bookshelf.bookCount)}
+        </span>
+      </button>
+    ))}
+  </div>
+);
 
 const BookDetailSkeleton = () => (
   <div aria-busy="true" className="page stack-lg">
@@ -1435,7 +1517,7 @@ const BookDetailSkeleton = () => (
         <SkeletonLine className="skeleton-line-section" />
       </div>
       <dl className="about-grid">
-        {Array.from({ length: 5 }, (_, index) => (
+        {Array.from({ length: 6 }, (_, index) => (
           <div key={`book-detail-about-skeleton-${index}`}>
             <dt>
               <SkeletonLine className="skeleton-line-eyebrow" />
@@ -1583,8 +1665,10 @@ const BookshelfPage = () => {
   const [uploading, setUploading] = useState(false);
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [settings, setSettings] = useState<SettingsPayload | null>(null);
+  const [bookshelves, setBookshelves] = useState<BookshelfSummary[]>([]);
   const [hasLoadedBooks, setHasLoadedBooks] = useState(false);
   const [hasLoadedSettings, setHasLoadedSettings] = useState(false);
+  const [hasLoadedBookshelves, setHasLoadedBookshelves] = useState(false);
   const [bookActionMenu, setBookActionMenu] = useState<BookshelfContextMenuState | null>(null);
   const [sendingBookId, setSendingBookId] = useState<string | null>(null);
   const [bookPendingSend, setBookPendingSend] = useState<BookSummary | null>(null);
@@ -1595,14 +1679,54 @@ const BookshelfPage = () => {
   const latestBooksRequest = useRef(0);
   const flashMessage = (location.state as { message?: string } | null)?.message ?? null;
 
+  const requestedBookshelfId = searchParams.get("shelf");
+  const activeBookshelfId =
+    requestedBookshelfId === ALL_BOOKSHELVES_ID
+      ? ALL_BOOKSHELVES_ID
+      : bookshelves.some((bookshelf) => bookshelf.id === requestedBookshelfId)
+        ? requestedBookshelfId
+        : bookshelves[0]?.id ?? null;
+  const activeBookshelf =
+    activeBookshelfId && activeBookshelfId !== ALL_BOOKSHELVES_ID
+      ? bookshelves.find((bookshelf) => bookshelf.id === activeBookshelfId) ?? null
+      : null;
+  const importTargetBookshelf = activeBookshelf ?? bookshelves[0] ?? null;
   const deferredQuery = useDeferredValue(query);
   const visibleBooks = useMemo(() => getVisibleBooks(books, deferredQuery), [books, deferredQuery]);
   const showingFilteredResults = deferredQuery.trim().length > 0;
-  const canSendToKindleFromShelf = Boolean(
-    settings?.smtp.configured && settings.defaultKindleEmail?.trim(),
-  );
+  const canSendToKindleFromShelf = Boolean(settings?.smtp.configured && activeBookshelf?.kindleEmail?.trim());
+
+  const loadBookshelves = useEffectEvent(async () => {
+    try {
+      const [nextBookshelves, nextSettings] = await Promise.all([
+        api.listBookshelves(),
+        hasLoadedSettings ? Promise.resolve<SettingsPayload | null>(null) : api.getSettings(),
+      ]);
+      setBookshelves(nextBookshelves);
+      setHasLoadedBookshelves(true);
+      if (nextBookshelves.length === 0) {
+        setBooks([]);
+        setLoading(false);
+        setHasLoadedBooks(true);
+      }
+
+      if (nextSettings) {
+        setSettings(nextSettings);
+        setHasLoadedSettings(true);
+      }
+    } catch (requestError) {
+      setError(
+        requestError instanceof Error ? requestError.message : "Could not load bookshelves.",
+      );
+      setHasLoadedBookshelves(true);
+      setLoading(false);
+      setHasLoadedBooks(true);
+    }
+  });
 
   const loadBooks = useEffectEvent(async () => {
+    if (!activeBookshelfId) return;
+
     const requestId = latestBooksRequest.current + 1;
     latestBooksRequest.current = requestId;
 
@@ -1612,21 +1736,16 @@ const BookshelfPage = () => {
     setError(null);
 
     try {
-      const [nextBooks, nextSettings] = await Promise.all([
-        api.listBooks(),
-        hasLoadedSettings ? Promise.resolve<SettingsPayload | null>(null) : api.getSettings(),
-      ]);
+      const nextBooks = await api.listBooks(
+        "",
+        activeBookshelfId === ALL_BOOKSHELVES_ID ? null : activeBookshelfId,
+      );
 
       if (requestId !== latestBooksRequest.current) {
         return;
       }
 
       setBooks(nextBooks);
-
-      if (nextSettings) {
-        setSettings(nextSettings);
-        setHasLoadedSettings(true);
-      }
     } catch (requestError) {
       if (requestId !== latestBooksRequest.current) {
         return;
@@ -1642,8 +1761,27 @@ const BookshelfPage = () => {
   });
 
   useEffect(() => {
-    void loadBooks();
+    void loadBookshelves();
   }, []);
+
+  useEffect(() => {
+    if (!hasLoadedBookshelves || !activeBookshelfId) return;
+    void loadBooks();
+  }, [activeBookshelfId, hasLoadedBookshelves]);
+
+  useEffect(() => {
+    if (!hasLoadedBookshelves || bookshelves.length === 0) return;
+    const shelfParam = searchParams.get("shelf");
+    const shelfExists =
+      shelfParam === ALL_BOOKSHELVES_ID ||
+      bookshelves.some((bookshelf) => bookshelf.id === shelfParam);
+
+    if (shelfExists) return;
+
+    const nextParams = new URLSearchParams(searchParams);
+    nextParams.set("shelf", bookshelves[0].id);
+    setSearchParams(nextParams, { replace: true });
+  }, [bookshelves, hasLoadedBookshelves, searchParams, setSearchParams]);
 
   useEffect(() => {
     const nextQuery = searchParams.get("q") ?? "";
@@ -1684,6 +1822,20 @@ const BookshelfPage = () => {
     setListSort((current) => getNextBookshelfSort(current, key));
   }, []);
 
+  const onSelectBookshelf = useCallback(
+    (bookshelfId: string) => {
+      const nextParams = new URLSearchParams(searchParams);
+      nextParams.set("shelf", bookshelfId);
+      if (query.trim()) {
+        nextParams.set("q", query.trim());
+      } else {
+        nextParams.delete("q");
+      }
+      setSearchParams(nextParams);
+    },
+    [query, searchParams, setSearchParams],
+  );
+
   const openBookActionMenu = useCallback((book: BookSummary, x: number, y: number) => {
     setBookActionMenu({ book, ...getContextMenuPosition(x, y) });
   }, []);
@@ -1710,14 +1862,14 @@ const BookshelfPage = () => {
   );
 
   const sendBookFromShelf = useEffectEvent(async () => {
-    if (!bookPendingSend || sendingBookId || !canSendToKindleFromShelf) return;
+    if (!bookPendingSend || sendingBookId || !canSendToKindleFromShelf || !activeBookshelf) return;
 
     setSendingBookId(bookPendingSend.id);
     setSendError(null);
     setError(null);
 
     try {
-      await api.sendBook(bookPendingSend.id);
+      await api.sendBook(bookPendingSend.id, undefined, activeBookshelf.id);
       setBookPendingSend(null);
       toast({
         title: "Email accepted",
@@ -1748,6 +1900,7 @@ const BookshelfPage = () => {
       const deletion = await api.deleteBook(bookPendingDelete.id);
       setBooks((current) => current.filter((book) => book.id !== bookPendingDelete.id));
       setBookPendingDelete(null);
+      await loadBookshelves();
       toast({
         title: "Deleted",
         description: deletion.message,
@@ -1761,7 +1914,7 @@ const BookshelfPage = () => {
   });
 
   const importFiles = useEffectEvent(async (files: File[]) => {
-    if (files.length === 0 || uploading) return;
+    if (files.length === 0 || uploading || !importTargetBookshelf) return;
 
     setUploading(true);
     setError(null);
@@ -1769,7 +1922,7 @@ const BookshelfPage = () => {
     try {
       for (let index = 0; index < files.length; index += IMPORT_BATCH_SIZE) {
         const batch = files.slice(index, index + IMPORT_BATCH_SIZE);
-        const batchResults = await api.importBooks(batch);
+        const batchResults = await api.importBooks(batch, importTargetBookshelf.id);
         for (const result of batchResults) {
           toast({
             title: getImportToastTitle(result.status),
@@ -1780,6 +1933,7 @@ const BookshelfPage = () => {
       }
 
       await loadBooks();
+      await loadBookshelves();
     } catch (requestError) {
       toast({
         title: "Import failed",
@@ -1831,7 +1985,7 @@ const BookshelfPage = () => {
         {
           id: "read",
           label: "Read book",
-          onSelect: () => navigate(`/books/${bookActionMenu.book.id}/read`),
+          onSelect: () => navigate(getReaderHref(bookActionMenu.book.id, activeBookshelfId)),
         },
         {
           id: "delete",
@@ -1879,7 +2033,7 @@ const BookshelfPage = () => {
           void sendBookFromShelf();
         }}
         open={bookPendingSend !== null}
-        recipientEmail={settings?.defaultKindleEmail ?? ""}
+        recipientEmail={activeBookshelf?.kindleEmail ?? ""}
         sending={sendingBookId !== null}
       />
 
@@ -1909,7 +2063,7 @@ const BookshelfPage = () => {
           </div>
           <p className="bookshelf-dropzone-title">Drop EPUBs to import</p>
           <p className="bookshelf-dropzone-copy">
-            Release anywhere on the shelf to add them to your library.
+            Release anywhere on the shelf to add them to {importTargetBookshelf?.name ?? "your library"}.
           </p>
         </div>
       </div>
@@ -1922,19 +2076,35 @@ const BookshelfPage = () => {
       >
         <section className="hero-panel">
           <div className="hero-copy">
-            <h2>Your bookshelf</h2>
+            <h2>{activeBookshelf?.name ?? "All books"}</h2>
+            {!activeBookshelf && importTargetBookshelf ? (
+              <p>Showing every title. New imports go to {importTargetBookshelf.name}.</p>
+            ) : null}
           </div>
           <div className="hero-actions">
-            <Button disabled={uploading} onClick={() => setIsImportModalOpen(true)} type="button">
+            <Button
+              disabled={uploading || !importTargetBookshelf}
+              onClick={() => setIsImportModalOpen(true)}
+              type="button"
+            >
               {uploading ? "Importing\u2026" : "Add EPUBs"}
             </Button>
-            {hasLoadedSettings && !settings?.defaultKindleEmail && (
+            {hasLoadedSettings && activeBookshelf && !activeBookshelf.kindleEmail ? (
               <Button asChild variant="outline">
                 <Link to="/settings">Add Kindle address</Link>
               </Button>
-            )}
+            ) : null}
+            <Button asChild variant="outline">
+              <Link to="/settings">Manage shelves</Link>
+            </Button>
           </div>
         </section>
+
+        <BookshelfSwitcher
+          activeBookshelfId={activeBookshelfId}
+          bookshelves={bookshelves}
+          onSelect={onSelectBookshelf}
+        />
 
         <ImportBooksModal
           disabled={uploading}
@@ -1964,7 +2134,16 @@ const BookshelfPage = () => {
                 const nextValue = event.currentTarget.value;
                 setQuery(nextValue);
                 startTransition(() => {
-                  setSearchParams(nextValue ? { q: nextValue } : {});
+                  const nextParams = new URLSearchParams(searchParams);
+                  if (nextValue) {
+                    nextParams.set("q", nextValue);
+                  } else {
+                    nextParams.delete("q");
+                  }
+                  if (activeBookshelfId) {
+                    nextParams.set("shelf", activeBookshelfId);
+                  }
+                  setSearchParams(nextParams);
                 });
               }}
               placeholder={"Search by title, author\u2026"}
@@ -2022,6 +2201,7 @@ const BookshelfPage = () => {
         ) : view === "list" ? (
           <BookshelfList
             books={visibleBooks}
+            bookshelfId={activeBookshelfId}
             onBookContextKeyDown={onBookContextKeyDown}
             onBookContextMenu={onBookContextMenu}
             onChangeSort={onChangeListSort}
@@ -2030,6 +2210,7 @@ const BookshelfPage = () => {
         ) : (
           <BookshelfGrid
             books={visibleBooks}
+            bookshelfId={activeBookshelfId}
             onBookContextKeyDown={onBookContextKeyDown}
             onBookContextMenu={onBookContextMenu}
           />
@@ -2042,16 +2223,20 @@ const BookshelfPage = () => {
 const BookDetailPage = () => {
   const { bookId = "" } = useParams();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const toast = useToast();
   useDocumentTitle("Book detail \u2022 Irulan");
 
   const [book, setBook] = useState<BookDetail | null>(null);
   const [deliveries, setDeliveries] = useState<DeliveryRecord[]>([]);
   const [settings, setSettings] = useState<SettingsPayload | null>(null);
+  const [bookshelves, setBookshelves] = useState<BookshelfSummary[]>([]);
+  const [bookShelfIdsDraft, setBookShelfIdsDraft] = useState<string[]>([]);
   const [recipientEmail, setRecipientEmail] = useState("");
   const [editingRecipient, setEditingRecipient] = useState(false);
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
+  const [savingBookShelves, setSavingBookShelves] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -2067,16 +2252,25 @@ const BookDetailPage = () => {
     setError(null);
 
     try {
-      const [nextBook, nextDeliveries, nextSettings] = await Promise.all([
+      const [nextBook, nextDeliveries, nextSettings, nextBookshelves] = await Promise.all([
         api.getBook(bookId),
         api.getDeliveries(bookId),
         api.getSettings(),
+        api.listBookshelves(),
       ]);
+
+      const requestedShelfId = searchParams.get("shelf");
+      const defaultBookshelf =
+        nextBook.bookshelves.find((bookshelf) => bookshelf.id === requestedShelfId) ??
+        nextBook.bookshelves[0] ??
+        null;
 
       setBook(nextBook);
       setDeliveries(nextDeliveries);
       setSettings(nextSettings);
-      const defaultEmail = nextSettings.defaultKindleEmail ?? "";
+      setBookshelves(nextBookshelves);
+      setBookShelfIdsDraft(nextBook.bookshelves.map((bookshelf) => bookshelf.id));
+      const defaultEmail = defaultBookshelf?.kindleEmail ?? "";
       setRecipientEmail(defaultEmail);
       setEditingRecipient(defaultEmail.length === 0);
     } catch (requestError) {
@@ -2090,14 +2284,17 @@ const BookDetailPage = () => {
     setBook(null);
     setDeliveries([]);
     setSettings(null);
+    setBookshelves([]);
+    setBookShelfIdsDraft([]);
     setRecipientEmail("");
     setEditingRecipient(false);
+    setSavingBookShelves(false);
     setDeleteError(null);
     setIsDeleteModalOpen(false);
     setShowStickyBar(false);
     setCopyState("idle");
     void loadBook();
-  }, [bookId]);
+  }, [bookId, searchParams]);
 
   useEffect(() => {
     const target = heroTitleRef.current;
@@ -2119,13 +2316,18 @@ const BookDetailPage = () => {
 
   const onSend = async (event?: FormEvent<HTMLFormElement>) => {
     event?.preventDefault();
-    if (sending || !recipientEmail.trim()) return;
+    if (sending || !recipientEmail.trim() || !book) return;
 
     setSending(true);
     setError(null);
 
     try {
-      const delivery = await api.sendBook(bookId, recipientEmail);
+      const requestedShelfId = searchParams.get("shelf");
+      const deliveryBookshelf =
+        book.bookshelves.find((bookshelf) => bookshelf.id === requestedShelfId) ??
+        book.bookshelves[0] ??
+        null;
+      const delivery = await api.sendBook(bookId, recipientEmail, deliveryBookshelf?.id ?? null);
       setDeliveries((current) => [delivery, ...current]);
       toast({
         title: "Email accepted",
@@ -2157,7 +2359,7 @@ const BookDetailPage = () => {
     try {
       const deletion = await api.deleteBook(book.id);
       setIsDeleteModalOpen(false);
-      navigate("/", {
+      navigate(backHref, {
         replace: true,
         state: { message: deletion.message },
       });
@@ -2179,6 +2381,53 @@ const BookDetailPage = () => {
     window.setTimeout(() => setCopyState("idle"), 1800);
   };
 
+  const onToggleBookShelf = (bookshelfId: string) => {
+    setBookShelfIdsDraft((current) =>
+      current.includes(bookshelfId)
+        ? current.filter((id) => id !== bookshelfId)
+        : [...current, bookshelfId],
+    );
+  };
+
+  const onSaveBookShelves = async () => {
+    if (!book || savingBookShelves) return;
+
+    if (bookShelfIdsDraft.length === 0) {
+      toast({
+        title: "Choose a bookshelf",
+        description: "A book needs to belong to at least one bookshelf.",
+        variant: "error",
+      });
+      return;
+    }
+
+    setSavingBookShelves(true);
+
+    try {
+      const updatedBook = await api.saveBookBookshelves(book.id, bookShelfIdsDraft);
+      const nextBookshelves = await api.listBookshelves();
+      setBook(updatedBook);
+      setBookShelfIdsDraft(updatedBook.bookshelves.map((bookshelf) => bookshelf.id));
+      setBookshelves(nextBookshelves);
+      toast({
+        title: "Bookshelves updated",
+        description: `${updatedBook.title} shelf membership saved.`,
+        variant: "success",
+      });
+    } catch (requestError) {
+      toast({
+        title: "Could not update bookshelves",
+        description:
+          requestError instanceof Error
+            ? requestError.message
+            : "Could not update bookshelves.",
+        variant: "error",
+      });
+    } finally {
+      setSavingBookShelves(false);
+    }
+  };
+
   if (loading && !book) {
     return <BookDetailSkeleton />;
   }
@@ -2188,7 +2437,7 @@ const BookDetailPage = () => {
       <div className="page stack-lg">
         <div className="detail-page-header">
           <Button asChild className="backlink" variant="ghost">
-            <Link to="/">
+            <Link to={getBookshelfHref(searchParams.get("shelf"))}>
               <ArrowLeftIcon />
               Bookshelf
             </Link>
@@ -2202,12 +2451,22 @@ const BookDetailPage = () => {
     );
   }
 
+  const requestedShelfId = searchParams.get("shelf");
+  const activeBookBookshelf =
+    book.bookshelves.find((bookshelf) => bookshelf.id === requestedShelfId) ??
+    book.bookshelves[0] ??
+    null;
+  const navigationBookshelfId = requestedShelfId ?? activeBookBookshelf?.id ?? null;
+  const backHref = getBookshelfHref(navigationBookshelfId);
   const smtpReady = Boolean(settings?.smtp.configured);
-  const defaultEmail = settings?.defaultKindleEmail?.trim() ?? "";
+  const defaultEmail = activeBookBookshelf?.kindleEmail?.trim() ?? "";
   const trimmedRecipient = recipientEmail.trim();
   const hasDefaultEmail = defaultEmail.length > 0;
   const recipientMatchesDefault =
     hasDefaultEmail && trimmedRecipient === defaultEmail;
+  const bookShelfMembershipDirty =
+    bookShelfIdsDraft.length !== book.bookshelves.length ||
+    bookShelfIdsDraft.some((id) => !book.bookshelves.some((bookshelf) => bookshelf.id === id));
   const lastSuccessfulDelivery =
     deliveries.find((delivery) => delivery.status === "sent") ?? null;
   const lastSentAt =
@@ -2248,7 +2507,7 @@ const BookDetailPage = () => {
             aria-label="Back to bookshelf"
             className="detail-sticky-back"
             tabIndex={stickyBarVisible ? 0 : -1}
-            to="/"
+            to={backHref}
           >
             <ArrowLeftIcon />
           </Link>
@@ -2262,7 +2521,7 @@ const BookDetailPage = () => {
             <Button asChild size="sm" variant="outline">
               <Link
                 tabIndex={stickyBarVisible ? 0 : -1}
-                to={`/books/${book.id}/read`}
+                to={getReaderHref(book.id, navigationBookshelfId)}
               >
                 Read
               </Link>
@@ -2301,7 +2560,7 @@ const BookDetailPage = () => {
 
         <div className="detail-page-header">
         <Button asChild className="backlink" variant="ghost">
-          <Link to="/">
+          <Link to={backHref}>
             <ArrowLeftIcon />
             Bookshelf
           </Link>
@@ -2313,7 +2572,7 @@ const BookDetailPage = () => {
         <Link
           aria-label={`Read ${book.title} in browser`}
           className="detail-cover-clickable"
-          to={`/books/${book.id}/read`}
+          to={getReaderHref(book.id, navigationBookshelfId)}
         >
           <BookCover book={book} large />
           <span className="detail-cover-overlay" aria-hidden="true">
@@ -2396,7 +2655,7 @@ const BookDetailPage = () => {
                     type="button"
                     variant="ghost"
                   >
-                    Use default
+                    Use shelf
                   </Button>
                 ) : hasDefaultEmail ? (
                   <Button
@@ -2417,7 +2676,9 @@ const BookDetailPage = () => {
                     {trimmedRecipient}
                   </span>
                   {recipientMatchesDefault ? (
-                    <span className="send-recipient-tag">Default</span>
+                    <span className="send-recipient-tag">
+                      {activeBookBookshelf?.name ?? "Shelf"}
+                    </span>
                   ) : null}
                 </div>
                 <Button
@@ -2453,7 +2714,7 @@ const BookDetailPage = () => {
           </div>
 
           <Link className="detail-secondary-link" to="/settings">
-            Manage delivery settings <span aria-hidden="true">→</span>
+            Manage bookshelves <span aria-hidden="true">→</span>
           </Link>
         </div>
       </section>
@@ -2474,6 +2735,18 @@ const BookDetailPage = () => {
           <div>
             <dt>Imported</dt>
             <dd>{formatDate(book.importedAt)}</dd>
+          </div>
+          <div>
+            <dt>Bookshelves</dt>
+            <dd>
+              <span className="bookshelf-chip-row">
+                {book.bookshelves.map((bookshelf) => (
+                  <span className="bookshelf-chip" key={bookshelf.id}>
+                    {bookshelf.name}
+                  </span>
+                ))}
+              </span>
+            </dd>
           </div>
           <div>
             <dt>Filename</dt>
@@ -2515,6 +2788,44 @@ const BookDetailPage = () => {
         </dl>
       </Card>
 
+      <Card className="panel stack-sm">
+        <CardHeader className="section-heading border-b">
+          <CardTitle>Bookshelves</CardTitle>
+          <span>{numberFormatter.format(bookShelfIdsDraft.length)} selected</span>
+        </CardHeader>
+        <div className="bookshelf-membership-list">
+          {bookshelves.map((bookshelf) => (
+            <label className="bookshelf-membership-row" key={bookshelf.id}>
+              <input
+                checked={bookShelfIdsDraft.includes(bookshelf.id)}
+                disabled={savingBookShelves}
+                name={`bookshelf_${bookshelf.id}`}
+                onChange={() => onToggleBookShelf(bookshelf.id)}
+                type="checkbox"
+              />
+              <span className="bookshelf-membership-copy">
+                <span className="bookshelf-membership-name">{bookshelf.name}</span>
+                <span className="bookshelf-membership-email">
+                  {bookshelf.kindleEmail ?? "No Kindle destination"}
+                </span>
+              </span>
+            </label>
+          ))}
+        </div>
+        <div className="inline-actions">
+          <Button
+            disabled={!bookShelfMembershipDirty || savingBookShelves}
+            onClick={onSaveBookShelves}
+            type="button"
+          >
+            {savingBookShelves ? "Saving\u2026" : "Save bookshelves"}
+          </Button>
+          <Button asChild variant="outline">
+            <Link to="/settings">Manage shelves</Link>
+          </Button>
+        </div>
+      </Card>
+
       <Card className="panel stack-sm" ref={historyRef}>
         <CardHeader className="section-heading border-b">
           <CardTitle>Delivery history</CardTitle>
@@ -2539,6 +2850,9 @@ const BookDetailPage = () => {
             {deliveries.map((delivery) => {
               const sentAt = delivery.sentAt ?? delivery.createdAt;
               const relative = formatRelative(sentAt);
+              const deliveryBookshelfName = delivery.bookshelfId
+                ? bookshelves.find((bookshelf) => bookshelf.id === delivery.bookshelfId)?.name
+                : null;
               return (
                 <article
                   className={cn("history-row", `history-row-${delivery.status}`)}
@@ -2553,7 +2867,9 @@ const BookDetailPage = () => {
                     </Badge>
                     <div className="history-row-text">
                       <span className="history-row-recipient">
-                        {delivery.recipientEmail}
+                        {deliveryBookshelfName
+                          ? `${deliveryBookshelfName} · ${delivery.recipientEmail}`
+                          : delivery.recipientEmail}
                       </span>
                       <span className="history-row-time" title={formatDate(sentAt)}>
                         {relative ?? formatDate(sentAt)}
@@ -2619,6 +2935,8 @@ const ReaderPage = () => {
 
   const selectedHref = searchParams.get("section")?.trim() ?? "";
   const anchorId = searchParams.get("anchor")?.trim() ?? null;
+  const readerBookshelfId = searchParams.get("shelf");
+  const bookDetailHref = getBookHref(bookId, readerBookshelfId);
   const currentPage = Math.max(
     1,
     Number.parseInt(searchParams.get("page") ?? "1", 10) || 1,
@@ -2684,6 +3002,9 @@ const ReaderPage = () => {
 
       const params = new URLSearchParams();
       params.set("section", href);
+      if (readerBookshelfId) {
+        params.set("shelf", readerBookshelfId);
+      }
 
       if (options.anchor) {
         params.set("anchor", options.anchor);
@@ -2699,7 +3020,7 @@ const ReaderPage = () => {
         setSearchParams(params, { replace: options.replace });
       });
     },
-    [setSearchParams],
+    [readerBookshelfId, setSearchParams],
   );
 
   const goToPage = useCallback(
@@ -2715,6 +3036,9 @@ const ReaderPage = () => {
       const params = new URLSearchParams();
       params.set("section", activeSection.href);
       params.set("page", String(Math.max(1, Math.round(nextPage))));
+      if (readerBookshelfId) {
+        params.set("shelf", readerBookshelfId);
+      }
 
       if (options.preserveAnchor && anchorId) {
         params.set("anchor", anchorId);
@@ -2724,7 +3048,7 @@ const ReaderPage = () => {
         setSearchParams(params, { replace: options.replace });
       });
     },
-    [activeSection?.href, anchorId, setSearchParams],
+    [activeSection?.href, anchorId, readerBookshelfId, setSearchParams],
   );
 
   const loadReader = useEffectEvent(async () => {
@@ -3062,7 +3386,7 @@ const ReaderPage = () => {
     return (
       <div className="page stack-lg">
         <Button asChild className="backlink" variant="ghost">
-          <Link to={`/books/${bookId}`}>
+          <Link to={bookDetailHref}>
             <ArrowLeftIcon />
             Back to book
           </Link>
@@ -3110,7 +3434,7 @@ const ReaderPage = () => {
     return (
       <div className="page stack-lg">
         <Button asChild className="backlink" variant="ghost">
-          <Link to={`/books/${bookId}`}>
+          <Link to={bookDetailHref}>
             <ArrowLeftIcon />
             Back to book
           </Link>
@@ -3127,7 +3451,7 @@ const ReaderPage = () => {
   return (
     <div className="page stack-lg">
       <Button asChild className="backlink" variant="ghost">
-        <Link to={`/books/${bookId}`}>
+        <Link to={bookDetailHref}>
           <ArrowLeftIcon />
           Back to book
         </Link>
@@ -3339,7 +3663,12 @@ const SettingsPage = () => {
   const toast = useToast();
 
   const [settings, setSettings] = useState<SettingsPayload | null>(null);
-  const [defaultEmail, setDefaultEmail] = useState("");
+  const [bookshelves, setBookshelves] = useState<BookshelfSummary[]>([]);
+  const [bookshelfForms, setBookshelfForms] = useState<Record<string, BookshelfFormState>>({});
+  const [newBookshelf, setNewBookshelf] = useState<BookshelfFormState>({
+    name: "",
+    kindleEmail: "",
+  });
   const [smtpForm, setSmtpForm] = useState<SmtpFormState>({
     host: "",
     port: "587",
@@ -3349,9 +3678,11 @@ const SettingsPage = () => {
     from: "",
   });
   const [loading, setLoading] = useState(true);
-  const [savingKindle, setSavingKindle] = useState(false);
+  const [savingBookshelfId, setSavingBookshelfId] = useState<string | null>(null);
+  const [deletingBookshelfId, setDeletingBookshelfId] = useState<string | null>(null);
+  const [creatingBookshelf, setCreatingBookshelf] = useState(false);
   const [savingSmtp, setSavingSmtp] = useState(false);
-  const [testing, setTesting] = useState(false);
+  const [testingBookshelfId, setTestingBookshelfId] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
 
   const loadSettings = useEffectEvent(async () => {
@@ -3359,9 +3690,13 @@ const SettingsPage = () => {
     setLoadError(null);
 
     try {
-      const payload = await api.getSettings();
+      const [payload, nextBookshelves] = await Promise.all([
+        api.getSettings(),
+        api.listBookshelves(),
+      ]);
       setSettings(payload);
-      setDefaultEmail(payload.defaultKindleEmail ?? "");
+      setBookshelves(nextBookshelves);
+      setBookshelfForms(toBookshelfFormMap(nextBookshelves));
       setSmtpForm(toSmtpFormState(payload.smtp));
     } catch (requestError) {
       setLoadError(
@@ -3376,28 +3711,93 @@ const SettingsPage = () => {
     void loadSettings();
   }, []);
 
-  const onSaveKindle = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    setSavingKindle(true);
+  const refreshBookshelves = async () => {
+    const nextBookshelves = await api.listBookshelves();
+    setBookshelves(nextBookshelves);
+    setBookshelfForms(toBookshelfFormMap(nextBookshelves));
+    return nextBookshelves;
+  };
+
+  const onSaveBookshelf = async (bookshelfId: string) => {
+    const form = bookshelfForms[bookshelfId];
+    if (!form || savingBookshelfId) return;
+
+    setSavingBookshelfId(bookshelfId);
 
     try {
-      const payload = await api.saveSettings(defaultEmail.trim() || null);
-      setSettings(payload);
-      setDefaultEmail(payload.defaultKindleEmail ?? "");
+      await api.updateBookshelf(bookshelfId, form.name.trim(), form.kindleEmail.trim() || null);
+      await refreshBookshelves();
       toast({
-        title: "Kindle address saved",
-        description: "Default Kindle address saved.",
+        title: "Bookshelf saved",
+        description: "Bookshelf settings saved.",
         variant: "success",
       });
     } catch (requestError) {
       toast({
-        title: "Could not save settings",
+        title: "Could not save bookshelf",
         description:
-          requestError instanceof Error ? requestError.message : "Could not save settings.",
+          requestError instanceof Error ? requestError.message : "Could not save bookshelf.",
         variant: "error",
       });
     } finally {
-      setSavingKindle(false);
+      setSavingBookshelfId(null);
+    }
+  };
+
+  const onCreateBookshelf = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setCreatingBookshelf(true);
+
+    try {
+      const created = await api.createBookshelf(
+        newBookshelf.name.trim(),
+        newBookshelf.kindleEmail.trim() || null,
+      );
+      await refreshBookshelves();
+      setNewBookshelf({ name: "", kindleEmail: "" });
+      toast({
+        title: "Bookshelf created",
+        description: `${created.name} is ready.`,
+        variant: "success",
+      });
+    } catch (requestError) {
+      toast({
+        title: "Could not create bookshelf",
+        description:
+          requestError instanceof Error ? requestError.message : "Could not create bookshelf.",
+        variant: "error",
+      });
+    } finally {
+      setCreatingBookshelf(false);
+    }
+  };
+
+  const onDeleteBookshelf = async (bookshelf: BookshelfSummary) => {
+    if (deletingBookshelfId) return;
+    const confirmed = window.confirm(
+      `Remove "${bookshelf.name}"? Books remain in the shared library.`,
+    );
+    if (!confirmed) return;
+
+    setDeletingBookshelfId(bookshelf.id);
+
+    try {
+      const deletion = await api.deleteBookshelf(bookshelf.id);
+      await refreshBookshelves();
+      toast({
+        title: "Bookshelf removed",
+        description: deletion.message,
+        variant: "success",
+      });
+    } catch (requestError) {
+      toast({
+        title: "Could not remove bookshelf",
+        description:
+          requestError instanceof Error ? requestError.message : "Could not remove bookshelf.",
+        variant: "error",
+      });
+    } finally {
+      setDeletingBookshelfId(null);
     }
   };
 
@@ -3448,14 +3848,18 @@ const SettingsPage = () => {
     }
   };
 
-  const onSendTest = async () => {
-    setTesting(true);
+  const onSendBookshelfTest = async (bookshelf: BookshelfSummary) => {
+    const form = bookshelfForms[bookshelf.id] ?? toBookshelfFormState(bookshelf);
+    const recipient = form.kindleEmail.trim();
+    if (!recipient) return;
+
+    setTestingBookshelfId(bookshelf.id);
 
     try {
-      await api.sendTestEmail(defaultEmail.trim());
+      await api.sendTestEmail(recipient);
       toast({
         title: "Test email sent",
-        description: "SMTP test email sent.",
+        description: `SMTP test email sent to ${recipient}.`,
         variant: "success",
       });
     } catch (requestError) {
@@ -3468,7 +3872,7 @@ const SettingsPage = () => {
         variant: "error",
       });
     } finally {
-      setTesting(false);
+      setTestingBookshelfId(null);
     }
   };
 
@@ -3478,8 +3882,7 @@ const SettingsPage = () => {
 
   const smtpConfigured = Boolean(settings?.smtp.configured);
   const smtpSender = settings?.smtp.from.trim() || null;
-  const savedKindleEmail = settings?.defaultKindleEmail?.trim() || null;
-  const hasSavedKindleEmail = Boolean(savedKindleEmail);
+  const hasAnyKindleEmail = bookshelves.some((bookshelf) => bookshelf.kindleEmail?.trim());
   const normalizedSmtpPort = Number.parseInt(smtpForm.port.trim(), 10);
   const smtpDirty = Boolean(
     settings &&
@@ -3490,6 +3893,14 @@ const SettingsPage = () => {
         smtpForm.pass !== settings.smtp.pass ||
         smtpForm.from.trim() !== settings.smtp.from),
   );
+  const isBookshelfDirty = (bookshelf: BookshelfSummary) => {
+    const form = bookshelfForms[bookshelf.id];
+    if (!form) return false;
+    return (
+      form.name.trim() !== bookshelf.name ||
+      (form.kindleEmail.trim() || null) !== (bookshelf.kindleEmail ?? null)
+    );
+  };
 
   return (
     <div className="page stack-lg">
@@ -3575,25 +3986,25 @@ const SettingsPage = () => {
             </span>
             <div className="stack-xs">
               <div className="smtp-onboarding-step-heading">
-                <p className="smtp-onboarding-step-title">Save your Kindle address and send a test</p>
+                <p className="smtp-onboarding-step-title">Create bookshelves and send tests</p>
                 <Badge
                   className={cn(
                     "status-pill",
-                    hasSavedKindleEmail ? "status-sent" : "status-pending",
+                    hasAnyKindleEmail ? "status-sent" : "status-pending",
                   )}
-                  variant={getStatusBadgeVariant(hasSavedKindleEmail ? "configured" : "pending")}
+                  variant={getStatusBadgeVariant(hasAnyKindleEmail ? "configured" : "pending")}
                 >
-                  {hasSavedKindleEmail ? "Saved" : "Needs address"}
+                  {hasAnyKindleEmail ? "Ready" : "Needs address"}
                 </Badge>
               </div>
               <p className="smtp-onboarding-step-copy">
-                Save the destination Kindle email below, then use <strong>Send test email</strong>.
-                The test goes to the saved default Kindle address, so it checks both your SMTP
-                setup and the destination you plan to use for book delivery.
+                Save a Kindle destination on each bookshelf that should send books to a device,
+                then use <strong>Send test email</strong> for that shelf.
               </p>
-              {savedKindleEmail ? (
+              {hasAnyKindleEmail ? (
                 <p className="smtp-onboarding-step-meta">
-                  Current default Kindle address: <code>{savedKindleEmail}</code>
+                  {numberFormatter.format(bookshelves.filter((bookshelf) => bookshelf.kindleEmail).length)}{" "}
+                  shelves have Kindle destinations.
                 </p>
               ) : null}
             </div>
@@ -3752,49 +4163,174 @@ const SettingsPage = () => {
 
       <Card className="panel stack-md">
         <div className="stack-xs">
-          <h2>Kindle destination</h2>
+          <div className="section-heading">
+            <h2>Bookshelves</h2>
+            <Badge className="status-pill" variant="outline">
+              {numberFormatter.format(bookshelves.length)} shelves
+            </Badge>
+          </div>
           <p className="lede">
-            Set the default Kindle email this app should use. The test button sends to this
-            address, and book delivery uses it as the default recipient.
+            Each bookshelf keeps its own Kindle destination. Books can belong to more than one
+            shelf without duplicating the EPUB file.
           </p>
         </div>
 
-        <form className="stack-sm" onSubmit={onSaveKindle}>
-          <div className="stack-xs">
-            <Label className="field-label" htmlFor="default-kindle-email">
-              Default Kindle email
-            </Label>
-            <Input
-              autoComplete="email"
-              id="default-kindle-email"
-              name="default_kindle_email"
-              onChange={(event) => setDefaultEmail(event.currentTarget.value)}
-              placeholder="yourname@kindle.com"
-              spellCheck={false}
-              type="email"
-              value={defaultEmail}
-            />
-            <p className="smtp-onboarding-step-meta">
-              Save this before testing SMTP if you want to verify the real Kindle destination.
-            </p>
-            {smtpDirty ? (
-              <p className="smtp-onboarding-step-meta">
-                Save SMTP changes before sending a test email so Irulan uses the latest server
-                details.
-              </p>
-            ) : null}
+        <div className="settings-bookshelf-list">
+          {bookshelves.map((bookshelf) => {
+            const form = bookshelfForms[bookshelf.id] ?? toBookshelfFormState(bookshelf);
+            const dirty = isBookshelfDirty(bookshelf);
+            const saving = savingBookshelfId === bookshelf.id;
+            const deleting = deletingBookshelfId === bookshelf.id;
+            const testing = testingBookshelfId === bookshelf.id;
+
+            return (
+              <form
+                className="settings-bookshelf-row"
+                key={bookshelf.id}
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  void onSaveBookshelf(bookshelf.id);
+                }}
+              >
+                <div className="settings-bookshelf-fields">
+                  <div className="stack-xs">
+                    <Label className="field-label" htmlFor={`bookshelf-name-${bookshelf.id}`}>
+                      Shelf name
+                    </Label>
+                    <Input
+                      autoComplete="off"
+                      id={`bookshelf-name-${bookshelf.id}`}
+                      name={`bookshelf_name_${bookshelf.id}`}
+                      onChange={(event) => {
+                        const value = event.currentTarget.value;
+                        setBookshelfForms((current) => ({
+                          ...current,
+                          [bookshelf.id]: {
+                            ...form,
+                            name: value,
+                          },
+                        }));
+                      }}
+                      placeholder="Me"
+                      spellCheck={false}
+                      type="text"
+                      value={form.name}
+                    />
+                  </div>
+                  <div className="stack-xs">
+                    <Label className="field-label" htmlFor={`bookshelf-kindle-${bookshelf.id}`}>
+                      Kindle email
+                    </Label>
+                    <Input
+                      autoComplete="email"
+                      id={`bookshelf-kindle-${bookshelf.id}`}
+                      name={`bookshelf_kindle_${bookshelf.id}`}
+                      onChange={(event) => {
+                        const value = event.currentTarget.value;
+                        setBookshelfForms((current) => ({
+                          ...current,
+                          [bookshelf.id]: {
+                            ...form,
+                            kindleEmail: value,
+                          },
+                        }));
+                      }}
+                      placeholder="name@kindle.com"
+                      spellCheck={false}
+                      type="email"
+                      value={form.kindleEmail}
+                    />
+                  </div>
+                </div>
+                <div className="settings-bookshelf-meta">
+                  <span>{numberFormatter.format(bookshelf.bookCount)} books</span>
+                  {smtpDirty ? <span>Save SMTP before testing.</span> : null}
+                </div>
+                <div className="inline-actions">
+                  <Button
+                    disabled={!dirty || saving || deleting}
+                    type="submit"
+                  >
+                    {saving ? "Saving\u2026" : "Save shelf"}
+                  </Button>
+                  <Button
+                    disabled={
+                      testing ||
+                      deleting ||
+                      !form.kindleEmail.trim() ||
+                      !smtpConfigured ||
+                      smtpDirty
+                    }
+                    onClick={() => {
+                      void onSendBookshelfTest(bookshelf);
+                    }}
+                    type="button"
+                    variant="outline"
+                  >
+                    {testing ? "Sending\u2026" : "Send test email"}
+                  </Button>
+                  <Button
+                    disabled={bookshelves.length <= 1 || saving || deleting}
+                    onClick={() => {
+                      void onDeleteBookshelf(bookshelf);
+                    }}
+                    type="button"
+                    variant="ghost"
+                  >
+                    {deleting ? "Removing\u2026" : "Remove"}
+                  </Button>
+                </div>
+              </form>
+            );
+          })}
+        </div>
+
+        <form className="settings-bookshelf-create" onSubmit={onCreateBookshelf}>
+          <div className="settings-bookshelf-fields">
+            <div className="stack-xs">
+              <Label className="field-label" htmlFor="new-bookshelf-name">
+                New shelf name
+              </Label>
+              <Input
+                autoComplete="off"
+                id="new-bookshelf-name"
+                name="new_bookshelf_name"
+                onChange={(event) =>
+                  setNewBookshelf((current) => ({
+                    ...current,
+                    name: event.currentTarget.value,
+                  }))
+                }
+                placeholder="Kid"
+                spellCheck={false}
+                type="text"
+                value={newBookshelf.name}
+              />
+            </div>
+            <div className="stack-xs">
+              <Label className="field-label" htmlFor="new-bookshelf-kindle">
+                Kindle email
+              </Label>
+              <Input
+                autoComplete="email"
+                id="new-bookshelf-kindle"
+                name="new_bookshelf_kindle"
+                onChange={(event) =>
+                  setNewBookshelf((current) => ({
+                    ...current,
+                    kindleEmail: event.currentTarget.value,
+                  }))
+                }
+                placeholder="name@kindle.com"
+                spellCheck={false}
+                type="email"
+                value={newBookshelf.kindleEmail}
+              />
+            </div>
           </div>
           <div className="inline-actions">
-            <Button disabled={savingKindle} type="submit">
-              {savingKindle ? "Saving\u2026" : "Save Kindle address"}
-            </Button>
-            <Button
-              disabled={testing || !defaultEmail.trim() || !smtpConfigured || smtpDirty}
-              onClick={onSendTest}
-              type="button"
-              variant="outline"
-            >
-              {testing ? "Sending\u2026" : "Send test email"}
+            <Button disabled={creatingBookshelf || !newBookshelf.name.trim()} type="submit">
+              {creatingBookshelf ? "Creating\u2026" : "Create bookshelf"}
             </Button>
           </div>
         </form>

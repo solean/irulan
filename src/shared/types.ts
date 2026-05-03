@@ -1,3 +1,11 @@
+export type BookshelfSummary = {
+  id: string;
+  name: string;
+  kindleEmail: string | null;
+  bookCount: number;
+  createdAt: string;
+};
+
 export type BookSummary = {
   id: string;
   title: string;
@@ -6,6 +14,7 @@ export type BookSummary = {
   fileSizeBytes: number;
   importedAt: string;
   coverUrl: string | null;
+  bookshelves: BookshelfSummary[];
 };
 
 export type BookDetail = BookSummary;
@@ -26,6 +35,7 @@ export type BookReader = {
 
 export type DeliveryRecord = {
   id: string;
+  bookshelfId: string | null;
   recipientEmail: string;
   status: "pending" | "sent" | "failed";
   errorMessage: string | null;
@@ -70,5 +80,11 @@ export type ImportResult =
 export type DeleteBookResult = {
   id: string;
   title: string;
+  message: string;
+};
+
+export type DeleteBookshelfResult = {
+  id: string;
+  name: string;
   message: string;
 };
