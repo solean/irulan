@@ -132,6 +132,13 @@ const DEFAULT_BOOKSHELF_SORT: BookshelfSort = {
   key: "importedAt",
   direction: "desc",
 };
+const BOOKSHELF_SORT_OPTIONS: ReadonlyArray<{ value: BookshelfSortKey; label: string }> = [
+  { value: "importedAt", label: "Recently added" },
+  { value: "title", label: "Title" },
+  { value: "author", label: "Author" },
+  { value: "sourceFilename", label: "Filename" },
+  { value: "fileSizeBytes", label: "File size" },
+];
 const THEME_META_COLORS: Record<Theme, string> = {
   dark: "#15100B",
   light: "#F6F4EE",
@@ -712,7 +719,7 @@ const BookCover = ({ book, large = false }: { book: BookSummary; large?: boolean
         className="book-cover-image"
         src={book.coverUrl}
         width={large ? 280 : 160}
-        height={large ? 373 : 213}
+        height={large ? 420 : 240}
         loading={large ? "eager" : "lazy"}
       />
     ) : (
@@ -1249,22 +1256,31 @@ const BookshelfGrid = ({
   onBookContextMenu,
 }: { books: BookSummary[]; bookshelfId?: string | null } & BookshelfBookActionProps) => (
   <section aria-label="Bookshelf grid" className="books-grid">
-    {books.map((book) => (
-      <Link
-        className="book-card"
-        key={book.id}
-        onContextMenu={(event) => onBookContextMenu(book, event)}
-        onKeyDown={(event) => onBookContextKeyDown(book, event)}
-        to={getBookHref(book.id, bookshelfId)}
-      >
-        <BookCover book={book} />
-        <div className="book-card-copy stack-xs">
-          <strong className="book-title">{book.title}</strong>
-          <span className="book-author">{book.author}</span>
-          <span className="book-meta">{formatBytes(book.fileSizeBytes)}</span>
-        </div>
-      </Link>
-    ))}
+    {books.map((book) => {
+      const addedRelative = formatRelative(book.importedAt);
+      const addedMeta = addedRelative ? `Added ${addedRelative}` : null;
+      return (
+        <Link
+          aria-label={`Open ${book.title} by ${book.author}`}
+          className="book-card"
+          key={book.id}
+          onContextMenu={(event) => onBookContextMenu(book, event)}
+          onKeyDown={(event) => onBookContextKeyDown(book, event)}
+          to={getBookHref(book.id, bookshelfId)}
+        >
+          <BookCover book={book} />
+          <div className="book-card-copy stack-xs">
+            <strong className="book-title">{book.title}</strong>
+            <span className="book-author">{book.author}</span>
+            {addedMeta ? (
+              <span className="book-meta" title={formatDate(book.importedAt)}>
+                {addedMeta}
+              </span>
+            ) : null}
+          </div>
+        </Link>
+      );
+    })}
   </section>
 );
 
@@ -1309,8 +1325,6 @@ const BookshelfList = ({
   onBookContextMenu,
   onChangeSort,
 }: BookshelfListProps) => {
-  const sortedBooks = useMemo(() => getSortedBooks(books, sort), [books, sort]);
-
   return (
     <section aria-label="Bookshelf list" className="books-table-shell">
       <Table className="books-table">
@@ -1370,7 +1384,7 @@ const BookshelfList = ({
           </TableRow>
         </TableHeader>
         <TableBody>
-          {sortedBooks.map((book) => (
+          {books.map((book) => (
             <TableRow
               className="books-table-row border-0"
               key={book.id}
@@ -1659,7 +1673,7 @@ const BookshelfPage = () => {
   const [query, setQuery] = useState(searchParams.get("q") ?? "");
   const [view, setView] = useState<BookshelfView>(() => getStoredBookshelfView() ?? "grid");
   const [books, setBooks] = useState<BookSummary[]>([]);
-  const [listSort, setListSort] = useState<BookshelfSort>(DEFAULT_BOOKSHELF_SORT);
+  const [bookshelfSort, setBookshelfSort] = useState<BookshelfSort>(DEFAULT_BOOKSHELF_SORT);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
@@ -1693,6 +1707,10 @@ const BookshelfPage = () => {
   const importTargetBookshelf = activeBookshelf ?? bookshelves[0] ?? null;
   const deferredQuery = useDeferredValue(query);
   const visibleBooks = useMemo(() => getVisibleBooks(books, deferredQuery), [books, deferredQuery]);
+  const sortedVisibleBooks = useMemo(
+    () => getSortedBooks(visibleBooks, bookshelfSort),
+    [visibleBooks, bookshelfSort],
+  );
   const showingFilteredResults = deferredQuery.trim().length > 0;
   const canSendToKindleFromShelf = Boolean(settings?.smtp.configured && activeBookshelf?.kindleEmail?.trim());
 
@@ -1818,8 +1836,12 @@ const BookshelfPage = () => {
     }
   }, []);
 
-  const onChangeListSort = useCallback((key: BookshelfSortKey) => {
-    setListSort((current) => getNextBookshelfSort(current, key));
+  const onChangeBookshelfSort = useCallback((key: BookshelfSortKey) => {
+    setBookshelfSort((current) => getNextBookshelfSort(current, key));
+  }, []);
+
+  const onSelectBookshelfSort = useCallback((key: BookshelfSortKey) => {
+    setBookshelfSort({ key, direction: getDefaultBookshelfSortDirection(key) });
   }, []);
 
   const onSelectBookshelf = useCallback(
@@ -2074,14 +2096,13 @@ const BookshelfPage = () => {
           bookshelfDropTarget.isActive && "bookshelf-dropzone-content-muted",
         )}
       >
-        <section className="hero-panel">
-          <div className="hero-copy">
-            <h2>{activeBookshelf?.name ?? "All books"}</h2>
-            {!activeBookshelf && importTargetBookshelf ? (
-              <p>Showing every title. New imports go to {importTargetBookshelf.name}.</p>
-            ) : null}
-          </div>
-          <div className="hero-actions">
+        <section className="bookshelf-header">
+          <BookshelfSwitcher
+            activeBookshelfId={activeBookshelfId}
+            bookshelves={bookshelves}
+            onSelect={onSelectBookshelf}
+          />
+          <div className="bookshelf-header-actions">
             <Button
               disabled={uploading || !importTargetBookshelf}
               onClick={() => setIsImportModalOpen(true)}
@@ -2089,22 +2110,22 @@ const BookshelfPage = () => {
             >
               {uploading ? "Importing\u2026" : "Add EPUBs"}
             </Button>
-            {hasLoadedSettings && activeBookshelf && !activeBookshelf.kindleEmail ? (
-              <Button asChild variant="outline">
-                <Link to="/settings">Add Kindle address</Link>
-              </Button>
-            ) : null}
-            <Button asChild variant="outline">
-              <Link to="/settings">Manage shelves</Link>
-            </Button>
           </div>
         </section>
 
-        <BookshelfSwitcher
-          activeBookshelfId={activeBookshelfId}
-          bookshelves={bookshelves}
-          onSelect={onSelectBookshelf}
-        />
+        {!activeBookshelf && importTargetBookshelf ? (
+          <p className="bookshelf-header-note">
+            Showing every title. New imports go to {importTargetBookshelf.name}.
+          </p>
+        ) : null}
+        {hasLoadedSettings && activeBookshelf && !activeBookshelf.kindleEmail ? (
+          <p className="bookshelf-header-note">
+            <Link className="bookshelf-header-note-link" to="/settings">
+              Add a Kindle address
+            </Link>{" "}
+            to enable sending books from {activeBookshelf.name}.
+          </p>
+        ) : null}
 
         <ImportBooksModal
           disabled={uploading}
@@ -2152,6 +2173,25 @@ const BookshelfPage = () => {
             />
           </div>
           <div className="toolbar-actions">
+            <Select
+              value={bookshelfSort.key}
+              onValueChange={(value) => onSelectBookshelfSort(value as BookshelfSortKey)}
+            >
+              <SelectTrigger
+                aria-label="Sort books"
+                className="bookshelf-sort-trigger"
+              >
+                <span className="bookshelf-sort-eyebrow">Sort</span>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {BOOKSHELF_SORT_OPTIONS.map((option) => (
+                  <SelectItem key={option.value} value={option.value}>
+                    {option.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
             <div aria-label="Bookshelf view" className="view-toggle" role="group">
               <Button
                 aria-pressed={view === "grid"}
@@ -2176,12 +2216,12 @@ const BookshelfPage = () => {
                 List
               </Button>
             </div>
-            <div className="stat-chip">
-              <strong>{numberFormatter.format(showingFilteredResults ? visibleBooks.length : books.length)}</strong>
-              <span>
-                {showingFilteredResults ? `of ${numberFormatter.format(books.length)} books` : "books"}
-              </span>
-            </div>
+            {showingFilteredResults ? (
+              <div className="stat-chip" aria-live="polite">
+                <strong>{numberFormatter.format(visibleBooks.length)}</strong>
+                <span>of {numberFormatter.format(books.length)} books</span>
+              </div>
+            ) : null}
           </div>
         </section>
 
@@ -2195,21 +2235,32 @@ const BookshelfPage = () => {
             <p>
               {showingFilteredResults
                 ? "Try a different title or author."
-                : "Import EPUB files to populate your shelf."}
+                : "Drag .epub files anywhere on this page, or click below to add them."}
             </p>
+            {!showingFilteredResults ? (
+              <div className="empty-state-actions">
+                <Button
+                  disabled={uploading || !importTargetBookshelf}
+                  onClick={() => setIsImportModalOpen(true)}
+                  type="button"
+                >
+                  {uploading ? "Importing\u2026" : "Add EPUBs"}
+                </Button>
+              </div>
+            ) : null}
           </section>
         ) : view === "list" ? (
           <BookshelfList
-            books={visibleBooks}
+            books={sortedVisibleBooks}
             bookshelfId={activeBookshelfId}
             onBookContextKeyDown={onBookContextKeyDown}
             onBookContextMenu={onBookContextMenu}
-            onChangeSort={onChangeListSort}
-            sort={listSort}
+            onChangeSort={onChangeBookshelfSort}
+            sort={bookshelfSort}
           />
         ) : (
           <BookshelfGrid
-            books={visibleBooks}
+            books={sortedVisibleBooks}
             bookshelfId={activeBookshelfId}
             onBookContextKeyDown={onBookContextKeyDown}
             onBookContextMenu={onBookContextMenu}
