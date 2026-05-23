@@ -205,6 +205,18 @@ function resolveTheme(): Theme {
   return getStoredTheme() ?? getSystemTheme();
 }
 
+function isTextEntryTarget(target: EventTarget | null) {
+  if (!(target instanceof Element)) return false;
+  if (
+    target.closest(
+      'input, textarea, select, [contenteditable], [role="combobox"], [role="textbox"]',
+    )
+  ) {
+    return true;
+  }
+  return target instanceof HTMLElement && target.isContentEditable;
+}
+
 const ThemeContext = createContext<{ theme: Theme; toggle: () => void }>({
   theme: "dark",
   toggle: () => {},
@@ -299,6 +311,31 @@ function useTheme() {
       return next;
     });
   }, []);
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (
+        event.defaultPrevented ||
+        event.repeat ||
+        !event.shiftKey ||
+        event.altKey ||
+        event.ctrlKey ||
+        event.metaKey ||
+        event.key.toLowerCase() !== "d" ||
+        isTextEntryTarget(event.target)
+      ) {
+        return;
+      }
+
+      event.preventDefault();
+      toggle();
+    };
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [toggle]);
 
   return { theme, toggle };
 }
