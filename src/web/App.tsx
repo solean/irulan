@@ -1870,6 +1870,7 @@ const BookshelfPage = () => {
   const [deletingBookId, setDeletingBookId] = useState<string | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const latestBooksRequest = useRef(0);
+  const searchInputRef = useRef<HTMLInputElement | null>(null);
   const flashMessage = (location.state as { message?: string } | null)?.message ?? null;
 
   const requestedBookshelfId = searchParams.get("shelf");
@@ -2005,6 +2006,41 @@ const BookshelfPage = () => {
       setBookActionMenu(null);
     }
   }, [bookActionMenu, visibleBooks]);
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (
+        event.defaultPrevented ||
+        !event.metaKey ||
+        event.altKey ||
+        event.ctrlKey ||
+        event.shiftKey ||
+        event.key.toLowerCase() !== "l"
+      ) {
+        return;
+      }
+
+      const target = event.target instanceof Element ? event.target : null;
+      if (target?.closest('[role="dialog"], [role="listbox"], [role="menu"]')) {
+        return;
+      }
+
+      const searchInput = searchInputRef.current;
+      if (!searchInput || searchInput.disabled) {
+        return;
+      }
+
+      event.preventDefault();
+      event.stopPropagation();
+      searchInput.focus({ preventScroll: true });
+      searchInput.select();
+    };
+
+    window.addEventListener("keydown", onKeyDown, true);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown, true);
+    };
+  }, []);
 
   useEffect(() => {
     const availableIds = new Set(bookshelves.map((bookshelf) => bookshelf.id));
@@ -2406,6 +2442,7 @@ const BookshelfPage = () => {
               id="library-search"
               inputMode="search"
               name="library_search"
+              ref={searchInputRef}
               onChange={(event) => {
                 const nextValue = event.currentTarget.value;
                 setQuery(nextValue);
