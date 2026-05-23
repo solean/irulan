@@ -69,6 +69,7 @@ booksRoutes.post("/import", async (c) => {
   try {
     const formData = await c.req.formData();
     const files = formData.getAll("files").filter((entry): entry is File => entry instanceof File);
+    const bookshelfIds = new URL(c.req.url).searchParams.getAll("bookshelfId");
 
     if (files.length === 0) {
       throw new AppError(400, "Choose at least one EPUB file to import.");
@@ -76,7 +77,7 @@ booksRoutes.post("/import", async (c) => {
 
     const results = [];
     for (const file of files) {
-      results.push(await importBookFile(file, c.req.query("bookshelfId") ?? null));
+      results.push(await importBookFile(file, bookshelfIds));
     }
 
     return c.json({ results });

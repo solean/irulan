@@ -13,8 +13,9 @@ import { AppError } from "../errors";
 import { bookDirectory, readerDirectory } from "../lib/storage";
 import { extractEpubMetadata, prepareEpubReader, resolveEpubReaderAssetPath } from "./epub";
 import {
-  addBookToResolvedBookshelf,
+  addBookToBookshelf,
   listBookshelvesForBook,
+  getFirstBookshelfRecord,
   resolveBookshelfRecord,
 } from "./bookshelves";
 
@@ -35,6 +36,22 @@ const hashStoredFile = async (filePath: string) => {
   }
 
   return hash.digest("hex");
+};
+
+const resolveImportBookshelves = (bookshelfIds?: string | string[] | null) => {
+  const rawIds = Array.isArray(bookshelfIds) ? bookshelfIds : [bookshelfIds];
+  const uniqueIds = Array.from(new Set(rawIds.map((id) => id?.trim()).filter(Boolean)));
+  if (uniqueIds.length === 0) {
+    return [getFirstBookshelfRecord()];
+  }
+
+  return uniqueIds.map((bookshelfId) => resolveBookshelfRecord(bookshelfId));
+};
+
+const formatBookshelfList = (names: string[]) => {
+  if (names.length <= 1) return names[0] ?? "your bookshelf";
+  if (names.length === 2) return `${names[0]} and ${names[1]}`;
+  return `${names.slice(0, -1).join(", ")}, and ${names[names.length - 1]}`;
 };
 
 export const serializeBook = (book: BookRecord): BookSummary => ({
@@ -209,9 +226,10 @@ export const deleteBook = async (bookId: string): Promise<DeleteBookResult> => {
 
 export const importBookFile = async (
   file: File,
-  bookshelfId?: string | null,
+  bookshelfIds?: string | string[] | null,
 ): Promise<ImportResult> => {
-  const bookshelf = resolveBookshelfRecord(bookshelfId);
+  const targetBookshelves = resolveImportBookshelves(bookshelfIds);
+  const targetBookshelfNames = targetBookshelves.map((bookshelf) => bookshelf.name);
 
   if (!file.name.toLowerCase().endsWith(".epub")) {
     return {
@@ -234,11 +252,13 @@ export const importBookFile = async (
     const fileHash = await hashStoredFile(filePath);
     const existing = db.select().from(books).where(eq(books.fileHash, fileHash)).get();
     if (existing) {
-      addBookToResolvedBookshelf(existing.id, bookshelf.id);
+      for (const bookshelf of targetBookshelves) {
+        addBookToBookshelf(existing.id, bookshelf.id);
+      }
       await rm(targetDir, { recursive: true, force: true });
       return {
         status: "duplicate",
-        message: `${file.name} is already in your library and is now on ${bookshelf.name}.`,
+        message: `${file.name} is already in your library and is now on ${formatBookshelfList(targetBookshelfNames)}.`,
         book: serializeBook(existing),
       };
     }
@@ -267,7 +287,9 @@ export const importBookFile = async (
         importedAt,
       })
       .run();
-    addBookToResolvedBookshelf(bookId, bookshelf.id);
+    for (const bookshelf of targetBookshelves) {
+      addBookToBookshelf(bookId, bookshelf.id);
+    }
     persistDatabase();
 
     const created = db.select().from(books).where(eq(books.id, bookId)).get();

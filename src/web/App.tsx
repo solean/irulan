@@ -864,6 +864,145 @@ const ImportBooksModal = ({
   );
 };
 
+type ImportTargetModalProps = {
+  disabled?: boolean;
+  fileCount: number;
+  bookshelves: BookshelfSummary[];
+  open: boolean;
+  selectedBookshelfIds: string[];
+  onClose: () => void;
+  onConfirm: () => void;
+  onClearBookshelves: () => void;
+  onSelectAllBookshelves: () => void;
+  onToggleBookshelf: (bookshelfId: string) => void;
+};
+
+const ImportTargetModal = ({
+  disabled = false,
+  fileCount,
+  bookshelves,
+  open,
+  selectedBookshelfIds,
+  onClose,
+  onConfirm,
+  onClearBookshelves,
+  onSelectAllBookshelves,
+  onToggleBookshelf,
+}: ImportTargetModalProps) => {
+  const confirmButtonRef = useRef<HTMLButtonElement | null>(null);
+  const fileLabel =
+    fileCount === 1
+      ? "1 EPUB is ready to import."
+      : `${numberFormatter.format(fileCount)} EPUBs are ready to import.`;
+  const selectedCount = selectedBookshelfIds.length;
+  const selectedLabel =
+    selectedCount === 1
+      ? "1 bookshelf selected"
+      : `${numberFormatter.format(selectedCount)} bookshelves selected`;
+  const confirmLabel =
+    selectedCount === 1
+      ? "Import to 1 bookshelf"
+      : `Import to ${numberFormatter.format(selectedCount)} bookshelves`;
+  const allBookshelvesSelected =
+    bookshelves.length > 0 && selectedBookshelfIds.length === bookshelves.length;
+
+  useEffect(() => {
+    if (open) {
+      confirmButtonRef.current?.focus();
+    }
+  }, [open]);
+
+  if (!open) return null;
+
+  return (
+    <Dialog
+      onOpenChange={(nextOpen) => {
+        if (!disabled && !nextOpen) {
+          onClose();
+        }
+      }}
+      open={open}
+    >
+      <DialogContent
+        className="import-target-modal gap-5 sm:max-w-[480px]"
+        onOpenAutoFocus={(event) => {
+          event.preventDefault();
+          confirmButtonRef.current?.focus();
+        }}
+        showCloseButton={false}
+      >
+        <DialogHeader className="stack-xs gap-1">
+          <DialogTitle className="text-[20px] font-semibold tracking-[-0.02em]">
+            Choose bookshelves
+          </DialogTitle>
+          <p className="import-target-copy">
+            {fileLabel} {selectedLabel}.
+          </p>
+        </DialogHeader>
+
+        <div className="import-target-actions">
+          <Button
+            disabled={disabled || allBookshelvesSelected}
+            onClick={onSelectAllBookshelves}
+            size="sm"
+            type="button"
+            variant="outline"
+          >
+            Select all
+          </Button>
+          <Button
+            disabled={disabled || selectedCount === 0}
+            onClick={onClearBookshelves}
+            size="sm"
+            type="button"
+            variant="ghost"
+          >
+            Clear
+          </Button>
+        </div>
+
+        <fieldset className="import-target-list">
+          <legend className="sr-only">Import destination</legend>
+          {bookshelves.map((bookshelf) => (
+            <label className="import-target-row" key={bookshelf.id}>
+              <input
+                checked={selectedBookshelfIds.includes(bookshelf.id)}
+                disabled={disabled}
+                name={`import_bookshelf_${bookshelf.id}`}
+                onChange={() => onToggleBookshelf(bookshelf.id)}
+                type="checkbox"
+                value={bookshelf.id}
+              />
+              <span className="import-target-copy-block">
+                <span className="import-target-name">{bookshelf.name}</span>
+                <span className="import-target-meta">
+                  {numberFormatter.format(bookshelf.bookCount)} books
+                  {bookshelf.kindleEmail ? ` · ${bookshelf.kindleEmail}` : ""}
+                </span>
+              </span>
+            </label>
+          ))}
+        </fieldset>
+
+        <div className="confirm-modal-actions">
+          <Button disabled={disabled} onClick={onClose} type="button" variant="outline">
+            Cancel
+          </Button>
+          <Button
+            className="import-target-confirm"
+            disabled={disabled || selectedCount === 0}
+            onClick={onConfirm}
+            ref={confirmButtonRef}
+            type="button"
+          >
+            {disabled ? "Importing\u2026" : confirmLabel}
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+};
+
 type DeleteBookModalProps = {
   open: boolean;
   deleting: boolean;
@@ -1678,6 +1817,9 @@ const BookshelfPage = () => {
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
+  const [pendingImportFiles, setPendingImportFiles] = useState<File[]>([]);
+  const [isImportTargetModalOpen, setIsImportTargetModalOpen] = useState(false);
+  const [selectedImportBookshelfIds, setSelectedImportBookshelfIds] = useState<string[]>([]);
   const [settings, setSettings] = useState<SettingsPayload | null>(null);
   const [bookshelves, setBookshelves] = useState<BookshelfSummary[]>([]);
   const [hasLoadedBooks, setHasLoadedBooks] = useState(false);
@@ -1704,7 +1846,7 @@ const BookshelfPage = () => {
     activeBookshelfId && activeBookshelfId !== ALL_BOOKSHELVES_ID
       ? bookshelves.find((bookshelf) => bookshelf.id === activeBookshelfId) ?? null
       : null;
-  const importTargetBookshelf = activeBookshelf ?? bookshelves[0] ?? null;
+  const canImportBooks = Boolean(activeBookshelf || bookshelves.length > 0);
   const deferredQuery = useDeferredValue(query);
   const visibleBooks = useMemo(() => getVisibleBooks(books, deferredQuery), [books, deferredQuery]);
   const sortedVisibleBooks = useMemo(
@@ -1827,6 +1969,19 @@ const BookshelfPage = () => {
     }
   }, [bookActionMenu, visibleBooks]);
 
+  useEffect(() => {
+    const availableIds = new Set(bookshelves.map((bookshelf) => bookshelf.id));
+    const nextSelectedIds = selectedImportBookshelfIds.filter((bookshelfId) =>
+      availableIds.has(bookshelfId),
+    );
+
+    if (nextSelectedIds.length === selectedImportBookshelfIds.length) {
+      return;
+    }
+
+    setSelectedImportBookshelfIds(nextSelectedIds);
+  }, [bookshelves, selectedImportBookshelfIds]);
+
   const onChangeView = useCallback((nextView: BookshelfView) => {
     setView(nextView);
     try {
@@ -1935,8 +2090,8 @@ const BookshelfPage = () => {
     }
   });
 
-  const importFiles = useEffectEvent(async (files: File[]) => {
-    if (files.length === 0 || uploading || !importTargetBookshelf) return;
+  const importFiles = useEffectEvent(async (files: File[], bookshelfIds: string[]) => {
+    if (files.length === 0 || uploading || bookshelfIds.length === 0) return;
 
     setUploading(true);
     setError(null);
@@ -1944,7 +2099,7 @@ const BookshelfPage = () => {
     try {
       for (let index = 0; index < files.length; index += IMPORT_BATCH_SIZE) {
         const batch = files.slice(index, index + IMPORT_BATCH_SIZE);
-        const batchResults = await api.importBooks(batch, importTargetBookshelf.id);
+        const batchResults = await api.importBooks(batch, bookshelfIds);
         for (const result of batchResults) {
           toast({
             title: getImportToastTitle(result.status),
@@ -1967,6 +2122,59 @@ const BookshelfPage = () => {
     }
   });
 
+  const requestImportFiles = useEffectEvent((files: File[]) => {
+    if (files.length === 0 || uploading) return;
+
+    if (activeBookshelf) {
+      void importFiles(files, [activeBookshelf.id]);
+      return;
+    }
+
+    const defaultBookshelfIds =
+      selectedImportBookshelfIds.length > 0
+        ? selectedImportBookshelfIds
+        : bookshelves[0]?.id
+          ? [bookshelves[0].id]
+          : [];
+    if (defaultBookshelfIds.length === 0) return;
+
+    setSelectedImportBookshelfIds(defaultBookshelfIds);
+    setPendingImportFiles(files);
+    setIsImportTargetModalOpen(true);
+  });
+
+  const closeImportTargetModal = useCallback(() => {
+    if (uploading) return;
+    setIsImportTargetModalOpen(false);
+    setPendingImportFiles([]);
+  }, [uploading]);
+
+  const toggleImportBookshelf = useCallback((bookshelfId: string) => {
+    setSelectedImportBookshelfIds((current) =>
+      current.includes(bookshelfId)
+        ? current.filter((id) => id !== bookshelfId)
+        : [...current, bookshelfId],
+    );
+  }, []);
+
+  const selectAllImportBookshelves = useCallback(() => {
+    setSelectedImportBookshelfIds(bookshelves.map((bookshelf) => bookshelf.id));
+  }, [bookshelves]);
+
+  const clearImportBookshelves = useCallback(() => {
+    setSelectedImportBookshelfIds([]);
+  }, []);
+
+  const confirmImportTarget = useCallback(() => {
+    if (pendingImportFiles.length === 0 || selectedImportBookshelfIds.length === 0 || uploading) return;
+
+    const files = pendingImportFiles;
+    const bookshelfIds = selectedImportBookshelfIds;
+    setIsImportTargetModalOpen(false);
+    setPendingImportFiles([]);
+    void importFiles(files, bookshelfIds);
+  }, [importFiles, pendingImportFiles, selectedImportBookshelfIds, uploading]);
+
   const onDropBookshelfFiles = useEffectEvent((files: File[]) => {
     const importableFiles = getImportableFiles(files);
     if (importableFiles.length === 0) {
@@ -1978,7 +2186,7 @@ const BookshelfPage = () => {
       return;
     }
 
-    void importFiles(importableFiles);
+    requestImportFiles(importableFiles);
   });
 
   const bookshelfDropTarget = useFileDropTarget({
@@ -2085,7 +2293,9 @@ const BookshelfPage = () => {
           </div>
           <p className="bookshelf-dropzone-title">Drop EPUBs to import</p>
           <p className="bookshelf-dropzone-copy">
-            Release anywhere on the shelf to add them to {importTargetBookshelf?.name ?? "your library"}.
+            {activeBookshelf
+              ? `Release anywhere on the shelf to add them to ${activeBookshelf.name}.`
+              : "Release anywhere on the shelf to choose where they belong."}
           </p>
         </div>
       </div>
@@ -2104,7 +2314,7 @@ const BookshelfPage = () => {
           />
           <div className="bookshelf-header-actions">
             <Button
-              disabled={uploading || !importTargetBookshelf}
+              disabled={uploading || !canImportBooks}
               onClick={() => setIsImportModalOpen(true)}
               type="button"
             >
@@ -2113,11 +2323,6 @@ const BookshelfPage = () => {
           </div>
         </section>
 
-        {!activeBookshelf && importTargetBookshelf ? (
-          <p className="bookshelf-header-note">
-            Showing every title. New imports go to {importTargetBookshelf.name}.
-          </p>
-        ) : null}
         {hasLoadedSettings && activeBookshelf && !activeBookshelf.kindleEmail ? (
           <p className="bookshelf-header-note">
             <Link className="bookshelf-header-note-link" to="/settings">
@@ -2131,7 +2336,7 @@ const BookshelfPage = () => {
           disabled={uploading}
           onClose={() => setIsImportModalOpen(false)}
           onImportFiles={(files) => {
-            void importFiles(files);
+            requestImportFiles(files);
           }}
           onRejectFiles={() =>
             toast({
@@ -2141,6 +2346,19 @@ const BookshelfPage = () => {
             })
           }
           open={isImportModalOpen}
+        />
+
+        <ImportTargetModal
+          bookshelves={bookshelves}
+          disabled={uploading}
+          fileCount={pendingImportFiles.length}
+          onClearBookshelves={clearImportBookshelves}
+          onClose={closeImportTargetModal}
+          onConfirm={confirmImportTarget}
+          onSelectAllBookshelves={selectAllImportBookshelves}
+          onToggleBookshelf={toggleImportBookshelf}
+          open={isImportTargetModalOpen}
+          selectedBookshelfIds={selectedImportBookshelfIds}
         />
 
         <section className="toolbar">
@@ -2240,7 +2458,7 @@ const BookshelfPage = () => {
             {!showingFilteredResults ? (
               <div className="empty-state-actions">
                 <Button
-                  disabled={uploading || !importTargetBookshelf}
+                  disabled={uploading || !canImportBooks}
                   onClick={() => setIsImportModalOpen(true)}
                   type="button"
                 >

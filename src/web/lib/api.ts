@@ -41,15 +41,18 @@ export const api = {
     return payload.books;
   },
 
-  async importBooks(files: File[], bookshelfId?: string | null) {
+  async importBooks(files: File[], bookshelfIds?: string | string[] | null) {
     const formData = new FormData();
     for (const file of files) {
       formData.append("files", file);
     }
 
     const params = new URLSearchParams();
-    if (bookshelfId?.trim()) {
-      params.set("bookshelfId", bookshelfId.trim());
+    const targetBookshelfIds = Array.isArray(bookshelfIds) ? bookshelfIds : [bookshelfIds];
+    for (const bookshelfId of targetBookshelfIds) {
+      if (bookshelfId?.trim()) {
+        params.append("bookshelfId", bookshelfId.trim());
+      }
     }
     const suffix = params.size > 0 ? `?${params.toString()}` : "";
 
