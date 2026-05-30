@@ -1,4 +1,6 @@
-import { index, integer, primaryKey, sqliteTable, text } from "drizzle-orm/sqlite-core";
+import { index, integer, primaryKey, real, sqliteTable, text } from "drizzle-orm/sqlite-core";
+
+import type { ReadStatus } from "../../shared/types";
 
 export const bookshelves = sqliteTable(
   "bookshelves",
@@ -24,6 +26,8 @@ export const books = sqliteTable(
     sourceFilename: text("source_filename").notNull(),
     fileSizeBytes: integer("file_size_bytes").notNull(),
     importedAt: integer("imported_at", { mode: "timestamp_ms" }).notNull(),
+    readStatus: text("reading_status").$type<ReadStatus>().notNull().default("unread"),
+    rating: real("rating"),
   },
   (table) => [index("books_imported_at_idx").on(table.importedAt)],
 );

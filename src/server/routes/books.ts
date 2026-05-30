@@ -3,6 +3,7 @@ import { access, readFile } from "node:fs/promises";
 import { Hono } from "hono";
 import { z } from "zod";
 
+import { READ_STATUSES } from "../../shared/types";
 import { AppError, errorMessage } from "../errors";
 import { coverContentType, readerAssetContentType } from "../lib/storage";
 import {
@@ -13,6 +14,7 @@ import {
   getBookRecord,
   importBookFile,
   listBooks,
+  updateBookMetadata,
 } from "../services/books";
 import { replaceBookBookshelves } from "../services/bookshelves";
 import { listDeliveriesForBook, sendBookToKindle } from "../services/delivery";
@@ -24,6 +26,17 @@ const sendSchema = z.object({
 
 const bookBookshelvesSchema = z.object({
   bookshelfIds: z.array(z.string().trim().min(1)).min(1),
+});
+
+const bookMetadataSchema = z.object({
+  readStatus: z.enum(READ_STATUSES).optional(),
+  rating: z
+    .number()
+    .min(0.5)
+    .max(5)
+    .refine((value) => Number.isInteger(value * 2), "Rating must use half-star increments.")
+    .nullable()
+    .optional(),
 });
 
 const routeError = (error: unknown) => {
@@ -157,6 +170,16 @@ booksRoutes.put("/:id/bookshelves", async (c) => {
     const payload = bookBookshelvesSchema.parse(body);
     replaceBookBookshelves(c.req.param("id"), payload.bookshelfIds);
     return c.json({ book: getBook(c.req.param("id")) });
+  } catch (error) {
+    return routeError(error);
+  }
+});
+
+booksRoutes.patch("/:id/metadata", async (c) => {
+  try {
+    const body = await c.req.json();
+    const payload = bookMetadataSchema.parse(body);
+    return c.json({ book: updateBookMetadata(c.req.param("id"), payload) });
   } catch (error) {
     return routeError(error);
   }

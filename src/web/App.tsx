@@ -30,6 +30,7 @@ import {
   useParams,
   useSearchParams,
 } from "react-router-dom";
+import { StarIcon } from "lucide-react";
 
 import {
   AlertDialog,
@@ -76,16 +77,19 @@ import {
 } from "@/components/ui/toast";
 import { cn } from "@/lib/utils";
 
-import type {
-  BookDetail,
-  BookReader,
-  BookReaderSection,
-  BookSummary,
-  BookshelfSummary,
-  DeliveryRecord,
-  ImportResult,
-  SmtpSettings,
-  SettingsPayload,
+import {
+  READ_STATUSES,
+  type BookDetail,
+  type BookReader,
+  type BookReaderSection,
+  type BookSummary,
+  type BookshelfSummary,
+  type DeliveryRecord,
+  type ImportResult,
+  type ReadStatus,
+  type SmtpSettings,
+  type SettingsPayload,
+  type UpdateBookMetadataPayload,
 } from "../shared/types";
 import { api } from "./lib/api";
 import {
@@ -98,7 +102,14 @@ import {
 type Theme = "light" | "dark";
 type BookshelfView = "grid" | "list";
 type ReaderTone = "paper" | "sepia" | "night";
-type BookshelfSortKey = "title" | "author" | "sourceFilename" | "importedAt" | "fileSizeBytes";
+type BookshelfSortKey =
+  | "title"
+  | "author"
+  | "sourceFilename"
+  | "importedAt"
+  | "fileSizeBytes"
+  | "readStatus"
+  | "rating";
 type SortDirection = "asc" | "desc";
 type BookshelfSort = {
   key: BookshelfSortKey;
@@ -136,9 +147,23 @@ const BOOKSHELF_SORT_OPTIONS: ReadonlyArray<{ value: BookshelfSortKey; label: st
   { value: "importedAt", label: "Recently added" },
   { value: "title", label: "Title" },
   { value: "author", label: "Author" },
+  { value: "readStatus", label: "Read status" },
+  { value: "rating", label: "Rating" },
   { value: "sourceFilename", label: "Filename" },
   { value: "fileSizeBytes", label: "File size" },
 ];
+const READ_STATUS_LABELS: Record<ReadStatus, string> = {
+  unread: "Unread",
+  reading: "Reading",
+  finished: "Finished",
+};
+const READ_STATUS_OPTIONS: ReadonlyArray<{ value: ReadStatus; label: string }> =
+  READ_STATUSES.map((value) => ({ value, label: READ_STATUS_LABELS[value] }));
+const READ_STATUS_ORDER: Record<ReadStatus, number> = {
+  unread: 0,
+  reading: 1,
+  finished: 2,
+};
 const THEME_META_COLORS: Record<Theme, string> = {
   dark: "#15100B",
   light: "#F6F4EE",
@@ -387,7 +412,7 @@ const formatRelative = (value: string | null): string | null => {
 };
 
 const getDefaultBookshelfSortDirection = (key: BookshelfSortKey): SortDirection =>
-  key === "importedAt" || key === "fileSizeBytes" ? "desc" : "asc";
+  key === "importedAt" || key === "fileSizeBytes" || key === "rating" ? "desc" : "asc";
 
 const getNextBookshelfSort = (current: BookshelfSort, key: BookshelfSortKey): BookshelfSort => {
   if (current.key === key) {
@@ -405,6 +430,10 @@ const getNextBookshelfSort = (current: BookshelfSort, key: BookshelfSortKey): Bo
 
 const compareBooks = (left: BookSummary, right: BookSummary, key: BookshelfSortKey) => {
   switch (key) {
+    case "rating":
+      return (left.rating ?? 0) - (right.rating ?? 0);
+    case "readStatus":
+      return READ_STATUS_ORDER[left.readStatus] - READ_STATUS_ORDER[right.readStatus];
     case "fileSizeBytes":
       return left.fileSizeBytes - right.fileSizeBytes;
     case "importedAt":
@@ -739,6 +768,177 @@ const MailIcon = () => (
     <rect height="10" rx="1.5" width="13" x="1.5" y="3" />
     <path d="m2 4 6 5 6-5" />
   </svg>
+);
+
+const formatRatingValue = (rating: number) =>
+  Number.isInteger(rating) ? String(rating) : rating.toFixed(1);
+
+const getRatingLabel = (rating: number | null) =>
+  rating ? `${formatRatingValue(rating)} out of 5 stars` : "No rating";
+
+const getStarFill = (rating: number | null, index: number) => {
+  if (!rating) return 0;
+  return Math.max(0, Math.min(1, rating - index));
+};
+
+const ReadStatusBadge = ({ status }: { status: ReadStatus }) => (
+  <span className={cn("read-status-badge", `read-status-${status}`)}>
+    {READ_STATUS_LABELS[status]}
+  </span>
+);
+
+const RatingStars = ({
+  compact = false,
+  rating,
+}: {
+  compact?: boolean;
+  rating: number | null;
+}) => {
+  const label = getRatingLabel(rating);
+
+  return (
+    <span
+      aria-label={label}
+      className={cn("rating-stars", compact && "rating-stars-compact")}
+      title={label}
+    >
+      {Array.from({ length: 5 }, (_, index) => {
+        const fill = getStarFill(rating, index);
+        return (
+          <span
+            aria-hidden="true"
+            className="rating-star-frame"
+            key={`rating-star-${index}`}
+            style={{ "--star-fill": `${fill * 100}%` } as CSSProperties}
+          >
+            <StarIcon className="rating-star-empty" />
+            <span className="rating-star-fill">
+              <StarIcon />
+            </span>
+          </span>
+        );
+      })}
+      {!compact ? (
+        <span className="rating-stars-label">
+          {rating ? `${formatRatingValue(rating)}/5` : "No rating"}
+        </span>
+      ) : null}
+    </span>
+  );
+};
+
+const BookMetadataStrip = ({ book }: { book: BookSummary }) => (
+  <span className="book-user-meta">
+    <ReadStatusBadge status={book.readStatus} />
+    {book.rating ? <RatingStars compact rating={book.rating} /> : null}
+  </span>
+);
+
+type RatingControlProps = {
+  disabled?: boolean;
+  rating: number | null;
+  onChange: (rating: number | null) => void;
+};
+
+const RatingControl = ({ disabled = false, rating, onChange }: RatingControlProps) => (
+  <div aria-label="Rating" className="rating-control" role="group">
+    <div className="rating-slider-wrap">
+      <RatingStars compact rating={rating} />
+      <input
+        aria-label={rating ? `Rating: ${getRatingLabel(rating)}` : "Rating: no rating"}
+        aria-valuetext={rating ? getRatingLabel(rating) : "No rating"}
+        className="rating-range"
+        disabled={disabled}
+        max={5}
+        min={0}
+        onChange={(event) => {
+          const nextRating = Number(event.currentTarget.value);
+          onChange(nextRating === 0 ? null : nextRating);
+        }}
+        step={0.5}
+        type="range"
+        value={rating ?? 0}
+      />
+    </div>
+    <Button
+      disabled={disabled || rating === null}
+      onClick={() => onChange(null)}
+      size="sm"
+      type="button"
+      variant="ghost"
+    >
+      Clear
+    </Button>
+  </div>
+);
+
+type BookMetadataEditorProps = {
+  book: BookDetail;
+  error: string | null;
+  saving: boolean;
+  onChange: (metadata: UpdateBookMetadataPayload) => void;
+};
+
+const BookMetadataEditor = ({
+  book,
+  error,
+  saving,
+  onChange,
+}: BookMetadataEditorProps) => (
+  <div className="reading-card">
+    <div className="reading-card-header">
+      <div className="send-card-title">
+        <span>Book metadata</span>
+      </div>
+      {saving ? (
+        <span aria-live="polite" className="reading-card-state">
+          Saving{"\u2026"}
+        </span>
+      ) : null}
+    </div>
+
+    <div className="reading-controls">
+      <div className="reading-control">
+        <Label className="reading-control-label" id="read-status-label">
+          Read status
+        </Label>
+        <Select
+          disabled={saving}
+          onValueChange={(value) => onChange({ readStatus: value as ReadStatus })}
+          value={book.readStatus}
+        >
+          <SelectTrigger
+            aria-labelledby="read-status-label"
+            className="read-status-trigger"
+          >
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {READ_STATUS_OPTIONS.map((option) => (
+              <SelectItem key={option.value} value={option.value}>
+                {option.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+
+      <div className="reading-control">
+        <Label className="reading-control-label">Rating</Label>
+        <RatingControl
+          disabled={saving}
+          onChange={(rating) => onChange({ rating })}
+          rating={book.rating}
+        />
+      </div>
+    </div>
+
+    {error ? (
+      <p aria-live="polite" className="inline-error metadata-error">
+        {error}
+      </p>
+    ) : null}
+  </div>
 );
 
 const PlaceholderCover = ({ title }: { title: string }) => (
@@ -1448,6 +1648,7 @@ const BookshelfGrid = ({
           <div className="book-card-copy stack-xs">
             <strong className="book-title">{book.title}</strong>
             <span className="book-author">{book.author}</span>
+            <BookMetadataStrip book={book} />
             {addedMeta ? (
               <span className="book-meta" title={formatDate(book.importedAt)}>
                 {addedMeta}
@@ -1584,6 +1785,7 @@ const BookshelfList = ({
                     >
                       {book.title}
                     </Link>
+                    <BookMetadataStrip book={book} />
                   </div>
                 </div>
               </TableCell>
@@ -2580,9 +2782,11 @@ const BookDetailPage = () => {
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [savingBookShelves, setSavingBookShelves] = useState(false);
+  const [savingMetadata, setSavingMetadata] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [metadataError, setMetadataError] = useState<string | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [copyState, setCopyState] = useState<"idle" | "copied" | "failed">("idle");
   const [showStickyBar, setShowStickyBar] = useState(false);
@@ -2632,6 +2836,8 @@ const BookDetailPage = () => {
     setRecipientEmail("");
     setEditingRecipient(false);
     setSavingBookShelves(false);
+    setSavingMetadata(false);
+    setMetadataError(null);
     setDeleteError(null);
     setIsDeleteModalOpen(false);
     setShowStickyBar(false);
@@ -2768,6 +2974,39 @@ const BookDetailPage = () => {
       });
     } finally {
       setSavingBookShelves(false);
+    }
+  };
+
+  const onSaveBookMetadata = async (metadata: UpdateBookMetadataPayload) => {
+    if (!book || savingMetadata) return;
+
+    const nextReadStatus = metadata.readStatus ?? book.readStatus;
+    const nextRating = metadata.rating === undefined ? book.rating : metadata.rating;
+    if (nextReadStatus === book.readStatus && nextRating === book.rating) return;
+
+    const previousBook = book;
+    setBook({
+      ...book,
+      readStatus: nextReadStatus,
+      rating: nextRating,
+    });
+    setSavingMetadata(true);
+    setMetadataError(null);
+
+    try {
+      setBook(await api.saveBookMetadata(book.id, metadata));
+    } catch (requestError) {
+      setBook(previousBook);
+      const message =
+        requestError instanceof Error ? requestError.message : "Could not save metadata.";
+      setMetadataError(message);
+      toast({
+        title: "Could not save metadata",
+        description: message,
+        variant: "error",
+      });
+    } finally {
+      setSavingMetadata(false);
     }
   };
 
@@ -2949,6 +3188,15 @@ const BookDetailPage = () => {
             </p>
           </div>
 
+          <BookMetadataEditor
+            book={book}
+            error={metadataError}
+            onChange={(metadata) => {
+              void onSaveBookMetadata(metadata);
+            }}
+            saving={savingMetadata}
+          />
+
           <div className="send-card">
             <div className="send-card-header">
               <div className="send-card-title">
@@ -3080,6 +3328,18 @@ const BookDetailPage = () => {
             <dd>{formatDate(book.importedAt)}</dd>
           </div>
           <div>
+            <dt>Read status</dt>
+            <dd>
+              <ReadStatusBadge status={book.readStatus} />
+            </dd>
+          </div>
+          <div>
+            <dt>Rating</dt>
+            <dd>
+              <RatingStars rating={book.rating} />
+            </dd>
+          </div>
+          <div>
             <dt>Bookshelves</dt>
             <dd>
               <span className="bookshelf-chip-row">
@@ -3091,7 +3351,7 @@ const BookDetailPage = () => {
               </span>
             </dd>
           </div>
-          <div>
+          <div className="about-grid-file-row">
             <dt>Filename</dt>
             <dd>
               <span className="about-grid-filename-value" title={book.sourceFilename}>

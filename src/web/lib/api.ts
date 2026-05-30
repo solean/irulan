@@ -9,6 +9,7 @@ import type {
   ImportResult,
   SmtpSettings,
   SettingsPayload,
+  UpdateBookMetadataPayload,
 } from "../../shared/types";
 
 const request = async <T>(input: string, init?: RequestInit): Promise<T> => {
@@ -88,6 +89,17 @@ export const api = {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({ bookshelfIds }),
+    });
+    return payload.book;
+  },
+
+  async saveBookMetadata(bookId: string, metadata: UpdateBookMetadataPayload) {
+    const payload = await request<{ book: BookDetail }>(`/api/books/${bookId}/metadata`, {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(metadata),
     });
     return payload.book;
   },

@@ -1,3 +1,7 @@
+export const READ_STATUSES = ["unread", "reading", "finished"] as const;
+
+export type ReadStatus = (typeof READ_STATUSES)[number];
+
 export type BookshelfSummary = {
   id: string;
   name: string;
@@ -14,10 +18,17 @@ export type BookSummary = {
   fileSizeBytes: number;
   importedAt: string;
   coverUrl: string | null;
+  readStatus: ReadStatus;
+  rating: number | null;
   bookshelves: BookshelfSummary[];
 };
 
 export type BookDetail = BookSummary;
+
+export type UpdateBookMetadataPayload = {
+  readStatus?: ReadStatus;
+  rating?: number | null;
+};
 
 export type BookReaderSection = {
   id: string;

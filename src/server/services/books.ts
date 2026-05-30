@@ -5,7 +5,14 @@ import path from "node:path";
 
 import { and, desc, eq, like, or } from "drizzle-orm";
 
-import { BookDetail, BookReader, BookSummary, DeleteBookResult, ImportResult } from "../../shared/types";
+import {
+  BookDetail,
+  BookReader,
+  BookSummary,
+  DeleteBookResult,
+  ImportResult,
+  type UpdateBookMetadataPayload,
+} from "../../shared/types";
 import { appConfig } from "../config";
 import { db, persistDatabase } from "../db/client";
 import { books, bookShelves, deliveries } from "../db/schema";
@@ -54,6 +61,11 @@ const formatBookshelfList = (names: string[]) => {
   return `${names.slice(0, -1).join(", ")}, and ${names[names.length - 1]}`;
 };
 
+const normalizeRating = (rating: number | null) => {
+  if (rating === null) return null;
+  return Number.isInteger(rating * 2) && rating >= 0.5 && rating <= 5 ? rating : null;
+};
+
 export const serializeBook = (book: BookRecord): BookSummary => ({
   id: book.id,
   title: book.title,
@@ -62,6 +74,8 @@ export const serializeBook = (book: BookRecord): BookSummary => ({
   fileSizeBytes: book.fileSizeBytes,
   importedAt: book.importedAt.toISOString(),
   coverUrl: book.coverPath ? `/api/books/${book.id}/cover` : null,
+  readStatus: book.readStatus,
+  rating: normalizeRating(book.rating),
   bookshelves: listBookshelvesForBook(book.id),
 });
 
@@ -88,6 +102,8 @@ export const listBooks = (searchTerm?: string, bookshelfId?: string | null): Boo
         sourceFilename: books.sourceFilename,
         fileSizeBytes: books.fileSizeBytes,
         importedAt: books.importedAt,
+        readStatus: books.readStatus,
+        rating: books.rating,
       })
       .from(books)
       .innerJoin(bookShelves, eq(bookShelves.bookId, books.id))
@@ -129,6 +145,24 @@ export const getBookRecord = (bookId: string) => {
     throw new AppError(404, "Book not found.");
   }
   return row;
+};
+
+export const updateBookMetadata = (
+  bookId: string,
+  metadata: UpdateBookMetadataPayload,
+): BookDetail => {
+  const current = getBookRecord(bookId);
+
+  db.update(books)
+    .set({
+      readStatus: metadata.readStatus ?? current.readStatus,
+      rating: metadata.rating === undefined ? current.rating : metadata.rating,
+    })
+    .where(eq(books.id, bookId))
+    .run();
+  persistDatabase();
+
+  return getBook(bookId);
 };
 
 const loadPreparedBookReader = async (bookId: string): Promise<PreparedBookReader> => {

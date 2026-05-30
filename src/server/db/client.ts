@@ -66,7 +66,9 @@ export const ensureSchema = () => {
       file_hash TEXT NOT NULL UNIQUE,
       source_filename TEXT NOT NULL,
       file_size_bytes INTEGER NOT NULL,
-      imported_at INTEGER NOT NULL
+      imported_at INTEGER NOT NULL,
+      reading_status TEXT NOT NULL DEFAULT 'unread',
+      rating REAL
     );
 
     CREATE TABLE IF NOT EXISTS book_shelves (
@@ -114,7 +116,29 @@ export const ensureSchema = () => {
     client.run("ALTER TABLE deliveries ADD COLUMN bookshelf_id TEXT;");
   }
 
+  if (!hasColumn("books", "reading_status")) {
+    client.run("ALTER TABLE books ADD COLUMN reading_status TEXT NOT NULL DEFAULT 'unread';");
+  }
+
+  if (!hasColumn("books", "rating")) {
+    client.run("ALTER TABLE books ADD COLUMN rating REAL;");
+  }
+
   client.run(`
+    UPDATE books
+    SET reading_status = 'unread'
+    WHERE reading_status IS NULL
+      OR reading_status NOT IN ('unread', 'reading', 'finished');
+
+    UPDATE books
+    SET rating = NULL
+    WHERE rating IS NOT NULL
+      AND (
+        rating < 0.5
+        OR rating > 5
+        OR rating * 2 != CAST(rating * 2 AS INTEGER)
+      );
+
     CREATE INDEX IF NOT EXISTS deliveries_bookshelf_id_created_at_idx
       ON deliveries(bookshelf_id, created_at);
 
