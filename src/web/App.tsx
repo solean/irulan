@@ -21,7 +21,6 @@ import {
 } from "react";
 import {
   Link,
-  NavLink,
   Outlet,
   Route,
   Routes,
@@ -30,7 +29,7 @@ import {
   useParams,
   useSearchParams,
 } from "react-router-dom";
-import { StarIcon } from "lucide-react";
+import { LibraryBig, Moon, MoreHorizontal, Settings2, StarIcon, Sun } from "lucide-react";
 
 import {
   AlertDialog,
@@ -242,8 +241,13 @@ function isTextEntryTarget(target: EventTarget | null) {
   return target instanceof HTMLElement && target.isContentEditable;
 }
 
-const ThemeContext = createContext<{ theme: Theme; toggle: () => void }>({
+const ThemeContext = createContext<{
+  theme: Theme;
+  setTheme: (theme: Theme) => void;
+  toggle: () => void;
+}>({
   theme: "dark",
+  setTheme: () => {},
   toggle: () => {},
 });
 const ToastContext = createContext<((toast: ToastInput) => void) | null>(null);
@@ -313,11 +317,11 @@ function useMediaQuery(query: string) {
 
 function useTheme() {
   const prefersDark = useMediaQuery("(prefers-color-scheme: dark)");
-  const [theme, setTheme] = useState<Theme>(resolveTheme);
+  const [theme, setThemeState] = useState<Theme>(resolveTheme);
 
   useEffect(() => {
     if (!getStoredTheme()) {
-      setTheme(prefersDark ? "dark" : "light");
+      setThemeState(prefersDark ? "dark" : "light");
     }
   }, [prefersDark]);
 
@@ -325,8 +329,17 @@ function useTheme() {
     applyTheme(theme);
   }, [theme]);
 
+  const setTheme = useCallback((next: Theme) => {
+    try {
+      localStorage.setItem(THEME_KEY, next);
+    } catch {
+      /* noop */
+    }
+    setThemeState(next);
+  }, []);
+
   const toggle = useCallback(() => {
-    setTheme((prev) => {
+    setThemeState((prev) => {
       const next = prev === "dark" ? "light" : "dark";
       try {
         localStorage.setItem(THEME_KEY, next);
@@ -362,7 +375,7 @@ function useTheme() {
     };
   }, [toggle]);
 
-  return { theme, toggle };
+  return { theme, setTheme, toggle };
 }
 
 const numberFormatter = new Intl.NumberFormat(undefined);
@@ -665,29 +678,9 @@ const BookIcon = () => (
   </svg>
 );
 
-const SettingsIcon = () => (
-  <svg viewBox="0 0 16 16" aria-hidden="true">
-    <path d="M8 10a2 2 0 1 0 0-4 2 2 0 0 0 0 4Z" />
-    <path d="M6.7 2.2a.7.7 0 0 1 .7-.7h1.2a.7.7 0 0 1 .7.7l.2 1.1a4.7 4.7 0 0 1 1.1.7l1-.4a.7.7 0 0 1 .8.3l.6 1a.7.7 0 0 1-.1.9l-.9.8v1.2l.9.7a.7.7 0 0 1 .1 1l-.6 1a.7.7 0 0 1-.8.3l-1-.4a4.8 4.8 0 0 1-1.1.7l-.2 1a.7.7 0 0 1-.7.7H7.4a.7.7 0 0 1-.7-.6l-.2-1.1a4.7 4.7 0 0 1-1.1-.7l-1 .4a.7.7 0 0 1-.9-.3l-.6-1a.7.7 0 0 1 .2-.9l.8-.8V7.5l-.8-.7a.7.7 0 0 1-.2-1l.6-1a.7.7 0 0 1 .9-.3l1 .4a4.7 4.7 0 0 1 1-.7l.3-1Z" />
-  </svg>
-);
-
 const ArrowLeftIcon = () => (
   <svg viewBox="0 0 16 16" aria-hidden="true">
     <path d="M10 12 6 8l4-4" />
-  </svg>
-);
-
-const SunIcon = () => (
-  <svg viewBox="0 0 16 16" aria-hidden="true">
-    <circle cx="8" cy="8" r="3" />
-    <path d="M8 1.5v1M8 13.5v1M3.4 3.4l.7.7M11.9 11.9l.7.7M1.5 8h1M13.5 8h1M3.4 12.6l.7-.7M11.9 4.1l.7-.7" />
-  </svg>
-);
-
-const MoonIcon = () => (
-  <svg viewBox="0 0 16 16" aria-hidden="true">
-    <path d="M13.4 10.3A5.5 5.5 0 0 1 5.7 2.6a5.5 5.5 0 1 0 7.7 7.7Z" />
   </svg>
 );
 
@@ -1981,12 +1974,158 @@ const SettingsSkeleton = () => (
   </div>
 );
 
+const getFocusableMenuItems = (container: HTMLElement | null) =>
+  Array.from(
+    container?.querySelectorAll<HTMLElement>(
+      'a[href], button:not(:disabled), [tabindex]:not([tabindex="-1"])',
+    ) ?? [],
+  );
+
+const AppMenu = () => {
+  const location = useLocation();
+  const { setTheme, theme } = useContext(ThemeContext);
+  const [open, setOpen] = useState(false);
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const popoverRef = useRef<HTMLDivElement | null>(null);
+  const triggerRef = useRef<HTMLButtonElement | null>(null);
+  const menuActive = location.pathname === "/settings" || location.pathname === "/bookshelves";
+
+  const closeMenu = useCallback((returnFocus = false) => {
+    setOpen(false);
+    if (returnFocus) {
+      window.requestAnimationFrame(() => triggerRef.current?.focus({ preventScroll: true }));
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!open) return;
+
+    const firstItem = getFocusableMenuItems(popoverRef.current)[0];
+    firstItem?.focus({ preventScroll: true });
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+
+    const onPointerDown = (event: PointerEvent) => {
+      if (
+        containerRef.current &&
+        !containerRef.current.contains(event.target as Node)
+      ) {
+        closeMenu();
+      }
+    };
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") closeMenu(true);
+    };
+
+    window.addEventListener("pointerdown", onPointerDown);
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("pointerdown", onPointerDown);
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [closeMenu, open]);
+
+  const onMenuKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
+    if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) return;
+
+    const items = getFocusableMenuItems(popoverRef.current);
+    if (items.length === 0) return;
+
+    event.preventDefault();
+    const activeIndex = items.findIndex((item) => item === document.activeElement);
+    const nextIndex =
+      event.key === "Home"
+        ? 0
+        : event.key === "End"
+          ? items.length - 1
+          : event.key === "ArrowDown"
+            ? (activeIndex + 1) % items.length
+            : (activeIndex - 1 + items.length) % items.length;
+    items[nextIndex]?.focus({ preventScroll: true });
+  };
+
+  return (
+    <div className="app-menu" ref={containerRef}>
+      <button
+        aria-expanded={open}
+        aria-haspopup="menu"
+        aria-label="Open app menu"
+        className={cn("main-header-action app-menu-trigger", menuActive && "active")}
+        onClick={() => setOpen((current) => !current)}
+        ref={triggerRef}
+        type="button"
+      >
+        <MoreHorizontal aria-hidden="true" />
+      </button>
+
+      {open ? (
+        <div
+          aria-label="App menu"
+          className="app-menu-popover"
+          onKeyDown={onMenuKeyDown}
+          ref={popoverRef}
+          role="menu"
+        >
+          <Link
+            className="app-menu-item"
+            onClick={() => closeMenu()}
+            role="menuitem"
+            to="/settings"
+          >
+            <Settings2 aria-hidden="true" />
+            <span>Settings</span>
+          </Link>
+          <Link
+            className="app-menu-item"
+            onClick={() => closeMenu()}
+            role="menuitem"
+            to="/bookshelves"
+          >
+            <LibraryBig aria-hidden="true" />
+            <span>Bookshelves</span>
+          </Link>
+
+          <div className="app-menu-separator" role="separator" />
+
+          <div aria-label="Theme" className="app-menu-theme-row" role="group">
+            <span className="app-menu-theme-label">Theme</span>
+            <div className="app-menu-theme-toggle">
+              <button
+                aria-checked={theme === "light"}
+                aria-label="Use light mode"
+                className={cn("app-menu-theme-button", theme === "light" && "active")}
+                onClick={() => setTheme("light")}
+                role="menuitemradio"
+                type="button"
+              >
+                <Sun aria-hidden="true" />
+              </button>
+              <button
+                aria-checked={theme === "dark"}
+                aria-label="Use dark mode"
+                className={cn("app-menu-theme-button", theme === "dark" && "active")}
+                onClick={() => setTheme("dark")}
+                role="menuitemradio"
+                type="button"
+              >
+                <Moon aria-hidden="true" />
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
+};
+
 const Shell = () => {
   const location = useLocation();
-  const { theme, toggle } = useContext(ThemeContext);
 
   const pageTitle = (() => {
     if (location.pathname === "/settings") return "Settings";
+    if (location.pathname === "/bookshelves") return "Bookshelves";
     if (location.pathname.startsWith("/books/") && location.pathname.endsWith("/read")) {
       return "Reader";
     }
@@ -2012,23 +2151,7 @@ const Shell = () => {
             </Link>
             <div className="header-spacer" />
             <div aria-label="App controls" className="main-header-actions" role="group">
-              <NavLink
-                aria-label="Open settings"
-                className={({ isActive }) =>
-                  cn("main-header-action", isActive && "active")
-                }
-                to="/settings"
-              >
-                <span className="main-header-action-label">Settings</span>
-              </NavLink>
-              <button
-                aria-label={`Switch to ${theme === "dark" ? "light" : "dark"} mode`}
-                className="main-header-action"
-                onClick={toggle}
-                type="button"
-              >
-                {theme === "dark" ? <SunIcon /> : <MoonIcon />}
-              </button>
+              <AppMenu />
             </div>
           </div>
         </header>
@@ -4267,11 +4390,6 @@ const SettingsPage = () => {
 
   const [settings, setSettings] = useState<SettingsPayload | null>(null);
   const [bookshelves, setBookshelves] = useState<BookshelfSummary[]>([]);
-  const [bookshelfForms, setBookshelfForms] = useState<Record<string, BookshelfFormState>>({});
-  const [newBookshelf, setNewBookshelf] = useState<BookshelfFormState>({
-    name: "",
-    kindleEmail: "",
-  });
   const [smtpForm, setSmtpForm] = useState<SmtpFormState>({
     host: "",
     port: "587",
@@ -4281,11 +4399,7 @@ const SettingsPage = () => {
     from: "",
   });
   const [loading, setLoading] = useState(true);
-  const [savingBookshelfId, setSavingBookshelfId] = useState<string | null>(null);
-  const [deletingBookshelfId, setDeletingBookshelfId] = useState<string | null>(null);
-  const [creatingBookshelf, setCreatingBookshelf] = useState(false);
   const [savingSmtp, setSavingSmtp] = useState(false);
-  const [testingBookshelfId, setTestingBookshelfId] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
 
   const loadSettings = useEffectEvent(async () => {
@@ -4299,7 +4413,6 @@ const SettingsPage = () => {
       ]);
       setSettings(payload);
       setBookshelves(nextBookshelves);
-      setBookshelfForms(toBookshelfFormMap(nextBookshelves));
       setSmtpForm(toSmtpFormState(payload.smtp));
     } catch (requestError) {
       setLoadError(
@@ -4313,96 +4426,6 @@ const SettingsPage = () => {
   useEffect(() => {
     void loadSettings();
   }, []);
-
-  const refreshBookshelves = async () => {
-    const nextBookshelves = await api.listBookshelves();
-    setBookshelves(nextBookshelves);
-    setBookshelfForms(toBookshelfFormMap(nextBookshelves));
-    return nextBookshelves;
-  };
-
-  const onSaveBookshelf = async (bookshelfId: string) => {
-    const form = bookshelfForms[bookshelfId];
-    if (!form || savingBookshelfId) return;
-
-    setSavingBookshelfId(bookshelfId);
-
-    try {
-      await api.updateBookshelf(bookshelfId, form.name.trim(), form.kindleEmail.trim() || null);
-      await refreshBookshelves();
-      toast({
-        title: "Bookshelf saved",
-        description: "Bookshelf settings saved.",
-        variant: "success",
-      });
-    } catch (requestError) {
-      toast({
-        title: "Could not save bookshelf",
-        description:
-          requestError instanceof Error ? requestError.message : "Could not save bookshelf.",
-        variant: "error",
-      });
-    } finally {
-      setSavingBookshelfId(null);
-    }
-  };
-
-  const onCreateBookshelf = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    setCreatingBookshelf(true);
-
-    try {
-      const created = await api.createBookshelf(
-        newBookshelf.name.trim(),
-        newBookshelf.kindleEmail.trim() || null,
-      );
-      await refreshBookshelves();
-      setNewBookshelf({ name: "", kindleEmail: "" });
-      toast({
-        title: "Bookshelf created",
-        description: `${created.name} is ready.`,
-        variant: "success",
-      });
-    } catch (requestError) {
-      toast({
-        title: "Could not create bookshelf",
-        description:
-          requestError instanceof Error ? requestError.message : "Could not create bookshelf.",
-        variant: "error",
-      });
-    } finally {
-      setCreatingBookshelf(false);
-    }
-  };
-
-  const onDeleteBookshelf = async (bookshelf: BookshelfSummary) => {
-    if (deletingBookshelfId) return;
-    const confirmed = window.confirm(
-      `Remove "${bookshelf.name}"? Books remain in the shared library.`,
-    );
-    if (!confirmed) return;
-
-    setDeletingBookshelfId(bookshelf.id);
-
-    try {
-      const deletion = await api.deleteBookshelf(bookshelf.id);
-      await refreshBookshelves();
-      toast({
-        title: "Bookshelf removed",
-        description: deletion.message,
-        variant: "success",
-      });
-    } catch (requestError) {
-      toast({
-        title: "Could not remove bookshelf",
-        description:
-          requestError instanceof Error ? requestError.message : "Could not remove bookshelf.",
-        variant: "error",
-      });
-    } finally {
-      setDeletingBookshelfId(null);
-    }
-  };
 
   const onSaveSmtp = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -4451,34 +4474,6 @@ const SettingsPage = () => {
     }
   };
 
-  const onSendBookshelfTest = async (bookshelf: BookshelfSummary) => {
-    const form = bookshelfForms[bookshelf.id] ?? toBookshelfFormState(bookshelf);
-    const recipient = form.kindleEmail.trim();
-    if (!recipient) return;
-
-    setTestingBookshelfId(bookshelf.id);
-
-    try {
-      await api.sendTestEmail(recipient);
-      toast({
-        title: "Test email sent",
-        description: `SMTP test email sent to ${recipient}.`,
-        variant: "success",
-      });
-    } catch (requestError) {
-      toast({
-        title: "Could not send test email",
-        description:
-          requestError instanceof Error
-            ? requestError.message
-            : "Could not send the test email.",
-        variant: "error",
-      });
-    } finally {
-      setTestingBookshelfId(null);
-    }
-  };
-
   if (loading && !settings) {
     return <SettingsSkeleton />;
   }
@@ -4496,14 +4491,6 @@ const SettingsPage = () => {
         smtpForm.pass !== settings.smtp.pass ||
         smtpForm.from.trim() !== settings.smtp.from),
   );
-  const isBookshelfDirty = (bookshelf: BookshelfSummary) => {
-    const form = bookshelfForms[bookshelf.id];
-    if (!form) return false;
-    return (
-      form.name.trim() !== bookshelf.name ||
-      (form.kindleEmail.trim() || null) !== (bookshelf.kindleEmail ?? null)
-    );
-  };
 
   return (
     <div className="page stack-lg">
@@ -4602,7 +4589,7 @@ const SettingsPage = () => {
               </div>
               <p className="smtp-onboarding-step-copy">
                 Save a Kindle destination on each bookshelf that should send books to a device,
-                then use <strong>Send test email</strong> for that shelf.
+                then send a test email from the bookshelf page.
               </p>
               {hasAnyKindleEmail ? (
                 <p className="smtp-onboarding-step-meta">
@@ -4610,6 +4597,9 @@ const SettingsPage = () => {
                   shelves have Kindle destinations.
                 </p>
               ) : null}
+              <Button asChild size="sm" variant="outline">
+                <Link to="/bookshelves">Open bookshelves</Link>
+              </Button>
             </div>
           </li>
         </ol>
@@ -4757,12 +4747,201 @@ const SettingsPage = () => {
           </p>
 
           <div className="inline-actions">
-            <Button disabled={savingSmtp} type="submit">
+            <Button disabled={savingSmtp || !smtpDirty} type="submit">
               {savingSmtp ? "Saving\u2026" : "Save SMTP"}
             </Button>
           </div>
         </form>
       </Card>
+    </div>
+  );
+};
+
+const BookshelvesPage = () => {
+  useDocumentTitle("Bookshelves \u2022 Irulan");
+  const toast = useToast();
+
+  const [settings, setSettings] = useState<SettingsPayload | null>(null);
+  const [bookshelves, setBookshelves] = useState<BookshelfSummary[]>([]);
+  const [bookshelfForms, setBookshelfForms] = useState<Record<string, BookshelfFormState>>({});
+  const [newBookshelf, setNewBookshelf] = useState<BookshelfFormState>({
+    name: "",
+    kindleEmail: "",
+  });
+  const [loading, setLoading] = useState(true);
+  const [savingBookshelfId, setSavingBookshelfId] = useState<string | null>(null);
+  const [deletingBookshelfId, setDeletingBookshelfId] = useState<string | null>(null);
+  const [creatingBookshelf, setCreatingBookshelf] = useState(false);
+  const [testingBookshelfId, setTestingBookshelfId] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+
+  const loadBookshelvesPage = useEffectEvent(async () => {
+    setLoading(true);
+    setLoadError(null);
+
+    try {
+      const [payload, nextBookshelves] = await Promise.all([
+        api.getSettings(),
+        api.listBookshelves(),
+      ]);
+      setSettings(payload);
+      setBookshelves(nextBookshelves);
+      setBookshelfForms(toBookshelfFormMap(nextBookshelves));
+    } catch (requestError) {
+      setLoadError(
+        requestError instanceof Error ? requestError.message : "Could not load bookshelves.",
+      );
+    } finally {
+      setLoading(false);
+    }
+  });
+
+  useEffect(() => {
+    void loadBookshelvesPage();
+  }, []);
+
+  const refreshBookshelves = async () => {
+    const nextBookshelves = await api.listBookshelves();
+    setBookshelves(nextBookshelves);
+    setBookshelfForms(toBookshelfFormMap(nextBookshelves));
+    return nextBookshelves;
+  };
+
+  const onSaveBookshelf = async (bookshelfId: string) => {
+    const form = bookshelfForms[bookshelfId];
+    if (!form || savingBookshelfId) return;
+
+    setSavingBookshelfId(bookshelfId);
+
+    try {
+      await api.updateBookshelf(bookshelfId, form.name.trim(), form.kindleEmail.trim() || null);
+      await refreshBookshelves();
+      toast({
+        title: "Bookshelf saved",
+        description: "Bookshelf settings saved.",
+        variant: "success",
+      });
+    } catch (requestError) {
+      toast({
+        title: "Could not save bookshelf",
+        description:
+          requestError instanceof Error ? requestError.message : "Could not save bookshelf.",
+        variant: "error",
+      });
+    } finally {
+      setSavingBookshelfId(null);
+    }
+  };
+
+  const onCreateBookshelf = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setCreatingBookshelf(true);
+
+    try {
+      const created = await api.createBookshelf(
+        newBookshelf.name.trim(),
+        newBookshelf.kindleEmail.trim() || null,
+      );
+      await refreshBookshelves();
+      setNewBookshelf({ name: "", kindleEmail: "" });
+      toast({
+        title: "Bookshelf created",
+        description: `${created.name} is ready.`,
+        variant: "success",
+      });
+    } catch (requestError) {
+      toast({
+        title: "Could not create bookshelf",
+        description:
+          requestError instanceof Error ? requestError.message : "Could not create bookshelf.",
+        variant: "error",
+      });
+    } finally {
+      setCreatingBookshelf(false);
+    }
+  };
+
+  const onDeleteBookshelf = async (bookshelf: BookshelfSummary) => {
+    if (deletingBookshelfId) return;
+    const confirmed = window.confirm(
+      `Remove "${bookshelf.name}"? Books remain in the shared library.`,
+    );
+    if (!confirmed) return;
+
+    setDeletingBookshelfId(bookshelf.id);
+
+    try {
+      const deletion = await api.deleteBookshelf(bookshelf.id);
+      await refreshBookshelves();
+      toast({
+        title: "Bookshelf removed",
+        description: deletion.message,
+        variant: "success",
+      });
+    } catch (requestError) {
+      toast({
+        title: "Could not remove bookshelf",
+        description:
+          requestError instanceof Error ? requestError.message : "Could not remove bookshelf.",
+        variant: "error",
+      });
+    } finally {
+      setDeletingBookshelfId(null);
+    }
+  };
+
+  const onSendBookshelfTest = async (bookshelf: BookshelfSummary) => {
+    const form = bookshelfForms[bookshelf.id] ?? toBookshelfFormState(bookshelf);
+    const recipient = form.kindleEmail.trim();
+    if (!recipient) return;
+
+    setTestingBookshelfId(bookshelf.id);
+
+    try {
+      await api.sendTestEmail(recipient);
+      toast({
+        title: "Test email sent",
+        description: `SMTP test email sent to ${recipient}.`,
+        variant: "success",
+      });
+    } catch (requestError) {
+      toast({
+        title: "Could not send test email",
+        description:
+          requestError instanceof Error
+            ? requestError.message
+            : "Could not send the test email.",
+        variant: "error",
+      });
+    } finally {
+      setTestingBookshelfId(null);
+    }
+  };
+
+  if (loading && !settings) {
+    return <SettingsSkeleton />;
+  }
+
+  const smtpConfigured = Boolean(settings?.smtp.configured);
+  const isBookshelfDirty = (bookshelf: BookshelfSummary) => {
+    const form = bookshelfForms[bookshelf.id];
+    if (!form) return false;
+    return (
+      form.name.trim() !== bookshelf.name ||
+      (form.kindleEmail.trim() || null) !== (bookshelf.kindleEmail ?? null)
+    );
+  };
+
+  return (
+    <div className="page stack-lg">
+      <Button asChild className="backlink" variant="ghost">
+        <Link to="/">
+          <ArrowLeftIcon />
+          Back to bookshelf
+        </Link>
+      </Button>
+
+      {loadError ? <p className="inline-error">{loadError}</p> : null}
 
       <Card className="panel stack-md">
         <div className="stack-xs">
@@ -4776,6 +4955,11 @@ const SettingsPage = () => {
             Each bookshelf keeps its own Kindle destination. Books can belong to more than one
             shelf without duplicating the EPUB file.
           </p>
+          {!smtpConfigured ? (
+            <p className="bookshelves-page-note">
+              <Link to="/settings">Configure SMTP</Link> before sending test email from a shelf.
+            </p>
+          ) : null}
         </div>
 
         <div className="settings-bookshelf-list">
@@ -4847,7 +5031,7 @@ const SettingsPage = () => {
                 </div>
                 <div className="settings-bookshelf-meta">
                   <span>{numberFormatter.format(bookshelf.bookCount)} books</span>
-                  {smtpDirty ? <span>Save SMTP before testing.</span> : null}
+                  {!smtpConfigured ? <span>SMTP not configured.</span> : null}
                 </div>
                 <div className="inline-actions">
                   <Button
@@ -4861,8 +5045,7 @@ const SettingsPage = () => {
                       testing ||
                       deleting ||
                       !form.kindleEmail.trim() ||
-                      !smtpConfigured ||
-                      smtpDirty
+                      !smtpConfigured
                     }
                     onClick={() => {
                       void onSendBookshelfTest(bookshelf);
@@ -4948,6 +5131,7 @@ const AppRoutes = () => (
       <Route element={<BookshelfPage />} path="/" />
       <Route element={<BookDetailPage />} path="/books/:bookId" />
       <Route element={<ReaderPage />} path="/books/:bookId/read" />
+      <Route element={<BookshelvesPage />} path="/bookshelves" />
       <Route element={<SettingsPage />} path="/settings" />
     </Route>
   </Routes>

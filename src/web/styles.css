@@ -394,6 +394,127 @@ img {
   white-space: nowrap;
 }
 
+.app-menu {
+  position: relative;
+}
+
+.app-menu-trigger {
+  width: 40px;
+  padding: 0;
+}
+
+.app-menu-popover {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 60;
+  width: 236px;
+  display: grid;
+  gap: 4px;
+  padding: 6px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--bg-surface) 96%, var(--bg-base));
+  box-shadow:
+    0 18px 40px rgba(0, 0, 0, 0.22),
+    0 1px 0 color-mix(in srgb, var(--border-default) 65%, transparent) inset;
+  animation: fade-in 120ms ease;
+}
+
+.app-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 36px;
+  padding: 0 10px;
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-size: 13px;
+  font-weight: 500;
+  text-decoration: none;
+  transition:
+    background-color 120ms ease,
+    color 120ms ease;
+}
+
+.app-menu-item:hover,
+.app-menu-item:focus-visible {
+  background: var(--bg-hover);
+}
+
+.app-menu-item svg {
+  width: 15px;
+  height: 15px;
+  color: var(--text-tertiary);
+  flex-shrink: 0;
+}
+
+.app-menu-separator {
+  height: 1px;
+  margin: 4px 2px;
+  background: var(--border-default);
+}
+
+.app-menu-theme-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 40px;
+  padding: 4px 4px 4px 10px;
+}
+
+.app-menu-theme-label {
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.app-menu-theme-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--border-default);
+  border-radius: 999px;
+  background: var(--bg-base);
+}
+
+.app-menu-theme-button {
+  display: inline-grid;
+  place-items: center;
+  width: 30px;
+  height: 28px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  transition:
+    background-color 120ms ease,
+    border-color 120ms ease,
+    color 120ms ease;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+
+.app-menu-theme-button:hover,
+.app-menu-theme-button:focus-visible {
+  color: var(--text-primary);
+  background: var(--bg-hover);
+}
+
+.app-menu-theme-button.active {
+  border-color: color-mix(in srgb, var(--accent) 32%, var(--border-default));
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.app-menu-theme-button svg {
+  width: 15px;
+  height: 15px;
+}
+
 .content {
   flex: 1;
   display: flex;
@@ -2233,6 +2354,21 @@ input::placeholder {
   color: var(--text-tertiary);
   font-size: 12px;
   font-variant-numeric: tabular-nums;
+}
+
+.bookshelves-page-note {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+.bookshelves-page-note a {
+  color: var(--accent);
+  font-weight: 500;
+}
+
+.bookshelves-page-note a:hover {
+  color: var(--accent-hover);
 }
 
 .smtp-onboarding-grid {
