@@ -29,7 +29,7 @@ import {
   useParams,
   useSearchParams,
 } from "react-router-dom";
-import { LibraryBig, Moon, MoreHorizontal, Settings2, StarIcon, Sun } from "lucide-react";
+import { LibraryBig, Monitor, Moon, MoreHorizontal, Settings2, StarIcon, Sun } from "lucide-react";
 
 import {
   AlertDialog,
@@ -99,6 +99,7 @@ import {
 } from "./lib/reader";
 
 type Theme = "light" | "dark";
+type ThemePreference = "system" | Theme;
 type BookshelfView = "grid" | "list";
 type ReaderTone = "paper" | "sepia" | "night";
 type BookshelfSortKey =
@@ -128,7 +129,7 @@ type ToastNotice = {
 };
 type ToastInput = Omit<ToastNotice, "id">;
 
-const THEME_KEY = "ebook-manager-theme";
+const THEME_KEY = "ebook-manager-theme-preference";
 const BOOKSHELF_VIEW_KEY = "ebook-manager-bookshelf-view";
 const ALL_BOOKSHELVES_ID = "all";
 const READER_TONE_KEY = "ebook-manager-reader-tone";
@@ -168,18 +169,15 @@ const THEME_META_COLORS: Record<Theme, string> = {
   light: "#F6F4EE",
 };
 
-function getSystemTheme(): Theme {
-  return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
-}
-
-function getStoredTheme(): Theme | null {
+function getStoredThemePreference(): ThemePreference {
   try {
     const stored = localStorage.getItem(THEME_KEY);
+    if (stored === "system" || stored === null) return "system";
     if (stored === "light" || stored === "dark") return stored;
   } catch {
     /* localStorage unavailable */
   }
-  return null;
+  return "system";
 }
 
 function getStoredBookshelfView(): BookshelfView | null {
@@ -225,8 +223,8 @@ function applyTheme(theme: Theme) {
   if (meta) meta.content = THEME_META_COLORS[theme];
 }
 
-function resolveTheme(): Theme {
-  return getStoredTheme() ?? getSystemTheme();
+function resolveTheme(preference: ThemePreference, systemTheme: Theme): Theme {
+  return preference === "system" ? systemTheme : preference;
 }
 
 function isTextEntryTarget(target: EventTarget | null) {
@@ -243,11 +241,13 @@ function isTextEntryTarget(target: EventTarget | null) {
 
 const ThemeContext = createContext<{
   theme: Theme;
-  setTheme: (theme: Theme) => void;
+  themePreference: ThemePreference;
+  setThemePreference: (preference: ThemePreference) => void;
   toggle: () => void;
 }>({
   theme: "dark",
-  setTheme: () => {},
+  themePreference: "system",
+  setThemePreference: () => {},
   toggle: () => {},
 });
 const ToastContext = createContext<((toast: ToastInput) => void) | null>(null);
@@ -317,30 +317,29 @@ function useMediaQuery(query: string) {
 
 function useTheme() {
   const prefersDark = useMediaQuery("(prefers-color-scheme: dark)");
-  const [theme, setThemeState] = useState<Theme>(resolveTheme);
-
-  useEffect(() => {
-    if (!getStoredTheme()) {
-      setThemeState(prefersDark ? "dark" : "light");
-    }
-  }, [prefersDark]);
+  const systemTheme: Theme = prefersDark ? "dark" : "light";
+  const [themePreference, setThemePreferenceState] = useState<ThemePreference>(
+    getStoredThemePreference,
+  );
+  const theme = resolveTheme(themePreference, systemTheme);
 
   useEffect(() => {
     applyTheme(theme);
   }, [theme]);
 
-  const setTheme = useCallback((next: Theme) => {
+  const setThemePreference = useCallback((next: ThemePreference) => {
     try {
       localStorage.setItem(THEME_KEY, next);
     } catch {
       /* noop */
     }
-    setThemeState(next);
+    setThemePreferenceState(next);
   }, []);
 
   const toggle = useCallback(() => {
-    setThemeState((prev) => {
-      const next = prev === "dark" ? "light" : "dark";
+    setThemePreferenceState((prev) => {
+      const current = resolveTheme(prev, systemTheme);
+      const next = current === "dark" ? "light" : "dark";
       try {
         localStorage.setItem(THEME_KEY, next);
       } catch {
@@ -348,7 +347,7 @@ function useTheme() {
       }
       return next;
     });
-  }, []);
+  }, [systemTheme]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -375,7 +374,7 @@ function useTheme() {
     };
   }, [toggle]);
 
-  return { theme, setTheme, toggle };
+  return { theme, themePreference, setThemePreference, toggle };
 }
 
 const numberFormatter = new Intl.NumberFormat(undefined);
@@ -1983,7 +1982,7 @@ const getFocusableMenuItems = (container: HTMLElement | null) =>
 
 const AppMenu = () => {
   const location = useLocation();
-  const { setTheme, theme } = useContext(ThemeContext);
+  const { setThemePreference, themePreference } = useContext(ThemeContext);
   const [open, setOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const popoverRef = useRef<HTMLDivElement | null>(null);
@@ -2093,20 +2092,30 @@ const AppMenu = () => {
             <span className="app-menu-theme-label">Theme</span>
             <div className="app-menu-theme-toggle">
               <button
-                aria-checked={theme === "light"}
+                aria-checked={themePreference === "system"}
+                aria-label="Use system theme"
+                className={cn("app-menu-theme-button", themePreference === "system" && "active")}
+                onClick={() => setThemePreference("system")}
+                role="menuitemradio"
+                type="button"
+              >
+                <Monitor aria-hidden="true" />
+              </button>
+              <button
+                aria-checked={themePreference === "light"}
                 aria-label="Use light mode"
-                className={cn("app-menu-theme-button", theme === "light" && "active")}
-                onClick={() => setTheme("light")}
+                className={cn("app-menu-theme-button", themePreference === "light" && "active")}
+                onClick={() => setThemePreference("light")}
                 role="menuitemradio"
                 type="button"
               >
                 <Sun aria-hidden="true" />
               </button>
               <button
-                aria-checked={theme === "dark"}
+                aria-checked={themePreference === "dark"}
                 aria-label="Use dark mode"
-                className={cn("app-menu-theme-button", theme === "dark" && "active")}
-                onClick={() => setTheme("dark")}
+                className={cn("app-menu-theme-button", themePreference === "dark" && "active")}
+                onClick={() => setThemePreference("dark")}
                 role="menuitemradio"
                 type="button"
               >
