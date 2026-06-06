@@ -101,6 +101,8 @@ import {
 type Theme = "light" | "dark";
 type ThemePreference = "system" | Theme;
 type BookshelfView = "grid" | "list";
+type BookshelfDensity = "comfortable" | "compact";
+type ReadStatusFilter = "all" | ReadStatus;
 type ReaderTone = "paper" | "sepia" | "night";
 type BookshelfSortKey =
   | "title"
@@ -131,6 +133,7 @@ type ToastInput = Omit<ToastNotice, "id">;
 
 const THEME_KEY = "ebook-manager-theme-preference";
 const BOOKSHELF_VIEW_KEY = "ebook-manager-bookshelf-view";
+const BOOKSHELF_DENSITY_KEY = "ebook-manager-bookshelf-density";
 const ALL_BOOKSHELVES_ID = "all";
 const READER_TONE_KEY = "ebook-manager-reader-tone";
 const READER_FONT_SCALE_KEY = "ebook-manager-reader-font-scale";
@@ -159,6 +162,12 @@ const READ_STATUS_LABELS: Record<ReadStatus, string> = {
 };
 const READ_STATUS_OPTIONS: ReadonlyArray<{ value: ReadStatus; label: string }> =
   READ_STATUSES.map((value) => ({ value, label: READ_STATUS_LABELS[value] }));
+const READ_STATUS_FILTER_OPTIONS: ReadonlyArray<{ value: ReadStatusFilter; label: string }> = [
+  { value: "all", label: "All" },
+  { value: "reading", label: "Reading" },
+  { value: "unread", label: "Unread" },
+  { value: "finished", label: "Finished" },
+];
 const READ_STATUS_ORDER: Record<ReadStatus, number> = {
   unread: 0,
   reading: 1,
@@ -184,6 +193,19 @@ function getStoredBookshelfView(): BookshelfView | null {
   try {
     const stored = localStorage.getItem(BOOKSHELF_VIEW_KEY);
     if (stored === "grid" || stored === "list") return stored;
+  } catch {
+    /* localStorage unavailable */
+  }
+  return null;
+}
+
+function getStoredBookshelfDensity(): BookshelfDensity | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const value = localStorage.getItem(BOOKSHELF_DENSITY_KEY);
+    if (value === "comfortable" || value === "compact") {
+      return value;
+    }
   } catch {
     /* localStorage unavailable */
   }
@@ -396,6 +418,58 @@ const formatBytes = (bytes: number) => {
 const formatDate = (value: string | null) => {
   if (!value) return "\u2014";
   return dateFormatter.format(new Date(value));
+};
+
+const TITLE_CASE_LOWERCASE_WORDS = new Set([
+  "a",
+  "an",
+  "and",
+  "as",
+  "at",
+  "but",
+  "by",
+  "for",
+  "from",
+  "in",
+  "into",
+  "nor",
+  "of",
+  "on",
+  "or",
+  "the",
+  "to",
+  "vs",
+  "with",
+]);
+
+const formatDisplayTitle = (value: string) => {
+  if (!value) return value;
+  const tokens = value.split(/(\s+|[\-\u2013\u2014:])/u);
+  let firstWordIndex = -1;
+  let lastWordIndex = -1;
+  const wordIndices: number[] = [];
+  tokens.forEach((token, index) => {
+    if (/^\s+$/.test(token) || /^[\-\u2013\u2014:]$/.test(token)) return;
+    if (firstWordIndex === -1) firstWordIndex = index;
+    lastWordIndex = index;
+    wordIndices.push(index);
+  });
+
+  return tokens
+    .map((token, index) => {
+      if (!wordIndices.includes(index)) return token;
+      const lower = token.toLocaleLowerCase();
+      if (
+        index !== firstWordIndex &&
+        index !== lastWordIndex &&
+        TITLE_CASE_LOWERCASE_WORDS.has(lower) &&
+        token === token.charAt(0).toUpperCase() + token.slice(1).toLowerCase()
+      ) {
+        return lower;
+      }
+      return token;
+    })
+    .join("");
 };
 
 const relativeTimeFormatter = new Intl.RelativeTimeFormat(undefined, {
@@ -696,6 +770,29 @@ const ListIcon = () => (
   </svg>
 );
 
+const DensityComfortableIcon = () => (
+  <svg viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+    <rect height="6" rx="1.2" width="6" x="1.5" y="1.5" />
+    <rect height="6" rx="1.2" width="6" x="8.5" y="1.5" />
+    <rect height="6" rx="1.2" width="6" x="1.5" y="8.5" />
+    <rect height="6" rx="1.2" width="6" x="8.5" y="8.5" />
+  </svg>
+);
+
+const DensityCompactIcon = () => (
+  <svg viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+    <rect height="3.5" rx="0.8" width="3.5" x="1.5" y="1.5" />
+    <rect height="3.5" rx="0.8" width="3.5" x="6.25" y="1.5" />
+    <rect height="3.5" rx="0.8" width="3.5" x="11" y="1.5" />
+    <rect height="3.5" rx="0.8" width="3.5" x="1.5" y="6.25" />
+    <rect height="3.5" rx="0.8" width="3.5" x="6.25" y="6.25" />
+    <rect height="3.5" rx="0.8" width="3.5" x="11" y="6.25" />
+    <rect height="3.5" rx="0.8" width="3.5" x="1.5" y="11" />
+    <rect height="3.5" rx="0.8" width="3.5" x="6.25" y="11" />
+    <rect height="3.5" rx="0.8" width="3.5" x="11" y="11" />
+  </svg>
+);
+
 const SortIcon = ({
   active,
   direction,
@@ -782,11 +879,31 @@ const ReadStatusBadge = ({ status }: { status: ReadStatus }) => (
 const RatingStars = ({
   compact = false,
   rating,
+  filledOnly = false,
 }: {
   compact?: boolean;
   rating: number | null;
+  filledOnly?: boolean;
 }) => {
   const label = getRatingLabel(rating);
+
+  if (filledOnly) {
+    if (!rating) return null;
+    const wholeStars = Math.round(rating);
+    return (
+      <span
+        aria-label={label}
+        className={cn("rating-stars", "rating-stars-filled", compact && "rating-stars-compact")}
+        title={label}
+      >
+        {Array.from({ length: wholeStars }, (_, index) => (
+          <span aria-hidden="true" className="rating-star-frame is-filled" key={`rating-filled-${index}`}>
+            <StarIcon />
+          </span>
+        ))}
+      </span>
+    );
+  }
 
   return (
     <span
@@ -819,10 +936,18 @@ const RatingStars = ({
   );
 };
 
-const BookMetadataStrip = ({ book }: { book: BookSummary }) => (
+const BookMetadataStrip = ({
+  book,
+  filledStarsOnly = false,
+}: {
+  book: BookSummary;
+  filledStarsOnly?: boolean;
+}) => (
   <span className="book-user-meta">
     <ReadStatusBadge status={book.readStatus} />
-    {book.rating ? <RatingStars compact rating={book.rating} /> : null}
+    {book.rating ? (
+      <RatingStars compact rating={book.rating} filledOnly={filledStarsOnly} />
+    ) : null}
   </span>
 );
 
@@ -1617,37 +1742,77 @@ type BookshelfBookActionProps = {
   onBookContextMenu: (book: BookSummary, event: MouseEvent<HTMLElement>) => void;
 };
 
+type BookshelfGridProps = {
+  books: BookSummary[];
+  bookshelfId?: string | null;
+  density: BookshelfDensity;
+  sortKey: BookshelfSortKey;
+  onOpenActionMenu: (book: BookSummary, rect: DOMRect) => void;
+} & BookshelfBookActionProps;
+
 const BookshelfGrid = ({
   books,
   bookshelfId,
+  density,
+  sortKey,
   onBookContextKeyDown,
   onBookContextMenu,
-}: { books: BookSummary[]; bookshelfId?: string | null } & BookshelfBookActionProps) => (
-  <section aria-label="Bookshelf grid" className="books-grid">
+  onOpenActionMenu,
+}: BookshelfGridProps) => (
+  <section
+    aria-label="Bookshelf grid"
+    className={cn("books-grid", `books-grid-${density}`)}
+  >
     {books.map((book) => {
       const addedRelative = formatRelative(book.importedAt);
-      const addedMeta = addedRelative ? `Added ${addedRelative}` : null;
+      const addedFull = formatDate(book.importedAt);
+      const displayTitle = formatDisplayTitle(book.title);
+      const showAddedRow = sortKey !== "importedAt" && addedRelative;
       return (
-        <Link
-          aria-label={`Open ${book.title} by ${book.author}`}
-          className="book-card"
-          key={book.id}
-          onContextMenu={(event) => onBookContextMenu(book, event)}
-          onKeyDown={(event) => onBookContextKeyDown(book, event)}
-          to={getBookHref(book.id, bookshelfId)}
-        >
-          <BookCover book={book} />
-          <div className="book-card-copy stack-xs">
-            <strong className="book-title">{book.title}</strong>
-            <span className="book-author">{book.author}</span>
-            <BookMetadataStrip book={book} />
-            {addedMeta ? (
-              <span className="book-meta" title={formatDate(book.importedAt)}>
-                {addedMeta}
+        <div className="book-card-shell" key={book.id}>
+          <Link
+            aria-label={`Open ${book.title} by ${book.author}`}
+            className="book-card"
+            onContextMenu={(event) => onBookContextMenu(book, event)}
+            onKeyDown={(event) => onBookContextKeyDown(book, event)}
+            to={getBookHref(book.id, bookshelfId)}
+            title={book.title}
+          >
+            <div className="book-cover-wrap">
+              <BookCover book={book} />
+              {book.readStatus === "reading" ? (
+                <span aria-hidden="true" className="book-cover-progress" />
+              ) : null}
+            </div>
+            <div className="book-card-copy stack-xs">
+              <strong className="book-title" title={book.title}>
+                {displayTitle}
+              </strong>
+              <span className="book-author" title={book.author}>
+                {book.author}
               </span>
-            ) : null}
-          </div>
-        </Link>
+              <BookMetadataStrip book={book} filledStarsOnly />
+              {showAddedRow ? (
+                <span className="book-meta" title={addedFull}>
+                  {`Added ${addedRelative}`}
+                </span>
+              ) : null}
+            </div>
+          </Link>
+          <button
+            aria-label={`Actions for ${book.title}`}
+            className="book-card-action-trigger"
+            onClick={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
+              onOpenActionMenu(book, rect);
+            }}
+            type="button"
+          >
+            <MoreIcon />
+          </button>
+        </div>
       );
     })}
   </section>
@@ -1773,11 +1938,12 @@ const BookshelfList = ({
                     <Link
                       className="books-table-title-link"
                       onKeyDown={(event) => onBookContextKeyDown(book, event)}
+                      title={book.title}
                       to={getBookHref(book.id, bookshelfId)}
                     >
-                      {book.title}
+                      {formatDisplayTitle(book.title)}
                     </Link>
-                    <BookMetadataStrip book={book} />
+                    <BookMetadataStrip book={book} filledStarsOnly />
                   </div>
                 </div>
               </TableCell>
@@ -1805,52 +1971,115 @@ const BookshelfList = ({
   );
 };
 
-type BookshelfSwitcherProps = {
+type BookshelfSidebarProps = {
   activeBookshelfId: string | null;
   bookshelves: BookshelfSummary[];
-  onSelect: (bookshelfId: string) => void;
+  totalBookCount: number;
+  statusFilter: ReadStatusFilter;
+  statusCounts: Record<ReadStatusFilter, number>;
+  onSelectBookshelf: (bookshelfId: string) => void;
+  onChangeStatusFilter: (status: ReadStatusFilter) => void;
 };
 
-const BookshelfSwitcher = ({
+type SidebarItemProps = {
+  active: boolean;
+  count: number;
+  label: string;
+  onSelect: () => void;
+  title?: string;
+  variant?: "library" | "status";
+  statusKey?: ReadStatusFilter;
+};
+
+const SidebarItem = ({
+  active,
+  count,
+  label,
+  onSelect,
+  title,
+  variant = "library",
+  statusKey,
+}: SidebarItemProps) => (
+  <button
+    aria-pressed={active}
+    className={cn(
+      "sidebar-item",
+      `sidebar-item-${variant}`,
+      statusKey && `sidebar-item-status-${statusKey}`,
+      active && "active",
+    )}
+    onClick={onSelect}
+    title={title}
+    type="button"
+  >
+    {variant === "status" && statusKey && statusKey !== "all" ? (
+      <span aria-hidden="true" className={cn("sidebar-item-dot", `sidebar-item-dot-${statusKey}`)} />
+    ) : null}
+    <span className="sidebar-item-name">{label}</span>
+    <span className="sidebar-item-count">{numberFormatter.format(count)}</span>
+  </button>
+);
+
+const BookshelfSidebar = ({
   activeBookshelfId,
   bookshelves,
-  onSelect,
-}: BookshelfSwitcherProps) => (
-  <div aria-label="Bookshelves" className="bookshelf-switcher" role="group">
-    <button
-      aria-pressed={activeBookshelfId === ALL_BOOKSHELVES_ID}
-      className={cn(
-        "bookshelf-switcher-item",
-        activeBookshelfId === ALL_BOOKSHELVES_ID && "active",
-      )}
-      onClick={() => onSelect(ALL_BOOKSHELVES_ID)}
-      type="button"
-    >
-      <span className="bookshelf-switcher-name">All books</span>
-    </button>
-    {bookshelves.map((bookshelf) => (
-      <button
-        aria-pressed={activeBookshelfId === bookshelf.id}
-        className={cn(
-          "bookshelf-switcher-item",
-          activeBookshelfId === bookshelf.id && "active",
-        )}
-        key={bookshelf.id}
-        onClick={() => onSelect(bookshelf.id)}
-        title={bookshelf.kindleEmail ?? undefined}
-        type="button"
-      >
-        <span className="bookshelf-switcher-name">{bookshelf.name}</span>
-        <span className="bookshelf-switcher-count">
-          {numberFormatter.format(bookshelf.bookCount)}
-        </span>
-      </button>
-    ))}
-  </div>
+  totalBookCount,
+  statusFilter,
+  statusCounts,
+  onSelectBookshelf,
+  onChangeStatusFilter,
+}: BookshelfSidebarProps) => (
+  <aside aria-label="Library navigation" className="bookshelf-sidebar">
+    <Link aria-label="Irulan home" className="sidebar-brand" to="/">
+      <span className="sidebar-brand-mark" aria-hidden="true">
+        <BookIcon />
+      </span>
+      <span className="sidebar-brand-name">irulan</span>
+    </Link>
+
+    <section className="sidebar-section">
+      <h2 className="sidebar-section-title">Library</h2>
+      <div className="sidebar-list" role="group">
+        <SidebarItem
+          active={activeBookshelfId === ALL_BOOKSHELVES_ID}
+          count={totalBookCount}
+          label="All books"
+          onSelect={() => onSelectBookshelf(ALL_BOOKSHELVES_ID)}
+        />
+        {bookshelves.map((bookshelf) => (
+          <SidebarItem
+            active={activeBookshelfId === bookshelf.id}
+            count={bookshelf.bookCount}
+            key={bookshelf.id}
+            label={bookshelf.name}
+            onSelect={() => onSelectBookshelf(bookshelf.id)}
+            title={bookshelf.kindleEmail ?? undefined}
+          />
+        ))}
+      </div>
+    </section>
+
+    <section className="sidebar-section">
+      <h2 className="sidebar-section-title">Status</h2>
+      <div className="sidebar-list" role="radiogroup">
+        {READ_STATUS_FILTER_OPTIONS.map((option) => (
+          <SidebarItem
+            active={statusFilter === option.value}
+            count={statusCounts[option.value]}
+            key={option.value}
+            label={option.label}
+            onSelect={() => onChangeStatusFilter(option.value)}
+            variant="status"
+            statusKey={option.value}
+          />
+        ))}
+      </div>
+    </section>
+  </aside>
 );
 
 const BookDetailSkeleton = () => (
-  <div aria-busy="true" className="page stack-lg">
+  <div aria-busy="true" className="page page-narrow stack-lg">
     <div className="detail-page-header">
       <Link className="backlink" to="/">
         <ArrowLeftIcon />
@@ -1951,7 +2180,7 @@ const BookDetailSkeleton = () => (
 );
 
 const SettingsSkeleton = () => (
-  <div aria-busy="true" className="page stack-lg">
+  <div aria-busy="true" className="page page-narrow stack-lg">
     <section aria-hidden="true" className="panel stack-md">
       <div className="stack-xs">
         <SkeletonLine className="skeleton-line-heading" />
@@ -2150,14 +2379,6 @@ const Shell = () => {
       <div className="app-shell">
         <header className="main-header">
           <div className="main-header-inner">
-            <Link aria-label="Go to bookshelf" className="main-header-home" to="/">
-              <div className="main-header-brand-icon">
-                <BookIcon />
-              </div>
-              <div className="main-header-brand-copy">
-                <span className="main-header-brand-name">irulan</span>
-              </div>
-            </Link>
             <div className="header-spacer" />
             <div aria-label="App controls" className="main-header-actions" role="group">
               <AppMenu />
@@ -2174,7 +2395,6 @@ const Shell = () => {
 };
 
 const BookshelfPage = () => {
-  useDocumentTitle("Bookshelf \u2022 Irulan");
 
   const location = useLocation();
   const navigate = useNavigate();
@@ -2182,6 +2402,10 @@ const BookshelfPage = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const [query, setQuery] = useState(searchParams.get("q") ?? "");
   const [view, setView] = useState<BookshelfView>(() => getStoredBookshelfView() ?? "grid");
+  const [density, setDensity] = useState<BookshelfDensity>(
+    () => getStoredBookshelfDensity() ?? "comfortable",
+  );
+  const [statusFilter, setStatusFilter] = useState<ReadStatusFilter>("all");
   const [books, setBooks] = useState<BookSummary[]>([]);
   const [bookshelfSort, setBookshelfSort] = useState<BookshelfSort>(DEFAULT_BOOKSHELF_SORT);
   const [error, setError] = useState<string | null>(null);
@@ -2219,13 +2443,38 @@ const BookshelfPage = () => {
       ? bookshelves.find((bookshelf) => bookshelf.id === activeBookshelfId) ?? null
       : null;
   const canImportBooks = Boolean(activeBookshelf || bookshelves.length > 0);
+  const shelfLabel =
+    activeBookshelfId === ALL_BOOKSHELVES_ID
+      ? "All books"
+      : activeBookshelf?.name ?? "Bookshelf";
+  useDocumentTitle(`${shelfLabel} — Irulan`);
   const deferredQuery = useDeferredValue(query);
-  const visibleBooks = useMemo(() => getVisibleBooks(books, deferredQuery), [books, deferredQuery]);
+  const queriedBooks = useMemo(() => getVisibleBooks(books, deferredQuery), [books, deferredQuery]);
+  const statusCounts = useMemo(() => {
+    const counts: Record<ReadStatusFilter, number> = {
+      all: queriedBooks.length,
+      unread: 0,
+      reading: 0,
+      finished: 0,
+    };
+    for (const book of queriedBooks) {
+      counts[book.readStatus] += 1;
+    }
+    return counts;
+  }, [queriedBooks]);
+  const visibleBooks = useMemo(
+    () =>
+      statusFilter === "all"
+        ? queriedBooks
+        : queriedBooks.filter((book) => book.readStatus === statusFilter),
+    [queriedBooks, statusFilter],
+  );
   const sortedVisibleBooks = useMemo(
     () => getSortedBooks(visibleBooks, bookshelfSort),
     [visibleBooks, bookshelfSort],
   );
-  const showingFilteredResults = deferredQuery.trim().length > 0;
+  const showingFilteredResults =
+    deferredQuery.trim().length > 0 || statusFilter !== "all";
   const canSendToKindleFromShelf = Boolean(settings?.smtp.configured && activeBookshelf?.kindleEmail?.trim());
 
   const loadBookshelves = useEffectEvent(async () => {
@@ -2398,6 +2647,15 @@ const BookshelfPage = () => {
     }
   }, []);
 
+  const onChangeDensity = useCallback((nextDensity: BookshelfDensity) => {
+    setDensity(nextDensity);
+    try {
+      localStorage.setItem(BOOKSHELF_DENSITY_KEY, nextDensity);
+    } catch {
+      /* localStorage unavailable */
+    }
+  }, []);
+
   const onChangeBookshelfSort = useCallback((key: BookshelfSortKey) => {
     setBookshelfSort((current) => getNextBookshelfSort(current, key));
   }, []);
@@ -2441,6 +2699,13 @@ const BookshelfPage = () => {
       event.stopPropagation();
       const rect = event.currentTarget.getBoundingClientRect();
       openBookActionMenu(book, rect.left + 24, rect.top + 24);
+    },
+    [openBookActionMenu],
+  );
+
+  const onOpenBookActionMenu = useCallback(
+    (book: BookSummary, rect: DOMRect) => {
+      openBookActionMenu(book, rect.right, rect.bottom + 4);
     },
     [openBookActionMenu],
   );
@@ -2709,35 +2974,58 @@ const BookshelfPage = () => {
 
       <div
         className={cn(
-          "stack-lg bookshelf-dropzone-content",
+          "bookshelf-layout bookshelf-dropzone-content",
           bookshelfDropTarget.isActive && "bookshelf-dropzone-content-muted",
         )}
       >
-        <section className="bookshelf-header">
-          <BookshelfSwitcher
-            activeBookshelfId={activeBookshelfId}
-            bookshelves={bookshelves}
-            onSelect={onSelectBookshelf}
-          />
-          <div className="bookshelf-header-actions">
-            <Button
-              disabled={uploading || !canImportBooks}
-              onClick={() => setIsImportModalOpen(true)}
-              type="button"
-            >
-              {uploading ? "Importing\u2026" : "Add EPUBs"}
-            </Button>
-          </div>
-        </section>
+        <BookshelfSidebar
+          activeBookshelfId={activeBookshelfId}
+          bookshelves={bookshelves}
+          totalBookCount={bookshelves.reduce(
+            (total, bookshelf) => total + bookshelf.bookCount,
+            0,
+          )}
+          statusFilter={statusFilter}
+          statusCounts={statusCounts}
+          onSelectBookshelf={onSelectBookshelf}
+          onChangeStatusFilter={setStatusFilter}
+        />
 
-        {hasLoadedSettings && activeBookshelf && !activeBookshelf.kindleEmail ? (
-          <p className="bookshelf-header-note">
-            <Link className="bookshelf-header-note-link" to="/settings">
-              Add a Kindle address
-            </Link>{" "}
-            to enable sending books from {activeBookshelf.name}.
-          </p>
-        ) : null}
+        <div className="bookshelf-main stack-lg">
+          <header className="bookshelf-main-header">
+            <div className="bookshelf-main-heading">
+              <h1 className="bookshelf-main-title">
+                {activeBookshelfId === ALL_BOOKSHELVES_ID
+                  ? "All books"
+                  : activeBookshelf?.name ?? "Bookshelf"}
+              </h1>
+              <p className="bookshelf-main-subtitle">
+                {numberFormatter.format(books.length)}
+                {books.length === 1 ? " book" : " books"}
+                {showingFilteredResults
+                  ? ` \u00b7 ${numberFormatter.format(visibleBooks.length)} shown`
+                  : ""}
+              </p>
+            </div>
+            <div className="bookshelf-header-actions">
+              <Button
+                disabled={uploading || !canImportBooks}
+                onClick={() => setIsImportModalOpen(true)}
+                type="button"
+              >
+                {uploading ? "Importing\u2026" : "Add EPUBs"}
+              </Button>
+            </div>
+          </header>
+
+          {hasLoadedSettings && activeBookshelf && !activeBookshelf.kindleEmail ? (
+            <p className="bookshelf-header-note">
+              <Link className="bookshelf-header-note-link" to="/settings">
+                Add a Kindle address
+              </Link>{" "}
+              to enable sending books from {activeBookshelf.name}.
+            </p>
+          ) : null}
 
         <ImportBooksModal
           disabled={uploading}
@@ -2842,10 +3130,30 @@ const BookshelfPage = () => {
                 List
               </Button>
             </div>
-            {showingFilteredResults ? (
-              <div className="stat-chip" aria-live="polite">
-                <strong>{numberFormatter.format(visibleBooks.length)}</strong>
-                <span>of {numberFormatter.format(books.length)} books</span>
+            {view === "grid" ? (
+              <div aria-label="Grid density" className="view-toggle density-toggle" role="group">
+                <Button
+                  aria-pressed={density === "comfortable"}
+                  className={cn("view-toggle-button", density === "comfortable" && "active")}
+                  onClick={() => onChangeDensity("comfortable")}
+                  size="sm"
+                  title="Comfortable density"
+                  type="button"
+                  variant="ghost"
+                >
+                  <DensityComfortableIcon />
+                </Button>
+                <Button
+                  aria-pressed={density === "compact"}
+                  className={cn("view-toggle-button", density === "compact" && "active")}
+                  onClick={() => onChangeDensity("compact")}
+                  size="sm"
+                  title="Compact density"
+                  type="button"
+                  variant="ghost"
+                >
+                  <DensityCompactIcon />
+                </Button>
               </div>
             ) : null}
           </div>
@@ -2856,12 +3164,15 @@ const BookshelfPage = () => {
         {showInitialBookshelfSkeleton ? (
           <BookshelfSkeleton view={view} />
         ) : visibleBooks.length === 0 ? (
-          <section className="empty-state stack-sm">
+          <section className="empty-state empty-dropzone stack-sm">
+            <div className="empty-dropzone-icon" aria-hidden="true">
+              <UploadIcon />
+            </div>
             <h2>{showingFilteredResults ? "No matching books" : "No books yet"}</h2>
             <p>
               {showingFilteredResults
-                ? "Try a different title or author."
-                : "Drag .epub files anywhere on this page, or click below to add them."}
+                ? "Try a different title, author, or status filter."
+                : "Drop .epub files anywhere on this page to add them \u2014 or use the button below."}
             </p>
             {!showingFilteredResults ? (
               <div className="empty-state-actions">
@@ -2873,7 +3184,24 @@ const BookshelfPage = () => {
                   {uploading ? "Importing\u2026" : "Add EPUBs"}
                 </Button>
               </div>
-            ) : null}
+            ) : (
+              <div className="empty-state-actions">
+                <Button
+                  onClick={() => {
+                    setStatusFilter("all");
+                    setQuery("");
+                    const nextParams = new URLSearchParams(searchParams);
+                    nextParams.delete("q");
+                    setSearchParams(nextParams);
+                  }}
+                  size="sm"
+                  type="button"
+                  variant="ghost"
+                >
+                  Clear filters
+                </Button>
+              </div>
+            )}
           </section>
         ) : view === "list" ? (
           <BookshelfList
@@ -2888,10 +3216,14 @@ const BookshelfPage = () => {
           <BookshelfGrid
             books={sortedVisibleBooks}
             bookshelfId={activeBookshelfId}
+            density={density}
+            sortKey={bookshelfSort.key}
             onBookContextKeyDown={onBookContextKeyDown}
             onBookContextMenu={onBookContextMenu}
+            onOpenActionMenu={onOpenBookActionMenu}
           />
         )}
+        </div>
       </div>
     </div>
   );
@@ -2902,7 +3234,6 @@ const BookDetailPage = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const toast = useToast();
-  useDocumentTitle("Book detail \u2022 Irulan");
 
   const [book, setBook] = useState<BookDetail | null>(null);
   const [deliveries, setDeliveries] = useState<DeliveryRecord[]>([]);
@@ -2922,6 +3253,8 @@ const BookDetailPage = () => {
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [copyState, setCopyState] = useState<"idle" | "copied" | "failed">("idle");
   const [showStickyBar, setShowStickyBar] = useState(false);
+
+  useDocumentTitle(book?.title ? `${book.title} — Irulan` : "Irulan");
 
   const heroTitleRef = useRef<HTMLHeadingElement | null>(null);
   const historyRef = useRef<HTMLDivElement | null>(null);
@@ -3148,7 +3481,7 @@ const BookDetailPage = () => {
 
   if (!book) {
     return (
-      <div className="page stack-lg">
+      <div className="page page-narrow stack-lg">
         <div className="detail-page-header">
           <Button asChild className="backlink" variant="ghost">
             <Link to={getBookshelfHref(searchParams.get("shelf"))}>
@@ -3255,7 +3588,7 @@ const BookDetailPage = () => {
         </div>
       </div>
 
-      <div className="page stack-lg">
+      <div className="page page-narrow stack-lg">
         <DeleteBookModal
           bookTitle={book.title}
           deleting={deleting}
@@ -4394,7 +4727,7 @@ const ReaderPage = () => {
 };
 
 const SettingsPage = () => {
-  useDocumentTitle("Settings \u2022 Irulan");
+  useDocumentTitle("Settings \u2014 Irulan");
   const toast = useToast();
 
   const [settings, setSettings] = useState<SettingsPayload | null>(null);
@@ -4502,7 +4835,7 @@ const SettingsPage = () => {
   );
 
   return (
-    <div className="page stack-lg">
+    <div className="page page-narrow stack-lg">
       <Button asChild className="backlink" variant="ghost">
         <Link to="/">
           <ArrowLeftIcon />
@@ -4767,7 +5100,7 @@ const SettingsPage = () => {
 };
 
 const BookshelvesPage = () => {
-  useDocumentTitle("Bookshelves \u2022 Irulan");
+  useDocumentTitle("Bookshelves \u2014 Irulan");
   const toast = useToast();
 
   const [settings, setSettings] = useState<SettingsPayload | null>(null);
@@ -4942,7 +5275,7 @@ const BookshelvesPage = () => {
   };
 
   return (
-    <div className="page stack-lg">
+    <div className="page page-narrow stack-lg">
       <Button asChild className="backlink" variant="ghost">
         <Link to="/">
           <ArrowLeftIcon />
