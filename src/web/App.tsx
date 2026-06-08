@@ -793,6 +793,22 @@ const DensityCompactIcon = () => (
   </svg>
 );
 
+const ListComfortableIcon = () => (
+  <svg viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+    <rect height="3.5" rx="0.8" width="13" x="1.5" y="2" />
+    <rect height="3.5" rx="0.8" width="13" x="1.5" y="10.5" />
+  </svg>
+);
+
+const ListCompactIcon = () => (
+  <svg viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+    <rect height="1.6" rx="0.5" width="13" x="1.5" y="2" />
+    <rect height="1.6" rx="0.5" width="13" x="1.5" y="5" />
+    <rect height="1.6" rx="0.5" width="13" x="1.5" y="8" />
+    <rect height="1.6" rx="0.5" width="13" x="1.5" y="11" />
+  </svg>
+);
+
 const SortIcon = ({
   active,
   direction,
@@ -1821,6 +1837,7 @@ const BookshelfGrid = ({
 type BookshelfListProps = {
   books: BookSummary[];
   bookshelfId?: string | null;
+  density: BookshelfDensity;
   sort: BookshelfSort;
   onChangeSort: (key: BookshelfSortKey) => void;
 } & BookshelfBookActionProps;
@@ -1854,14 +1871,18 @@ const BookshelfSortButton = ({
 const BookshelfList = ({
   books,
   bookshelfId,
+  density,
   sort,
   onBookContextKeyDown,
   onBookContextMenu,
   onChangeSort,
 }: BookshelfListProps) => {
   return (
-    <section aria-label="Bookshelf list" className="books-table-shell">
-      <Table className="books-table">
+    <section
+      aria-label="Bookshelf list"
+      className={cn("books-table-shell", `books-table-shell-${density}`)}
+    >
+      <Table className={cn("books-table", `books-table-${density}`)}>
         <colgroup>
           <col className="books-table-col-title" />
           <col className="books-table-col-author" />
@@ -3130,32 +3151,34 @@ const BookshelfPage = () => {
                 List
               </Button>
             </div>
-            {view === "grid" ? (
-              <div aria-label="Grid density" className="view-toggle density-toggle" role="group">
-                <Button
-                  aria-pressed={density === "comfortable"}
-                  className={cn("view-toggle-button", density === "comfortable" && "active")}
-                  onClick={() => onChangeDensity("comfortable")}
-                  size="sm"
-                  title="Comfortable density"
-                  type="button"
-                  variant="ghost"
-                >
-                  <DensityComfortableIcon />
-                </Button>
-                <Button
-                  aria-pressed={density === "compact"}
-                  className={cn("view-toggle-button", density === "compact" && "active")}
-                  onClick={() => onChangeDensity("compact")}
-                  size="sm"
-                  title="Compact density"
-                  type="button"
-                  variant="ghost"
-                >
-                  <DensityCompactIcon />
-                </Button>
-              </div>
-            ) : null}
+            <div
+              aria-label={view === "grid" ? "Grid density" : "List density"}
+              className="view-toggle density-toggle"
+              role="group"
+            >
+              <Button
+                aria-pressed={density === "comfortable"}
+                className={cn("view-toggle-button", density === "comfortable" && "active")}
+                onClick={() => onChangeDensity("comfortable")}
+                size="sm"
+                title="Comfortable density"
+                type="button"
+                variant="ghost"
+              >
+                {view === "list" ? <ListComfortableIcon /> : <DensityComfortableIcon />}
+              </Button>
+              <Button
+                aria-pressed={density === "compact"}
+                className={cn("view-toggle-button", density === "compact" && "active")}
+                onClick={() => onChangeDensity("compact")}
+                size="sm"
+                title="Compact density"
+                type="button"
+                variant="ghost"
+              >
+                {view === "list" ? <ListCompactIcon /> : <DensityCompactIcon />}
+              </Button>
+            </div>
           </div>
         </section>
 
@@ -3207,6 +3230,7 @@ const BookshelfPage = () => {
           <BookshelfList
             books={sortedVisibleBooks}
             bookshelfId={activeBookshelfId}
+            density={density}
             onBookContextKeyDown={onBookContextKeyDown}
             onBookContextMenu={onBookContextMenu}
             onChangeSort={onChangeBookshelfSort}

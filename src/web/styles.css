@@ -1778,6 +1778,36 @@ input::placeholder {
   cursor: default;
 }
 
+/* ─── Compact list density ─── */
+
+.books-table-compact th,
+.books-table-compact td {
+  padding: 5px 10px;
+}
+
+.books-table-compact .books-table-title-content {
+  gap: 8px;
+}
+
+.books-table-compact .books-table-cover {
+  width: 22px;
+}
+
+.books-table-compact .books-table-title-stack {
+  gap: 0;
+}
+
+/* Hide the secondary meta strip (status + rating) inline-stacked under the title
+   in compact mode — the row needs to stay single-line height. */
+.books-table-compact .books-table-title-stack .book-user-meta {
+  display: none;
+}
+
+.books-table-compact th {
+  padding-top: 6px;
+  padding-bottom: 6px;
+}
+
 /* ─── Bookshelf header ─── */
 
 .bookshelf-header {
