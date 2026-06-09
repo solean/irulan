@@ -2155,11 +2155,16 @@ input::placeholder {
   width: fit-content;
 }
 
+.reader-toc-eyebrow {
+  margin-top: 2px;
+}
+
 .reader-toc {
   display: grid;
-  gap: 6px;
+  gap: 4px;
   max-height: min(52vh, 520px);
   overflow: auto;
+  padding-right: 2px;
 }
 
 .reader-toc-item {
@@ -2257,55 +2262,53 @@ input::placeholder {
 
 .reader-canvas {
   --reader-paper: #faf6ef;
-  --reader-paper-edge: rgba(58, 44, 28, 0.06);
+  --reader-paper-edge: rgba(58, 44, 28, 0.09);
   --reader-ink: #241d17;
   --reader-muted: #7a6858;
   --reader-link: #235ea4;
   --reader-mark: #f4e6a1;
+  --reader-ground: #ece4d6;
+  --reader-paper-shadow: rgba(58, 44, 28, 0.16);
   position: relative;
-  padding: clamp(16px, 3vw, 28px);
-  border-radius: calc(var(--radius-lg) + 8px);
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  background:
-    radial-gradient(circle at top left, rgba(255, 255, 255, 0.12), transparent 38%),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.04), transparent 18%),
-    linear-gradient(180deg, #17181c, #101114);
-  box-shadow:
-    0 26px 60px rgba(0, 0, 0, 0.28),
-    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  padding: clamp(24px, 5vw, 72px) clamp(16px, 3vw, 44px);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--reader-paper-edge);
+  background: var(--reader-ground);
 }
 
 .reader-canvas[data-reader-tone="sepia"] {
   --reader-paper: #efe2c7;
-  --reader-paper-edge: rgba(109, 80, 32, 0.1);
+  --reader-paper-edge: rgba(109, 80, 32, 0.12);
   --reader-ink: #312316;
   --reader-muted: #8f7555;
   --reader-link: #7b4b1d;
   --reader-mark: #e8cf80;
+  --reader-ground: #ddcaa3;
+  --reader-paper-shadow: rgba(86, 60, 18, 0.16);
 }
 
 .reader-canvas[data-reader-tone="night"] {
   --reader-paper: #191c20;
-  --reader-paper-edge: rgba(255, 255, 255, 0.06);
+  --reader-paper-edge: rgba(255, 255, 255, 0.08);
   --reader-ink: #edf1f5;
   --reader-muted: #9aa4b0;
   --reader-link: #89bfff;
   --reader-mark: rgba(239, 208, 100, 0.18);
+  --reader-ground: #0e1013;
+  --reader-paper-shadow: rgba(0, 0, 0, 0.5);
 }
 
 .reader-paper {
-  max-width: 760px;
+  max-width: 720px;
   margin: 0 auto;
-  padding: clamp(28px, 5vw, 56px);
-  border-radius: 28px;
+  padding: clamp(28px, 5vw, 60px);
+  border-radius: 16px;
   border: 1px solid var(--reader-paper-edge);
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.18), transparent 12%),
-    var(--reader-paper);
+  background: var(--reader-paper);
   color: var(--reader-ink);
   box-shadow:
-    0 18px 50px rgba(0, 0, 0, 0.2),
-    0 3px 12px rgba(0, 0, 0, 0.08);
+    0 10px 30px var(--reader-paper-shadow),
+    0 1px 3px color-mix(in srgb, var(--reader-paper-shadow) 60%, transparent);
 }
 
 .reader-loading {
@@ -2318,6 +2321,14 @@ input::placeholder {
   overflow: hidden;
   height: min(72vh, 920px);
   outline: none;
+  transition: opacity 160ms ease;
+}
+
+/* Dim the held chapter only if the next one takes a moment to fetch — the
+   delay means quick swaps never flash the cue. */
+.reader-page-window-loading {
+  opacity: 0.55;
+  transition: opacity 200ms ease 160ms;
 }
 
 .reader-page-window:focus-visible {
@@ -2343,6 +2354,18 @@ input::placeholder {
   column-fill: auto;
   transition: transform 180ms ease;
   will-change: transform;
+  /* Keyed by section href, so this runs once per chapter change (a gentle
+     cross-fade) and never replays on in-section page turns. */
+  animation: reader-section-fade 180ms ease;
+}
+
+@keyframes reader-section-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
 }
 
 .reader-body ::selection {
@@ -2353,16 +2376,31 @@ input::placeholder {
   scroll-margin-top: 88px;
 }
 
-.reader-body > * + * {
-  margin-top: 1.2em;
+/* Intrinsic vertical rhythm. EPUBs frequently nest paragraphs inside
+   <div>/<section> wrappers, so a direct-child sibling combinator
+   (`> * + *`) silently drops the spacing. Descendant `:is()` rules reach
+   blocks at any depth and keep paragraph spacing consistent. */
+.reader-body :is(p, blockquote, figure, pre, .reader-table-wrap) {
+  margin: 0 0 1.15em;
 }
 
-.reader-group > * + * {
-  margin-top: 1.2em;
+.reader-body :is(ul, ol) {
+  margin: 0 0 1.15em;
+  padding-left: 1.35em;
 }
 
-.reader-heading {
-  margin: 0;
+.reader-body > :first-child,
+.reader-group > :first-child,
+.reader-blockquote > :first-child,
+.reader-figure > :first-child,
+.reader-list-item > :first-child {
+  margin-top: 0;
+}
+
+/* Scoped under .reader-body so these win over the global `.page h2`
+   rule (the reader renders inside a `.page` wrapper). */
+.reader-body .reader-heading {
+  margin: 1.7em 0 0.55em;
   color: var(--reader-ink);
   font-family: "Iowan Old Style", "Palatino Linotype", "Book Antiqua", Georgia, serif;
   font-weight: 600;
@@ -2372,24 +2410,30 @@ input::placeholder {
   break-after: avoid;
 }
 
-.reader-heading-h1,
-.reader-heading-h2 {
-  margin-top: 0.3em;
+/* EPUBs often wrap heading text in an anchor (for TOC targets). Those
+   anchors otherwise inherit the body link color and make headings look
+   like hyperlinks — force them back to the ink color. */
+.reader-body .reader-heading :is(a, .reader-link) {
+  color: inherit;
+  text-decoration: none;
+}
+
+.reader-body .reader-heading-h1,
+.reader-body .reader-heading-h2 {
   font-size: clamp(1.9rem, 2.7vw, 2.6rem);
 }
 
-.reader-heading-h3 {
+.reader-body .reader-heading-h3 {
   font-size: clamp(1.45rem, 2.2vw, 1.8rem);
 }
 
-.reader-heading-h4,
-.reader-heading-h5,
-.reader-heading-h6 {
+.reader-body .reader-heading-h4,
+.reader-body .reader-heading-h5,
+.reader-body .reader-heading-h6 {
   font-size: clamp(1.1rem, 1.7vw, 1.3rem);
 }
 
 .reader-paragraph {
-  margin: 0;
   color: var(--reader-ink);
   overflow-wrap: anywhere;
   text-wrap: pretty;
