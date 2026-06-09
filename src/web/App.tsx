@@ -14,6 +14,7 @@ import {
   useDeferredValue,
   useEffect,
   useEffectEvent,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -4005,6 +4006,37 @@ const BookDetailPage = () => {
   );
 };
 
+const parseReaderMarkup = (markup: string): Document => {
+  let document = new DOMParser().parseFromString(markup, "application/xhtml+xml");
+  if (document.querySelector("parsererror")) {
+    document = new DOMParser().parseFromString(markup, "text/html");
+  }
+  return document;
+};
+
+const resolveReaderSectionLabels = (
+  sections: BookReaderSection[],
+  bookTitle: string,
+): string[] => {
+  const fullTitle = bookTitle.trim().toLocaleLowerCase();
+  // Lead segment before a subtitle separator, e.g. "The Coldest Winter: America…"
+  // → "the coldest winter". Many EPUBs label every spine item with this.
+  const titleLead = bookTitle.split(/[:—–-]/)[0]?.trim().toLocaleLowerCase() ?? fullTitle;
+
+  return sections.map((section, index) => {
+    const raw = section.label?.trim() ?? "";
+    const normalized = raw.toLocaleLowerCase();
+    const previousNormalized =
+      index > 0 ? sections[index - 1].label?.trim().toLocaleLowerCase() ?? "" : "";
+    const isGeneric =
+      !raw ||
+      normalized === fullTitle ||
+      normalized === titleLead ||
+      normalized === previousNormalized;
+    return isGeneric ? `Section ${index + 1}` : raw;
+  });
+};
+
 const ReaderPage = () => {
   const { bookId = "" } = useParams();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -4017,11 +4049,17 @@ const ReaderPage = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [sectionDocument, setSectionDocument] = useState<Document | null>(null);
+  // Href of the section currently shown by sectionDocument. Updated atomically
+  // with the document so the displayed chapter never lags the URL during loads.
+  const [displayedHref, setDisplayedHref] = useState<string | null>(null);
   const [sectionTitle, setSectionTitle] = useState<string | null>(null);
   const [sectionLoading, setSectionLoading] = useState(false);
   const [sectionError, setSectionError] = useState<string | null>(null);
   const [pageCount, setPageCount] = useState(1);
   const [pageSpan, setPageSpan] = useState(0);
+  // Transform of the on-screen chapter, held steady while a new chapter loads
+  // so the outgoing one doesn't snap back to its start mid-fetch.
+  const frozenOffsetRef = useRef(0);
   const [tone, setTone] = useState<ReaderTone>(() => getStoredReaderTone() ?? "paper");
   const [fontScale, setFontScale] = useState(() => getStoredReaderFontScale() ?? 1);
 
@@ -4052,12 +4090,38 @@ const ReaderPage = () => {
     reader && currentSectionIndex >= 0 && currentSectionIndex < reader.sections.length - 1
       ? reader.sections[currentSectionIndex + 1]
       : null;
-  const activeSectionLabel = sectionTitle ?? activeSection?.label ?? reader?.title ?? "Reader";
+  const sectionLabels = useMemo(
+    () => (reader ? resolveReaderSectionLabels(reader.sections, reader.title) : []),
+    [reader],
+  );
+  const activeSectionLabel =
+    sectionTitle ??
+    (currentSectionIndex >= 0 ? sectionLabels[currentSectionIndex] : activeSection?.label) ??
+    reader?.title ??
+    "Reader";
   const readerStyle = {
     "--reader-font-scale": `${fontScale}`,
   } as CSSProperties;
   const currentPageIndex = Math.min(Math.max(0, currentPage - 1), Math.max(0, pageCount - 1));
   const pageOffset = pageSpan > 0 ? currentPageIndex * pageSpan : 0;
+
+  // While a new (uncached) chapter is fetching, the displayed document still
+  // belongs to the previous section. Hold it steady at its last offset so it
+  // doesn't snap; the atomic swap in loadSection then remounts the new chapter.
+  const isSwappingSection =
+    sectionDocument !== null && displayedHref !== null && displayedHref !== activeSection?.href;
+  const displayedOffset = isSwappingSection ? frozenOffsetRef.current : pageOffset;
+  // The section the on-screen document belongs to (the previous one mid-swap).
+  const displayedSection =
+    (displayedHref
+      ? reader?.sections.find((section) => section.href === displayedHref)
+      : null) ?? activeSection;
+
+  useEffect(() => {
+    if (!isSwappingSection) {
+      frozenOffsetRef.current = pageOffset;
+    }
+  }, [isSwappingSection, pageOffset]);
 
   useDocumentTitle(
     reader
@@ -4181,16 +4245,14 @@ const ReaderPage = () => {
         sectionMarkupCache.current.set(section.href, markup);
       }
 
-      let nextDocument = new DOMParser().parseFromString(markup, "application/xhtml+xml");
-      if (nextDocument.querySelector("parsererror")) {
-        nextDocument = new DOMParser().parseFromString(markup, "text/html");
-      }
+      const nextDocument = parseReaderMarkup(markup);
 
       if (requestId !== latestSectionRequest.current) {
         return;
       }
 
       setSectionDocument(nextDocument);
+      setDisplayedHref(section.href);
       setSectionTitle(getReaderDocumentTitle(nextDocument));
     } catch (requestError) {
       if (requestId !== latestSectionRequest.current) {
@@ -4198,6 +4260,7 @@ const ReaderPage = () => {
       }
 
       setSectionDocument(null);
+      setDisplayedHref(null);
       setSectionTitle(null);
       setSectionError(
         requestError instanceof Error ? requestError.message : "Could not load this section.",
@@ -4228,17 +4291,37 @@ const ReaderPage = () => {
   }, [goToSection, reader, selectedHref]);
 
   useEffect(() => {
-    setSectionDocument(null);
-    setSectionTitle(null);
     setSectionError(null);
-    setPageCount(1);
-    setPageSpan(0);
 
     if (!activeSection) {
+      setSectionDocument(null);
+      setDisplayedHref(null);
+      setSectionTitle(null);
+      setSectionLoading(false);
+      setPageCount(1);
+      setPageSpan(0);
+      return;
+    }
+
+    // Synchronous path for already-fetched chapters: parse and swap in the
+    // same commit so we never flash the skeleton between sections. Bump the
+    // request id so any in-flight fetch for a prior section is discarded.
+    const cachedMarkup = sectionMarkupCache.current.get(activeSection.href);
+    if (cachedMarkup) {
+      latestSectionRequest.current += 1;
+      const nextDocument = parseReaderMarkup(cachedMarkup);
+      setSectionDocument(nextDocument);
+      setDisplayedHref(activeSection.href);
+      setSectionTitle(getReaderDocumentTitle(nextDocument));
       setSectionLoading(false);
       return;
     }
 
+    // Uncached: keep the current chapter on screen (frozen via frozenOffsetRef)
+    // while we fetch the new one, then swap atomically in loadSection. The
+    // skeleton only appears on the very first load, when there's nothing yet to
+    // hold in place. We deliberately do NOT null the document or reset
+    // pagination here, so the outgoing chapter stays put during the fetch.
     void loadSection(activeSection);
   }, [activeSection?.href, activeSection?.url]);
 
@@ -4262,7 +4345,11 @@ const ReaderPage = () => {
     setPageCount(nextPageCount);
   });
 
-  useEffect(() => {
+  // Measure synchronously before the browser paints the new section so the
+  // column width is correct on the first frame. A post-paint effect would let
+  // the content render at the fallback column width and then reflow — the
+  // visible "flash" when changing chapters.
+  useLayoutEffect(() => {
     if (!sectionDocument || sectionLoading) {
       return;
     }
@@ -4571,27 +4658,7 @@ const ReaderPage = () => {
             </div>
           )}
 
-          <div className="stack-xs">
-            <Label className="field-label" htmlFor="reader-section">
-              Jump to section
-            </Label>
-            <Select onValueChange={goToSection} value={activeSection?.href ?? ""}>
-              <SelectTrigger className="w-full" id="reader-section">
-                <SelectValue placeholder="Choose a section" />
-              </SelectTrigger>
-              <SelectContent>
-                {reader.sections.map((section, index) => (
-                  <SelectItem key={section.id} value={section.href}>
-                    {index + 1}. {section.label}
-                  </SelectItem>
-                ))}
-                {currentSectionIndex < 0 && activeSection ? (
-                  <SelectItem value={activeSection.href}>{activeSection.label}</SelectItem>
-                ) : null}
-              </SelectContent>
-            </Select>
-          </div>
-
+          <p className="eyebrow reader-toc-eyebrow">Contents</p>
           <nav aria-label="Table of contents" className="reader-toc">
             {reader.sections.map((section, index) => (
               <Button
@@ -4607,7 +4674,9 @@ const ReaderPage = () => {
                 variant="ghost"
               >
                 <span className="reader-toc-index">{index + 1}</span>
-                <span className="reader-toc-label">{section.label}</span>
+                <span className="reader-toc-label">
+                  {sectionLabels[index] ?? section.label}
+                </span>
               </Button>
             ))}
           </nav>
@@ -4701,45 +4770,53 @@ const ReaderPage = () => {
             <div className="reader-paper">
               {sectionError ? <p className="inline-error">{sectionError}</p> : null}
 
-              {sectionLoading && !sectionDocument ? (
-                <div aria-hidden="true" className="reader-loading stack-sm">
-                  {Array.from({ length: 9 }, (_, index) => (
-                    <SkeletonLine
-                      className={index === 0 ? "skeleton-line-heading" : "skeleton-line-paragraph"}
-                      key={`reader-body-skeleton-${index}`}
-                    />
-                  ))}
-                </div>
-              ) : activeSection && sectionDocument ? (
+              {!sectionDocument || !displayedSection ? (
+                activeSection && !sectionError ? (
+                  <div aria-hidden="true" className="reader-loading stack-sm">
+                    {Array.from({ length: 9 }, (_, index) => (
+                      <SkeletonLine
+                        className={
+                          index === 0 ? "skeleton-line-heading" : "skeleton-line-paragraph"
+                        }
+                        key={`reader-body-skeleton-${index}`}
+                      />
+                    ))}
+                  </div>
+                ) : !sectionError ? (
+                  <div className="empty-state stack-sm">
+                    <h2>No readable sections</h2>
+                    <p>This EPUB does not include any linear spine items to display.</p>
+                  </div>
+                ) : null
+              ) : (
                 <div
                   aria-label={`Reading viewport, page ${currentPageIndex + 1} of ${pageCount}`}
-                  className="reader-page-window"
+                  className={cn(
+                    "reader-page-window",
+                    isSwappingSection && "reader-page-window-loading",
+                  )}
                   onKeyDown={onReaderViewportKeyDown}
                   ref={readerViewportRef}
                   tabIndex={0}
                 >
                   <article
                     className="reader-body reader-body-paginated"
+                    key={displayedSection.href}
                     onLoadCapture={() => {
                       measurePagination();
                     }}
                     ref={readerBodyRef}
                     style={{
-                      transform: `translate3d(-${pageOffset}px, 0, 0)`,
+                      transform: `translate3d(-${displayedOffset}px, 0, 0)`,
                     }}
                   >
                     {renderReaderDocument({
                       bookId,
                       document: sectionDocument,
                       onInternalLinkClick: onInternalReaderLinkClick,
-                      section: activeSection,
+                      section: displayedSection,
                     })}
                   </article>
-                </div>
-              ) : (
-                <div className="empty-state stack-sm">
-                  <h2>No readable sections</h2>
-                  <p>This EPUB does not include any linear spine items to display.</p>
                 </div>
               )}
             </div>
