@@ -2107,7 +2107,6 @@ const BookDetailSkeleton = () => (
         <ArrowLeftIcon />
         Bookshelf
       </Link>
-      <div aria-hidden="true" className="overflow-menu-trigger" />
     </div>
 
     <section aria-hidden="true" className="detail-hero">
@@ -3545,26 +3544,6 @@ const BookDetailPage = () => {
     lastSuccessfulDelivery?.sentAt ?? lastSuccessfulDelivery?.createdAt ?? null;
   const sendDisabled = sending || !smtpReady || trimmedRecipient.length === 0;
 
-  const overflowItems: OverflowMenuItem[] = [
-    {
-      id: "copy-filename",
-      label: copyState === "copied" ? "Filename copied" : "Copy filename",
-      onSelect: () => {
-        void onCopyFilename();
-      },
-    },
-    {
-      id: "delete",
-      label: "Delete book",
-      onSelect: () => {
-        setDeleteError(null);
-        setIsDeleteModalOpen(true);
-      },
-      variant: "destructive",
-      disabled: deleting || sending,
-    },
-  ];
-
   const stickyBarVisible = showStickyBar;
   const showRecipientForm = editingRecipient || trimmedRecipient.length === 0;
 
@@ -3637,7 +3616,6 @@ const BookDetailPage = () => {
             Bookshelf
           </Link>
         </Button>
-        <OverflowMenu items={overflowItems} label="More book actions" />
       </div>
 
       <section className="detail-hero">
@@ -3794,7 +3772,7 @@ const BookDetailPage = () => {
 
           </div>
 
-          <Link className="detail-secondary-link" to="/settings">
+          <Link className="detail-secondary-link" to="/bookshelves">
             Manage bookshelves <span aria-hidden="true">→</span>
           </Link>
         </div>
@@ -3914,7 +3892,7 @@ const BookDetailPage = () => {
             {savingBookShelves ? "Saving\u2026" : "Save bookshelves"}
           </Button>
           <Button asChild variant="outline">
-            <Link to="/settings">Manage shelves</Link>
+            <Link to="/bookshelves">Manage shelves</Link>
           </Button>
         </div>
       </Card>
