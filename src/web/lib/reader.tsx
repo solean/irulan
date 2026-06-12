@@ -90,6 +90,14 @@ const getInlineSvgUrl = (element: Element) => {
   }
 };
 
+const XLINK_NS = "http://www.w3.org/1999/xlink";
+
+const getSvgImageHref = (image: Element) =>
+  image.getAttribute("href") ??
+  image.getAttributeNS(XLINK_NS, "href") ??
+  image.getAttribute("xlink:href") ??
+  null;
+
 const getReaderLinkTarget = (
   bookId: string,
   section: BookReaderSection,
@@ -275,6 +283,28 @@ const renderNode = (
       );
     }
     case "svg": {
+      // EPUB cover pages are almost always an <svg> wrapping a single <image>.
+      // An SVG loaded through <img src="data:…"> runs in secure static mode and
+      // cannot fetch the external image inside it, so the cover renders blank.
+      // Pull the image out and render it as a normal <img> instead.
+      const imageElement = element.querySelector("image");
+      if (imageElement) {
+        const rawHref = getSvgImageHref(imageElement);
+        const resolvedSrc = rawHref ? resolveAssetUrl(options.section, rawHref) : null;
+        if (resolvedSrc) {
+          return (
+            <figure className="reader-figure" id={anchorId} key={path}>
+              <img
+                alt={element.getAttribute("aria-label") ?? ""}
+                className="reader-image"
+                loading="lazy"
+                src={resolvedSrc}
+              />
+            </figure>
+          );
+        }
+      }
+
       const svgUrl = getInlineSvgUrl(element);
       if (!svgUrl) return null;
 

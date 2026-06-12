@@ -2502,6 +2502,36 @@ input::placeholder {
   flex: 1;
 }
 
+/* In the popped-out reader, a page whose only content is a single image —
+   the cover, most notably — should grow to fill the page rather than sitting
+   small at the image's (often low-res) natural size. Stretch the lone figure
+   to the full page height and let the portrait image scale to match; width
+   never binds, so the aspect ratio is preserved. */
+.reader-canvas-immersive .reader-body-paginated > .reader-group:only-child:has(> .reader-figure:only-child > .reader-image) {
+  height: 100%;
+}
+
+.reader-canvas-immersive
+  .reader-body-paginated
+  > .reader-group:only-child
+  > .reader-figure:only-child {
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.reader-canvas-immersive
+  .reader-body-paginated
+  > .reader-group:only-child
+  > .reader-figure:only-child
+  > .reader-image {
+  height: 100%;
+  width: auto;
+  max-width: 100%;
+  max-height: 100%;
+}
+
 /* Edge page-turn affordances — quiet until you reach for them. */
 .reader-edge {
   position: absolute;
