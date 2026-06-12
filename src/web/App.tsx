@@ -2424,6 +2424,14 @@ const Shell = () => {
   const [searchParams] = useSearchParams();
   const isPopout = searchParams.get("popout") === "1";
 
+  // React Router keeps the window's scroll offset across client-side
+  // navigations, so moving from a scrolled-down bookshelf into a book detail
+  // would land partway down the new page. Reset to the top whenever the path
+  // changes (search-only changes, e.g. ?shelf=…, are intentionally ignored).
+  useLayoutEffect(() => {
+    window.scrollTo({ top: 0, behavior: "auto" });
+  }, [location.pathname]);
+
   const pageTitle = (() => {
     if (location.pathname === "/settings") return "Settings";
     if (location.pathname === "/bookshelves") return "Bookshelves";
