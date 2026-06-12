@@ -2345,8 +2345,14 @@ input::placeholder {
   transition: opacity 200ms ease 160ms;
 }
 
+/* The reading viewport is focusable only so it can capture arrow-key page
+   turns — it's a region, not a control, and the page-turn affordances are
+   already visible. A focus ring around the whole text block reads as an
+   error, so suppress it. */
+.reader-page-window:focus,
 .reader-page-window:focus-visible {
-  box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--reader-link) 40%, transparent);
+  outline: none;
+  box-shadow: none;
 }
 
 /* ─── Immersive reader (popped-out window) ─── */
