@@ -1,9 +1,12 @@
 const path = require("node:path");
 
-const { app, BrowserWindow, shell } = require("electron");
+const { app, BrowserWindow, ipcMain, shell } = require("electron");
 
 let mainWindow = null;
 let localServer = null;
+// Dedicated reader windows, keyed by book id so a second "pop out" focuses the
+// existing window instead of spawning a duplicate.
+const readerWindows = new Map();
 
 const isDev = !app.isPackaged;
 
@@ -31,10 +34,8 @@ const startLocalServer = async () => {
   return serverModule.startServer({ port: 0, hostname: "127.0.0.1" });
 };
 
-const createMainWindow = async () => {
-  localServer = await startLocalServer();
-
-  mainWindow = new BrowserWindow({
+const buildWindow = (overrides = {}) => {
+  const window = new BrowserWindow({
     width: 1280,
     height: 840,
     minWidth: 960,
@@ -50,19 +51,66 @@ const createMainWindow = async () => {
       preload: preloadEntry,
       sandbox: true,
     },
+    ...overrides,
   });
 
-  mainWindow.once("ready-to-show", () => {
-    mainWindow.show();
+  window.once("ready-to-show", () => {
+    window.show();
   });
 
-  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+  // Keep every window locked down: external links go to the system browser,
+  // never an uncontrolled in-app window.
+  window.webContents.setWindowOpenHandler(({ url }) => {
     shell.openExternal(url);
     return { action: "deny" };
   });
 
+  return window;
+};
+
+const createMainWindow = async () => {
+  localServer = await startLocalServer();
+  mainWindow = buildWindow();
   await mainWindow.loadURL(localServer.url);
 };
+
+const openReaderWindow = (bookId, search) => {
+  if (!localServer) return;
+
+  const normalizedId = String(bookId ?? "").trim();
+  if (!normalizedId) return;
+
+  const existing = readerWindows.get(normalizedId);
+  if (existing && !existing.isDestroyed()) {
+    if (existing.isMinimized()) existing.restore();
+    existing.focus();
+    return;
+  }
+
+  const params = new URLSearchParams(typeof search === "string" ? search : "");
+  params.set("popout", "1");
+  const url = `${localServer.url}/books/${encodeURIComponent(normalizedId)}/read?${params.toString()}`;
+
+  const readerWindow = buildWindow({
+    width: 900,
+    height: 1000,
+    minWidth: 480,
+    minHeight: 600,
+  });
+
+  readerWindows.set(normalizedId, readerWindow);
+  readerWindow.on("closed", () => {
+    if (readerWindows.get(normalizedId) === readerWindow) {
+      readerWindows.delete(normalizedId);
+    }
+  });
+
+  void readerWindow.loadURL(url);
+};
+
+ipcMain.handle("reader:popout", (_event, payload) => {
+  openReaderWindow(payload?.bookId, payload?.search);
+});
 
 app.whenReady().then(async () => {
   await createMainWindow();

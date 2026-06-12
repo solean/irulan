@@ -577,6 +577,27 @@ const getReaderHref = (bookId: string, bookshelfId?: string | null) => {
   return `/books/${bookId}/read?${params.toString()}`;
 };
 
+const getReaderSearch = (bookshelfId?: string | null) =>
+  bookshelfId ? new URLSearchParams({ shelf: bookshelfId }).toString() : "";
+
+// Reading always happens in a dedicated window: a native window via the
+// Electron bridge, or a separate browser window as a fallback. `search` is the
+// reader query string (e.g. "shelf=…") without the leading "?".
+const openReaderWindow = (bookId: string, search = "") => {
+  const bridge = typeof window !== "undefined" ? window.irulan : undefined;
+  if (bridge?.openReader) {
+    void bridge.openReader(bookId, search);
+    return;
+  }
+
+  const popoutSearch = search ? `${search}&popout=1` : "popout=1";
+  window.open(
+    `/books/${bookId}/read?${popoutSearch}`,
+    "_blank",
+    "noopener,width=900,height=1000",
+  );
+};
+
 const getAriaSort = (
   sort: BookshelfSort,
   key: BookshelfSortKey,
@@ -791,6 +812,25 @@ const DensityCompactIcon = () => (
     <rect height="3.5" rx="0.8" width="3.5" x="1.5" y="11" />
     <rect height="3.5" rx="0.8" width="3.5" x="6.25" y="11" />
     <rect height="3.5" rx="0.8" width="3.5" x="11" y="11" />
+  </svg>
+);
+
+
+const ContentsIcon = () => (
+  <svg viewBox="0 0 16 16" aria-hidden="true">
+    <path d="M2 4h12M2 8h12M2 12h9" />
+  </svg>
+);
+
+const ChevronLeftIcon = () => (
+  <svg viewBox="0 0 24 24" aria-hidden="true">
+    <path d="M15 5l-7 7 7 7" />
+  </svg>
+);
+
+const ChevronRightIcon = () => (
+  <svg viewBox="0 0 24 24" aria-hidden="true">
+    <path d="M9 5l7 7-7 7" />
   </svg>
 );
 
@@ -2381,6 +2421,8 @@ const AppMenu = () => {
 
 const Shell = () => {
   const location = useLocation();
+  const [searchParams] = useSearchParams();
+  const isPopout = searchParams.get("popout") === "1";
 
   const pageTitle = (() => {
     if (location.pathname === "/settings") return "Settings";
@@ -2391,6 +2433,25 @@ const Shell = () => {
     if (location.pathname.startsWith("/books/")) return "Book detail";
     return "Bookshelf";
   })();
+
+  // A popped-out reader window drops the app chrome entirely — just a slim
+  // draggable strip (so the macOS traffic lights have somewhere to live) and
+  // the reader itself. Same ReaderPage component, no second implementation.
+  if (isPopout) {
+    return (
+      <>
+        <a className="skip-link" href="#content">
+          Skip to content
+        </a>
+        <div className="app-shell app-shell-popout">
+          <main className="popout-main" id="content">
+            <h1 className="sr-only">{pageTitle}</h1>
+            <Outlet />
+          </main>
+        </div>
+      </>
+    );
+  }
 
   return (
     <>
@@ -2908,7 +2969,11 @@ const BookshelfPage = () => {
         {
           id: "read",
           label: "Read book",
-          onSelect: () => navigate(getReaderHref(bookActionMenu.book.id, activeBookshelfId)),
+          onSelect: () =>
+            openReaderWindow(
+              bookActionMenu.book.id,
+              getReaderSearch(activeBookshelfId),
+            ),
         },
         {
           id: "delete",
@@ -3569,13 +3634,14 @@ const BookDetailPage = () => {
             <span className="detail-sticky-author">{book.author}</span>
           </div>
           <div className="detail-sticky-actions">
-            <Button asChild size="sm" variant="outline">
-              <Link
-                tabIndex={stickyBarVisible ? 0 : -1}
-                to={getReaderHref(book.id, navigationBookshelfId)}
-              >
-                Read
-              </Link>
+            <Button
+              onClick={() => openReaderWindow(book.id, getReaderSearch(navigationBookshelfId))}
+              size="sm"
+              tabIndex={stickyBarVisible ? 0 : -1}
+              type="button"
+              variant="outline"
+            >
+              Read
             </Button>
             <Button
               disabled={sendDisabled}
@@ -3619,10 +3685,11 @@ const BookDetailPage = () => {
       </div>
 
       <section className="detail-hero">
-        <Link
-          aria-label={`Read ${book.title} in browser`}
+        <button
+          aria-label={`Read ${book.title}`}
           className="detail-cover-clickable"
-          to={getReaderHref(book.id, navigationBookshelfId)}
+          onClick={() => openReaderWindow(book.id, getReaderSearch(navigationBookshelfId))}
+          type="button"
         >
           <BookCover book={book} large />
           <span className="detail-cover-overlay" aria-hidden="true">
@@ -3631,7 +3698,7 @@ const BookDetailPage = () => {
             </span>
             <span className="detail-cover-overlay-label">Read</span>
           </span>
-        </Link>
+        </button>
 
         <div className="detail-identity stack-md">
           <div className="stack-xs">
@@ -4040,11 +4107,14 @@ const ReaderPage = () => {
   const frozenOffsetRef = useRef(0);
   const [tone, setTone] = useState<ReaderTone>(() => getStoredReaderTone() ?? "paper");
   const [fontScale, setFontScale] = useState(() => getStoredReaderFontScale() ?? 1);
+  // Which immersive (popout) popover is open, if any.
+  const [readerPanel, setReaderPanel] = useState<null | "contents" | "appearance">(null);
 
   const selectedHref = searchParams.get("section")?.trim() ?? "";
   const anchorId = searchParams.get("anchor")?.trim() ?? null;
   const readerBookshelfId = searchParams.get("shelf");
   const bookDetailHref = getBookHref(bookId, readerBookshelfId);
+  const isPopout = searchParams.get("popout") === "1";
   const currentPage = Math.max(
     1,
     Number.parseInt(searchParams.get("page") ?? "1", 10) || 1,
@@ -4139,6 +4209,9 @@ const ReaderPage = () => {
       if (readerBookshelfId) {
         params.set("shelf", readerBookshelfId);
       }
+      if (isPopout) {
+        params.set("popout", "1");
+      }
 
       if (options.anchor) {
         params.set("anchor", options.anchor);
@@ -4154,7 +4227,7 @@ const ReaderPage = () => {
         setSearchParams(params, { replace: options.replace });
       });
     },
-    [readerBookshelfId, setSearchParams],
+    [isPopout, readerBookshelfId, setSearchParams],
   );
 
   const goToPage = useCallback(
@@ -4173,6 +4246,9 @@ const ReaderPage = () => {
       if (readerBookshelfId) {
         params.set("shelf", readerBookshelfId);
       }
+      if (isPopout) {
+        params.set("popout", "1");
+      }
 
       if (options.preserveAnchor && anchorId) {
         params.set("anchor", anchorId);
@@ -4182,7 +4258,7 @@ const ReaderPage = () => {
         setSearchParams(params, { replace: options.replace });
       });
     },
-    [activeSection?.href, anchorId, readerBookshelfId, setSearchParams],
+    [activeSection?.href, anchorId, isPopout, readerBookshelfId, setSearchParams],
   );
 
   const loadReader = useEffectEvent(async () => {
@@ -4526,6 +4602,15 @@ const ReaderPage = () => {
     };
   }, [handleReaderShortcut]);
 
+  useEffect(() => {
+    if (!readerPanel) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setReaderPanel(null);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [readerPanel]);
+
   const onReaderViewportKeyDown = useCallback(
     (event: ReactKeyboardEvent<HTMLDivElement>) => {
       if (event.altKey || event.ctrlKey || event.metaKey) {
@@ -4605,6 +4690,261 @@ const ReaderPage = () => {
     );
   }
 
+  const prevDisabled = currentPage === 1 && !previousSection;
+  const nextDisabled = currentPage >= pageCount && !nextSection;
+
+  const renderTocNav = (onAfterSelect?: () => void) => (
+    <nav aria-label="Table of contents" className="reader-toc">
+      {reader.sections.map((section, index) => (
+        <Button
+          aria-current={section.href === activeSection?.href ? "page" : undefined}
+          className={cn(
+            "reader-toc-item",
+            section.href === activeSection?.href && "active",
+          )}
+          key={section.id}
+          onClick={() => {
+            goToSection(section.href);
+            onAfterSelect?.();
+          }}
+          size="sm"
+          type="button"
+          variant="ghost"
+        >
+          <span className="reader-toc-index">{index + 1}</span>
+          <span className="reader-toc-label">{sectionLabels[index] ?? section.label}</span>
+        </Button>
+      ))}
+    </nav>
+  );
+
+  const toneToggle = (
+    <div aria-label="Reader tone" className="view-toggle" role="group">
+      {(["paper", "sepia", "night"] as const).map((option) => (
+        <Button
+          aria-pressed={tone === option}
+          className={cn("view-toggle-button", tone === option && "active")}
+          key={option}
+          onClick={() => setTone(option)}
+          size="sm"
+          type="button"
+          variant="ghost"
+        >
+          {option === "paper" ? "Paper" : option === "sepia" ? "Sepia" : "Night"}
+        </Button>
+      ))}
+    </div>
+  );
+
+  const fontToggle = (
+    <div aria-label="Type size" className="view-toggle" role="group">
+      <Button
+        aria-label="Decrease type size"
+        className="view-toggle-button"
+        disabled={fontScale <= READER_MIN_FONT_SCALE}
+        onClick={() => onAdjustFontScale(-READER_FONT_SCALE_STEP)}
+        size="sm"
+        type="button"
+        variant="ghost"
+      >
+        A-
+      </Button>
+      <div className="stat-chip reader-type-scale">
+        <strong>{Math.round(fontScale * 100)}%</strong>
+      </div>
+      <Button
+        aria-label="Increase type size"
+        className="view-toggle-button"
+        disabled={fontScale >= READER_MAX_FONT_SCALE}
+        onClick={() => onAdjustFontScale(READER_FONT_SCALE_STEP)}
+        size="sm"
+        type="button"
+        variant="ghost"
+      >
+        A+
+      </Button>
+    </div>
+  );
+
+  // The reading surface (tinted ground + floating page + paginated body) is
+  // identical in both layouts — only the surrounding chrome differs.
+  const readingSurface = (
+    <div
+      className={cn("reader-canvas", isPopout && "reader-canvas-immersive")}
+      data-reader-tone={tone}
+      style={readerStyle}
+    >
+      <div className="reader-paper">
+        {sectionError ? <p className="inline-error">{sectionError}</p> : null}
+
+        {!sectionDocument || !displayedSection ? (
+          activeSection && !sectionError ? (
+            <div aria-hidden="true" className="reader-loading stack-sm">
+              {Array.from({ length: 9 }, (_, index) => (
+                <SkeletonLine
+                  className={index === 0 ? "skeleton-line-heading" : "skeleton-line-paragraph"}
+                  key={`reader-body-skeleton-${index}`}
+                />
+              ))}
+            </div>
+          ) : !sectionError ? (
+            <div className="empty-state stack-sm">
+              <h2>No readable sections</h2>
+              <p>This EPUB does not include any linear spine items to display.</p>
+            </div>
+          ) : null
+        ) : (
+          <div
+            aria-label={`Reading viewport, page ${currentPageIndex + 1} of ${pageCount}`}
+            className={cn(
+              "reader-page-window",
+              isSwappingSection && "reader-page-window-loading",
+            )}
+            onKeyDown={onReaderViewportKeyDown}
+            ref={readerViewportRef}
+            tabIndex={0}
+          >
+            <article
+              className="reader-body reader-body-paginated"
+              key={displayedSection.href}
+              onLoadCapture={() => {
+                measurePagination();
+              }}
+              ref={readerBodyRef}
+              style={{
+                transform: `translate3d(-${displayedOffset}px, 0, 0)`,
+              }}
+            >
+              {renderReaderDocument({
+                bookId,
+                document: sectionDocument,
+                onInternalLinkClick: onInternalReaderLinkClick,
+                section: displayedSection,
+              })}
+            </article>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+
+  // ─── Immersive layout (popped-out window) ───
+  // The page owns the window; Contents and Appearance live in popovers, page
+  // turns happen at the edges, and progress sits quietly at the bottom.
+  if (isPopout) {
+    return (
+      <div className="reader-immersive" data-reader-tone={tone}>
+        <header className="reader-immersive-bar">
+          <div className="reader-immersive-bar-group">
+            <button
+              aria-expanded={readerPanel === "contents"}
+              aria-haspopup="dialog"
+              aria-label="Contents"
+              className={cn("reader-immersive-control", readerPanel === "contents" && "active")}
+              onClick={() => setReaderPanel((panel) => (panel === "contents" ? null : "contents"))}
+              type="button"
+            >
+              <ContentsIcon />
+            </button>
+          </div>
+
+          <span className="reader-immersive-title">{reader.title}</span>
+
+          <div className="reader-immersive-bar-group reader-immersive-bar-trail">
+            <button
+              aria-expanded={readerPanel === "appearance"}
+              aria-haspopup="dialog"
+              aria-label="Appearance"
+              className={cn(
+                "reader-immersive-control reader-immersive-control-aa",
+                readerPanel === "appearance" && "active",
+              )}
+              onClick={() =>
+                setReaderPanel((panel) => (panel === "appearance" ? null : "appearance"))
+              }
+              type="button"
+            >
+              Aa
+            </button>
+          </div>
+        </header>
+
+        <div className="reader-immersive-stage">
+          <button
+            aria-label="Previous page"
+            className="reader-edge reader-edge-prev"
+            disabled={prevDisabled}
+            onClick={() => onTurnPage("previous")}
+            type="button"
+          >
+            <ChevronLeftIcon />
+          </button>
+
+          {readingSurface}
+
+          <button
+            aria-label="Next page"
+            className="reader-edge reader-edge-next"
+            disabled={nextDisabled}
+            onClick={() => onTurnPage("next")}
+            type="button"
+          >
+            <ChevronRightIcon />
+          </button>
+        </div>
+
+        <footer className="reader-immersive-footer">
+          <span className="reader-immersive-page">
+            Page {numberFormatter.format(currentPageIndex + 1)} of {numberFormatter.format(pageCount)}
+          </span>
+        </footer>
+
+        {error ? <p className="inline-error reader-immersive-error">{error}</p> : null}
+
+        {readerPanel ? (
+          <>
+            <button
+              aria-label="Close menu"
+              className="reader-immersive-scrim"
+              onClick={() => setReaderPanel(null)}
+              type="button"
+            />
+            {readerPanel === "contents" ? (
+              <div
+                aria-label="Contents"
+                className="reader-immersive-panel reader-immersive-panel-contents"
+                role="dialog"
+              >
+                <div className="reader-immersive-panel-head stack-xs">
+                  <p className="eyebrow">Contents</p>
+                  <p className="reader-immersive-panel-title">{reader.title}</p>
+                  <p className="detail-author">{reader.author}</p>
+                </div>
+                {renderTocNav(() => setReaderPanel(null))}
+              </div>
+            ) : (
+              <div
+                aria-label="Appearance"
+                className="reader-immersive-panel reader-immersive-panel-appearance"
+                role="dialog"
+              >
+                <div className="reader-immersive-field">
+                  <span className="reader-immersive-field-label">Theme</span>
+                  {toneToggle}
+                </div>
+                <div className="reader-immersive-field">
+                  <span className="reader-immersive-field-label">Text size</span>
+                  {fontToggle}
+                </div>
+              </div>
+            )}
+          </>
+        ) : null}
+      </div>
+    );
+  }
+
+  // ─── Standard in-window layout ───
   return (
     <div className="page stack-lg">
       <Button asChild className="backlink" variant="ghost">
@@ -4637,27 +4977,7 @@ const ReaderPage = () => {
           )}
 
           <p className="eyebrow reader-toc-eyebrow">Contents</p>
-          <nav aria-label="Table of contents" className="reader-toc">
-            {reader.sections.map((section, index) => (
-              <Button
-                aria-current={section.href === activeSection?.href ? "page" : undefined}
-                className={cn(
-                  "reader-toc-item",
-                  section.href === activeSection?.href && "active",
-                )}
-                key={section.id}
-                onClick={() => goToSection(section.href)}
-                size="sm"
-                type="button"
-                variant="ghost"
-              >
-                <span className="reader-toc-index">{index + 1}</span>
-                <span className="reader-toc-label">
-                  {sectionLabels[index] ?? section.label}
-                </span>
-              </Button>
-            ))}
-          </nav>
+          {renderTocNav()}
         </Card>
 
         <section className="reader-content">
@@ -4665,7 +4985,7 @@ const ReaderPage = () => {
             <div className="reader-toolbar-nav">
               <Button
                 aria-keyshortcuts="ArrowLeft"
-                disabled={currentPage === 1 && !previousSection}
+                disabled={prevDisabled}
                 onClick={() => onTurnPage("previous")}
                 title="Previous page (Left arrow)"
                 type="button"
@@ -4675,7 +4995,7 @@ const ReaderPage = () => {
               </Button>
               <Button
                 aria-keyshortcuts="ArrowRight"
-                disabled={currentPage >= pageCount && !nextSection}
+                disabled={nextDisabled}
                 onClick={() => onTurnPage("next")}
                 title="Next page (Right arrow)"
                 type="button"
@@ -4694,111 +5014,12 @@ const ReaderPage = () => {
             </div>
 
             <div className="reader-toolbar-controls">
-              <div aria-label="Reader tone" className="view-toggle" role="group">
-                {(["paper", "sepia", "night"] as const).map((option) => (
-                  <Button
-                    aria-pressed={tone === option}
-                    className={cn("view-toggle-button", tone === option && "active")}
-                    key={option}
-                    onClick={() => setTone(option)}
-                    size="sm"
-                    type="button"
-                    variant="ghost"
-                  >
-                    {option === "paper"
-                      ? "Paper"
-                      : option === "sepia"
-                        ? "Sepia"
-                        : "Night"}
-                  </Button>
-                ))}
-              </div>
-
-              <div aria-label="Type size" className="view-toggle" role="group">
-                <Button
-                  aria-label="Decrease type size"
-                  className="view-toggle-button"
-                  disabled={fontScale <= READER_MIN_FONT_SCALE}
-                  onClick={() => onAdjustFontScale(-READER_FONT_SCALE_STEP)}
-                  size="sm"
-                  type="button"
-                  variant="ghost"
-                >
-                  A-
-                </Button>
-                <div className="stat-chip reader-type-scale">
-                  <strong>{Math.round(fontScale * 100)}%</strong>
-                </div>
-                <Button
-                  aria-label="Increase type size"
-                  className="view-toggle-button"
-                  disabled={fontScale >= READER_MAX_FONT_SCALE}
-                  onClick={() => onAdjustFontScale(READER_FONT_SCALE_STEP)}
-                  size="sm"
-                  type="button"
-                  variant="ghost"
-                >
-                  A+
-                </Button>
-              </div>
+              {toneToggle}
+              {fontToggle}
             </div>
           </div>
 
-          <div className="reader-canvas" data-reader-tone={tone} style={readerStyle}>
-            <div className="reader-paper">
-              {sectionError ? <p className="inline-error">{sectionError}</p> : null}
-
-              {!sectionDocument || !displayedSection ? (
-                activeSection && !sectionError ? (
-                  <div aria-hidden="true" className="reader-loading stack-sm">
-                    {Array.from({ length: 9 }, (_, index) => (
-                      <SkeletonLine
-                        className={
-                          index === 0 ? "skeleton-line-heading" : "skeleton-line-paragraph"
-                        }
-                        key={`reader-body-skeleton-${index}`}
-                      />
-                    ))}
-                  </div>
-                ) : !sectionError ? (
-                  <div className="empty-state stack-sm">
-                    <h2>No readable sections</h2>
-                    <p>This EPUB does not include any linear spine items to display.</p>
-                  </div>
-                ) : null
-              ) : (
-                <div
-                  aria-label={`Reading viewport, page ${currentPageIndex + 1} of ${pageCount}`}
-                  className={cn(
-                    "reader-page-window",
-                    isSwappingSection && "reader-page-window-loading",
-                  )}
-                  onKeyDown={onReaderViewportKeyDown}
-                  ref={readerViewportRef}
-                  tabIndex={0}
-                >
-                  <article
-                    className="reader-body reader-body-paginated"
-                    key={displayedSection.href}
-                    onLoadCapture={() => {
-                      measurePagination();
-                    }}
-                    ref={readerBodyRef}
-                    style={{
-                      transform: `translate3d(-${displayedOffset}px, 0, 0)`,
-                    }}
-                  >
-                    {renderReaderDocument({
-                      bookId,
-                      document: sectionDocument,
-                      onInternalLinkClick: onInternalReaderLinkClick,
-                      section: displayedSection,
-                    })}
-                  </article>
-                </div>
-              )}
-            </div>
-          </div>
+          {readingSurface}
         </section>
       </section>
     </div>

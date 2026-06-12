@@ -562,6 +562,20 @@ img {
   padding: 24px 28px;
 }
 
+/* ─── Popped-out reader window ─── */
+
+.app-shell-popout {
+  height: 100vh;
+  min-height: 100vh;
+}
+
+.popout-main {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
 /* Narrow page wrapper — used for detail, settings, manage-bookshelves */
 .page-narrow {
   width: 100%;
@@ -2335,6 +2349,321 @@ input::placeholder {
   box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--reader-link) 40%, transparent);
 }
 
+/* ─── Immersive reader (popped-out window) ─── */
+
+.reader-immersive {
+  --reader-paper: #faf6ef;
+  --reader-ink: #241d17;
+  --reader-muted: #7a6858;
+  --reader-edge-ink: rgba(36, 29, 23, 0.5);
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  /* The whole window is the page tone — no framing ground, so the reading
+     surface runs edge to edge. */
+  background: var(--reader-paper);
+}
+
+.reader-immersive[data-reader-tone="sepia"] {
+  --reader-paper: #efe2c7;
+  --reader-ink: #312316;
+  --reader-muted: #8f7555;
+  --reader-edge-ink: rgba(49, 35, 22, 0.5);
+}
+
+.reader-immersive[data-reader-tone="night"] {
+  --reader-paper: #191c20;
+  --reader-ink: #edf1f5;
+  --reader-muted: #9aa4b0;
+  --reader-edge-ink: rgba(237, 241, 245, 0.5);
+}
+
+.reader-immersive-bar {
+  position: relative;
+  z-index: 6;
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  height: 48px;
+  padding: 0 14px;
+}
+
+.electron-shell .reader-immersive-bar {
+  -webkit-app-region: drag;
+  padding-left: 92px;
+}
+
+.reader-immersive-bar-group {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: 0 0 auto;
+}
+
+.reader-immersive-bar-trail {
+  margin-left: auto;
+}
+
+.reader-immersive-control {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 30px;
+  height: 30px;
+  padding: 0 8px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: color-mix(in srgb, var(--reader-ink) 75%, transparent);
+  cursor: pointer;
+  -webkit-app-region: no-drag;
+  transition: background-color 120ms ease, color 120ms ease, border-color 120ms ease;
+}
+
+.reader-immersive-control:hover,
+.reader-immersive-control.active {
+  background: color-mix(in srgb, var(--reader-ink) 10%, transparent);
+  color: var(--reader-ink);
+}
+
+.reader-immersive-control svg {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.reader-immersive-control-aa {
+  font-family: var(--font-serif);
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+.reader-immersive-title {
+  flex: 1 1 auto;
+  min-width: 0;
+  text-align: center;
+  font-family: var(--font-serif);
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--reader-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  -webkit-app-region: drag;
+}
+
+.reader-immersive-stage {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+
+.reader-canvas-immersive {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  padding: 0;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+}
+
+/* Full-bleed page: no floating card, no border/shadow/radius — the reading
+   margins come from the page's own padding, in the page tone. */
+.reader-canvas-immersive .reader-paper {
+  max-width: none;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  padding: clamp(20px, 3.2vh, 44px) clamp(28px, 6vw, 96px);
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+  background: transparent;
+}
+
+.reader-canvas-immersive .reader-page-window {
+  flex: 1;
+  height: auto;
+}
+
+.reader-canvas-immersive .reader-loading {
+  min-height: 0;
+  flex: 1;
+}
+
+/* Edge page-turn affordances — quiet until you reach for them. */
+.reader-edge {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  z-index: 4;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: clamp(48px, 9vw, 120px);
+  border: none;
+  background: transparent;
+  color: var(--reader-edge-ink);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 140ms ease, color 140ms ease;
+}
+
+.reader-edge-prev {
+  left: 0;
+  justify-content: flex-start;
+  padding-left: 10px;
+}
+
+.reader-edge-next {
+  right: 0;
+  justify-content: flex-end;
+  padding-right: 10px;
+}
+
+.reader-immersive-stage:hover .reader-edge,
+.reader-edge:focus-visible {
+  opacity: 1;
+}
+
+.reader-edge:hover {
+  color: var(--reader-ink);
+}
+
+.reader-edge:disabled {
+  opacity: 0;
+  cursor: default;
+  pointer-events: none;
+}
+
+.reader-edge svg {
+  width: 26px;
+  height: 26px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.reader-immersive-footer {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 34px;
+}
+
+.reader-immersive-page {
+  font-size: 12px;
+  color: var(--reader-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.reader-immersive-error {
+  position: absolute;
+  left: 50%;
+  bottom: 44px;
+  transform: translateX(-50%);
+  z-index: 6;
+}
+
+/* Popovers */
+.reader-immersive-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 8;
+  border: none;
+  background: transparent;
+  cursor: default;
+}
+
+.reader-immersive-panel {
+  position: absolute;
+  top: 52px;
+  z-index: 9;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  background: var(--bg-overlay);
+  box-shadow:
+    0 24px 60px rgba(0, 0, 0, 0.34),
+    0 4px 14px rgba(0, 0, 0, 0.2);
+  animation: reader-section-fade 140ms ease;
+}
+
+.reader-immersive-panel-contents {
+  left: 14px;
+  width: min(320px, calc(100vw - 28px));
+  max-height: calc(100vh - 80px);
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  overflow: hidden;
+}
+
+.reader-immersive-panel-contents .reader-toc {
+  max-height: none;
+  overflow: auto;
+}
+
+.reader-immersive-panel-head {
+  flex: 0 0 auto;
+}
+
+.reader-immersive-panel-title {
+  margin: 0;
+  font-family: var(--font-serif);
+  font-size: 16px;
+  font-weight: 500;
+  line-height: 1.25;
+  color: var(--text-primary);
+}
+
+.reader-immersive-panel-appearance {
+  right: 14px;
+  width: min(280px, calc(100vw - 28px));
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.reader-immersive-field {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.reader-immersive-field-label {
+  font-family: var(--font-serif);
+  font-size: var(--fs-sm);
+  font-weight: 500;
+  font-variant-caps: all-small-caps;
+  letter-spacing: 0.06em;
+  color: var(--text-tertiary);
+}
+
+.reader-immersive-field .view-toggle {
+  width: 100%;
+}
+
+.reader-immersive-field .view-toggle-button {
+  flex: 1;
+  justify-content: center;
+}
+
 .reader-body {
   color: var(--reader-ink);
   font-family: "Iowan Old Style", "Palatino Linotype", "Book Antiqua", Georgia, serif;
@@ -3465,6 +3794,11 @@ code {
   position: relative;
   display: block;
   width: fit-content;
+  padding: 0;
+  border: none;
+  background: none;
+  color: inherit;
+  cursor: pointer;
   border-radius: var(--radius-md);
   overflow: hidden;
 }
