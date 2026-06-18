@@ -2336,6 +2336,25 @@ input::placeholder {
   height: min(72vh, 920px);
   outline: none;
   transition: opacity 160ms ease;
+  /* Horizontal gestures drive page turns; keep vertical for scrolling and
+     stop horizontal overscroll from triggering history navigation. */
+  touch-action: pan-y;
+  overscroll-behavior-x: contain;
+}
+
+/* Images must not start a native drag, or they'd swallow the page gesture. */
+.reader-page-window img {
+  -webkit-user-drag: none;
+}
+
+.reader-page-window-dragging {
+  cursor: grabbing;
+}
+
+.reader-page-window-dragging,
+.reader-page-window-dragging * {
+  -webkit-user-select: none;
+  user-select: none;
 }
 
 /* Dim the held chapter only if the next one takes a moment to fetch — the
@@ -4262,11 +4281,11 @@ code {
   white-space: nowrap;
 }
 
-.about-grid-copy {
+.about-grid-file-action {
   flex-shrink: 0;
 }
 
-.about-grid-copy svg {
+.about-grid-file-action svg {
   width: 12px;
   height: 12px;
   fill: none;

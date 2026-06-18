@@ -2,6 +2,7 @@
 
 interface IrulanBridge {
   openReader: (bookId: string, search: string) => Promise<void>;
+  showBookFile: (bookId: string) => Promise<void>;
 }
 
 interface Window {

@@ -1,4 +1,5 @@
 const path = require("node:path");
+const { access } = require("node:fs/promises");
 
 const { app, BrowserWindow, ipcMain, shell } = require("electron");
 
@@ -108,8 +109,33 @@ const openReaderWindow = (bookId, search) => {
   void readerWindow.loadURL(url);
 };
 
+const getStoredBookFilePath = (bookId) => {
+  const normalizedId = String(bookId ?? "").trim();
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(normalizedId)) {
+    throw new Error("Invalid book id.");
+  }
+
+  const booksRoot = path.resolve(app.getPath("userData"), "storage", "books");
+  const filePath = path.resolve(booksRoot, normalizedId, "original.epub");
+  if (!filePath.startsWith(`${booksRoot}${path.sep}`)) {
+    throw new Error("Invalid book file path.");
+  }
+
+  return filePath;
+};
+
 ipcMain.handle("reader:popout", (_event, payload) => {
   openReaderWindow(payload?.bookId, payload?.search);
+});
+
+ipcMain.handle("book:showFile", async (_event, payload) => {
+  const filePath = getStoredBookFilePath(payload?.bookId);
+  try {
+    await access(filePath);
+  } catch {
+    throw new Error("The EPUB file could not be found.");
+  }
+  shell.showItemInFolder(filePath);
 });
 
 app.whenReady().then(async () => {

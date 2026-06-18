@@ -4,6 +4,7 @@ import type {
   FormEvent,
   KeyboardEvent as ReactKeyboardEvent,
   MouseEvent,
+  PointerEvent as ReactPointerEvent,
   ReactNode,
 } from "react";
 import {
@@ -900,6 +901,13 @@ const CopyIcon = () => (
   <svg viewBox="0 0 16 16" aria-hidden="true">
     <rect height="9" rx="1.5" width="9" x="5" y="5" />
     <path d="M3 11V4a1 1 0 0 1 1-1h7" />
+  </svg>
+);
+
+const FolderIcon = () => (
+  <svg viewBox="0 0 16 16" aria-hidden="true">
+    <path d="M2.5 4.5h4l1.3 1.5h5.7v6.5a1 1 0 0 1-1 1h-10a1 1 0 0 1-1-1v-7a1 1 0 0 1 1-1Z" />
+    <path d="M2 7h12" />
   </svg>
 );
 
@@ -3492,6 +3500,25 @@ const BookDetailPage = () => {
     window.setTimeout(() => setCopyState("idle"), 1800);
   };
 
+  const onShowBookFile = async () => {
+    if (!book) return;
+    const bridge = typeof window !== "undefined" ? window.irulan : undefined;
+    if (!bridge?.showBookFile) return;
+
+    try {
+      await bridge.showBookFile(book.id);
+    } catch (requestError) {
+      toast({
+        title: "Could not open Finder",
+        description:
+          requestError instanceof Error
+            ? requestError.message
+            : "The EPUB file could not be revealed.",
+        variant: "error",
+      });
+    }
+  };
+
   const onToggleBookShelf = (bookshelfId: string) => {
     setBookShelfIdsDraft((current) =>
       current.includes(bookshelfId)
@@ -3616,6 +3643,9 @@ const BookDetailPage = () => {
   const lastSentAt =
     lastSuccessfulDelivery?.sentAt ?? lastSuccessfulDelivery?.createdAt ?? null;
   const sendDisabled = sending || !smtpReady || trimmedRecipient.length === 0;
+  const canShowBookFile = Boolean(
+    typeof window !== "undefined" && window.irulan?.showBookFile,
+  );
 
   const stickyBarVisible = showStickyBar;
   const showRecipientForm = editingRecipient || trimmedRecipient.length === 0;
@@ -3906,7 +3936,7 @@ const BookDetailPage = () => {
                     ? "Filename copied to clipboard"
                     : "Copy filename to clipboard"
                 }
-                className="about-grid-copy"
+                className="about-grid-file-action"
                 onClick={() => {
                   void onCopyFilename();
                 }}
@@ -3917,6 +3947,21 @@ const BookDetailPage = () => {
                 <CopyIcon />
                 <span>{copyState === "copied" ? "Copied" : "Copy"}</span>
               </Button>
+              {canShowBookFile ? (
+                <Button
+                  aria-label={`Open ${book.sourceFilename} in Finder`}
+                  className="about-grid-file-action"
+                  onClick={() => {
+                    void onShowBookFile();
+                  }}
+                  size="sm"
+                  type="button"
+                  variant="ghost"
+                >
+                  <FolderIcon />
+                  <span>Open in Finder</span>
+                </Button>
+              ) : null}
             </dd>
           </div>
           <div>
@@ -4097,6 +4142,22 @@ const ReaderPage = () => {
   const readerBodyRef = useRef<HTMLElement | null>(null);
   const sectionMarkupCache = useRef(new Map<string, string>());
   const latestSectionRequest = useRef(0);
+  // In-flight drag gesture on the reading viewport, if any. Lives in a ref so
+  // pointermove never re-renders; only engage/release touch React state.
+  const readerDragRef = useRef<{
+    pointerId: number;
+    startX: number;
+    startY: number;
+    prevX: number;
+    prevTime: number;
+    lastX: number;
+    lastTime: number;
+    engaged: boolean;
+    rejected: boolean;
+  } | null>(null);
+  // Swallow the click that follows a completed page drag so it doesn't
+  // activate a link the pointer happened to be over.
+  const suppressPageClickRef = useRef(false);
 
   const [reader, setReader] = useState<BookReader | null>(null);
   const [loading, setLoading] = useState(true);
@@ -4117,6 +4178,9 @@ const ReaderPage = () => {
   const [fontScale, setFontScale] = useState(() => getStoredReaderFontScale() ?? 1);
   // Which immersive (popout) popover is open, if any.
   const [readerPanel, setReaderPanel] = useState<null | "contents" | "appearance">(null);
+  // True while a pointer drag is actively moving the page (suppresses text
+  // selection and switches the cursor).
+  const [isDraggingPage, setIsDraggingPage] = useState(false);
 
   const selectedHref = searchParams.get("section")?.trim() ?? "";
   const anchorId = searchParams.get("anchor")?.trim() ?? null;
@@ -4632,6 +4696,269 @@ const ReaderPage = () => {
     [handleReaderShortcut],
   );
 
+  // Slide the page body to a target offset with a short ease-out, then drop
+  // the inline transition so React-driven jumps (chapter swaps) stay instant.
+  const settleReaderBody = useCallback((offset: number) => {
+    const body = readerBodyRef.current;
+    if (!body) return;
+
+    body.style.transition = "transform 280ms cubic-bezier(0.22, 0.61, 0.36, 1)";
+    body.style.transform = `translate3d(${-offset}px, 0, 0)`;
+
+    const clear = () => {
+      body.style.transition = "";
+      body.removeEventListener("transitionend", clear);
+    };
+    body.addEventListener("transitionend", clear);
+    window.setTimeout(clear, 360);
+  }, []);
+
+  // Page turn with the slide animation. Within a chapter the body glides to
+  // the neighbouring page; at chapter bounds it settles back and the regular
+  // (instant) section turn takes over.
+  const turnPageAnimated = useCallback(
+    (direction: "previous" | "next") => {
+      if (direction === "next" && currentPage < pageCount) {
+        settleReaderBody(pageOffset + pageSpan);
+        goToPage(currentPage + 1);
+        return;
+      }
+
+      if (direction === "previous" && currentPage > 1) {
+        settleReaderBody(pageOffset - pageSpan);
+        goToPage(currentPage - 1);
+        return;
+      }
+
+      settleReaderBody(pageOffset);
+      onTurnPage(direction);
+    },
+    [currentPage, goToPage, onTurnPage, pageCount, pageOffset, pageSpan, settleReaderBody],
+  );
+
+  const turnPageAnimatedRef = useRef(turnPageAnimated);
+  useEffect(() => {
+    turnPageAnimatedRef.current = turnPageAnimated;
+  });
+
+  const onReaderPointerDown = useCallback(
+    (event: ReactPointerEvent<HTMLDivElement>) => {
+      suppressPageClickRef.current = false;
+      if (!event.isPrimary || (event.pointerType === "mouse" && event.button !== 0)) {
+        return;
+      }
+      if (isSwappingSection || pageSpan <= 0) {
+        return;
+      }
+
+      readerDragRef.current = {
+        pointerId: event.pointerId,
+        startX: event.clientX,
+        startY: event.clientY,
+        prevX: event.clientX,
+        prevTime: event.timeStamp,
+        lastX: event.clientX,
+        lastTime: event.timeStamp,
+        engaged: false,
+        rejected: false,
+      };
+    },
+    [isSwappingSection, pageSpan],
+  );
+
+  const onReaderPointerMove = useCallback(
+    (event: ReactPointerEvent<HTMLDivElement>) => {
+      const drag = readerDragRef.current;
+      if (!drag || drag.pointerId !== event.pointerId || drag.rejected) {
+        return;
+      }
+
+      const deltaX = event.clientX - drag.startX;
+      const deltaY = event.clientY - drag.startY;
+
+      if (!drag.engaged) {
+        if (Math.abs(deltaY) > 18 && Math.abs(deltaY) > Math.abs(deltaX)) {
+          // Vertical gesture — leave it to scrolling.
+          drag.rejected = true;
+          return;
+        }
+        if (Math.abs(deltaX) < 10 || Math.abs(deltaX) < Math.abs(deltaY) * 1.2) {
+          return;
+        }
+
+        // A mouse drag that is already extending a text selection is the
+        // user selecting, not page-turning.
+        const selection = window.getSelection();
+        if (event.pointerType === "mouse" && selection && !selection.isCollapsed) {
+          drag.rejected = true;
+          return;
+        }
+
+        drag.engaged = true;
+        suppressPageClickRef.current = true;
+        setIsDraggingPage(true);
+        selection?.removeAllRanges();
+        try {
+          event.currentTarget.setPointerCapture(event.pointerId);
+        } catch {
+          // Pointer already released — the up/cancel handler will clean up.
+        }
+        const body = readerBodyRef.current;
+        if (body) {
+          body.style.transition = "none";
+        }
+      }
+
+      drag.prevX = drag.lastX;
+      drag.prevTime = drag.lastTime;
+      drag.lastX = event.clientX;
+      drag.lastTime = event.timeStamp;
+
+      const body = readerBodyRef.current;
+      if (!body) return;
+
+      // Follow the pointer, with rubber-band resistance past either end of
+      // the chapter.
+      const maxOffset = Math.max(0, (pageCount - 1) * pageSpan);
+      let target = displayedOffset - deltaX;
+      if (target < 0) {
+        target *= 0.35;
+      } else if (target > maxOffset) {
+        target = maxOffset + (target - maxOffset) * 0.35;
+      }
+      body.style.transform = `translate3d(${-target}px, 0, 0)`;
+    },
+    [displayedOffset, pageCount, pageSpan],
+  );
+
+  const finishReaderDrag = useCallback(
+    (event: ReactPointerEvent<HTMLDivElement>, cancelled: boolean) => {
+      const drag = readerDragRef.current;
+      if (!drag || drag.pointerId !== event.pointerId) {
+        return;
+      }
+      readerDragRef.current = null;
+      if (!drag.engaged) {
+        return;
+      }
+
+      setIsDraggingPage(false);
+      if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+        event.currentTarget.releasePointerCapture(event.pointerId);
+      }
+
+      const deltaX = event.clientX - drag.startX;
+      const elapsed = event.timeStamp - drag.prevTime;
+      const velocity = cancelled || elapsed <= 0 ? 0 : (event.clientX - drag.prevX) / elapsed;
+
+      // Commit the turn past a quarter page, or on a quick flick.
+      const distanceThreshold = Math.min(pageSpan * 0.25, 220);
+      const isFlick = Math.abs(velocity) > 0.4 && Math.abs(deltaX) > 24;
+      let direction: "previous" | "next" | null = null;
+      if (!cancelled) {
+        if (deltaX <= -distanceThreshold || (isFlick && velocity < 0)) {
+          direction = "next";
+        } else if (deltaX >= distanceThreshold || (isFlick && velocity > 0)) {
+          direction = "previous";
+        }
+      }
+
+      if (direction) {
+        turnPageAnimated(direction);
+        return;
+      }
+
+      settleReaderBody(displayedOffset);
+    },
+    [displayedOffset, pageSpan, settleReaderBody, turnPageAnimated],
+  );
+
+  const onReaderPointerUp = useCallback(
+    (event: ReactPointerEvent<HTMLDivElement>) => {
+      finishReaderDrag(event, false);
+    },
+    [finishReaderDrag],
+  );
+
+  const onReaderPointerCancel = useCallback(
+    (event: ReactPointerEvent<HTMLDivElement>) => {
+      finishReaderDrag(event, true);
+    },
+    [finishReaderDrag],
+  );
+
+  const onReaderClickCapture = useCallback((event: MouseEvent<HTMLDivElement>) => {
+    if (!suppressPageClickRef.current) return;
+    suppressPageClickRef.current = false;
+    event.preventDefault();
+    event.stopPropagation();
+  }, []);
+
+  // Trackpad two-finger swipe (horizontal wheel) turns pages, Apple
+  // Books-style. Attached manually: React wheel listeners are passive, and
+  // preventDefault is needed to stop the browser's history-swipe gesture.
+  const hasReadingSurface = Boolean(sectionDocument && displayedSection);
+  useEffect(() => {
+    if (!hasReadingSurface) return;
+    const viewport = readerViewportRef.current;
+    if (!viewport) return;
+
+    let accumulated = 0;
+    let lastEventTime = 0;
+    let lastFlipTime = 0;
+    let coolingDown = false;
+    let recentMagnitudes: number[] = [];
+
+    const onWheel = (event: WheelEvent) => {
+      if (Math.abs(event.deltaX) <= Math.abs(event.deltaY)) {
+        return;
+      }
+      event.preventDefault();
+
+      const now = event.timeStamp;
+      const gap = now - lastEventTime;
+      lastEventTime = now;
+      const magnitude = Math.abs(event.deltaX);
+
+      if (coolingDown) {
+        // Momentum from the swipe that already turned the page decays
+        // steadily, so a fresh swipe announces itself one of two ways: the
+        // event stream goes quiet first, or the delta suddenly rises above
+        // the decaying tail while the flip is comfortably in the past.
+        const quiet = gap > 160;
+        const rising =
+          now - lastFlipTime > 250 &&
+          magnitude >= 10 &&
+          magnitude > Math.max(...recentMagnitudes, 0);
+        if (!quiet && !rising) {
+          recentMagnitudes = [...recentMagnitudes.slice(-2), magnitude];
+          return;
+        }
+        coolingDown = false;
+        accumulated = 0;
+      } else if (gap > 300) {
+        accumulated = 0;
+      }
+
+      recentMagnitudes = [...recentMagnitudes.slice(-2), magnitude];
+      accumulated += event.deltaX;
+      if (Math.abs(accumulated) < 90) {
+        return;
+      }
+
+      const direction = accumulated > 0 ? "next" : "previous";
+      accumulated = 0;
+      coolingDown = true;
+      lastFlipTime = now;
+      turnPageAnimatedRef.current(direction);
+    };
+
+    viewport.addEventListener("wheel", onWheel, { passive: false });
+    return () => {
+      viewport.removeEventListener("wheel", onWheel);
+    };
+  }, [hasReadingSurface]);
+
   if (loading && !reader) {
     return (
       <div className="page stack-lg">
@@ -4807,8 +5134,14 @@ const ReaderPage = () => {
             className={cn(
               "reader-page-window",
               isSwappingSection && "reader-page-window-loading",
+              isDraggingPage && "reader-page-window-dragging",
             )}
+            onClickCapture={onReaderClickCapture}
             onKeyDown={onReaderViewportKeyDown}
+            onPointerCancel={onReaderPointerCancel}
+            onPointerDown={onReaderPointerDown}
+            onPointerMove={onReaderPointerMove}
+            onPointerUp={onReaderPointerUp}
             ref={readerViewportRef}
             tabIndex={0}
           >

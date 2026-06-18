@@ -10,4 +10,6 @@ contextBridge.exposeInMainWorld("irulan", {
   // main process has handled the request.
   openReader: (bookId, search) =>
     ipcRenderer.invoke("reader:popout", { bookId, search }),
+  showBookFile: (bookId) =>
+    ipcRenderer.invoke("book:showFile", { bookId }),
 });
