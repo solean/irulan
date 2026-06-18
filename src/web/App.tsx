@@ -106,6 +106,8 @@ type BookshelfView = "grid" | "list";
 type BookshelfDensity = "comfortable" | "compact";
 type ReadStatusFilter = "all" | ReadStatus;
 type ReaderTone = "paper" | "sepia" | "night";
+type ReaderFontId = "original" | "iowan" | "georgia" | "palatino" | "charter" | "sans";
+type ReaderSpacingId = "compact" | "cozy" | "roomy";
 type BookshelfSortKey =
   | "title"
   | "author"
@@ -139,9 +141,52 @@ const BOOKSHELF_DENSITY_KEY = "ebook-manager-bookshelf-density";
 const ALL_BOOKSHELVES_ID = "all";
 const READER_TONE_KEY = "ebook-manager-reader-tone";
 const READER_FONT_SCALE_KEY = "ebook-manager-reader-font-scale";
+const READER_FONT_KEY = "ebook-manager-reader-font";
+const READER_SPACING_KEY = "ebook-manager-reader-spacing";
 const READER_MIN_FONT_SCALE = 0.95;
 const READER_MAX_FONT_SCALE = 1.25;
 const READER_FONT_SCALE_STEP = 0.1;
+// Reading typefaces, mirroring Apple Books' picker. Stacks lead with the
+// macOS-native face (this ships as an Electron app on Mac) and fall back to
+// broadly available serifs elsewhere. "Original" resolves to the system
+// serif — New York on Apple platforms — which matches Apple Books' default.
+const READER_FONTS: ReadonlyArray<{ id: ReaderFontId; label: string; stack: string }> = [
+  {
+    id: "original",
+    label: "Original",
+    stack: 'ui-serif, "New York", "Iowan Old Style", "Palatino Linotype", Georgia, serif',
+  },
+  {
+    id: "iowan",
+    label: "Iowan",
+    stack: '"Iowan Old Style", "Palatino Linotype", "Book Antiqua", Georgia, serif',
+  },
+  { id: "georgia", label: "Georgia", stack: 'Georgia, "Times New Roman", serif' },
+  {
+    id: "palatino",
+    label: "Palatino",
+    stack: '"Palatino Linotype", "Book Antiqua", Palatino, Georgia, serif',
+  },
+  {
+    id: "charter",
+    label: "Charter",
+    stack: 'Charter, "Bitstream Charter", "Sitka Text", Georgia, serif',
+  },
+  {
+    id: "sans",
+    label: "Sans",
+    stack: '-apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif',
+  },
+];
+const DEFAULT_READER_FONT: ReaderFontId = "original";
+// Line-height presets. "Cozy" (~1.5) is the new default, close to Apple
+// Books; "roomy" preserves the reader's previous airier rhythm.
+const READER_SPACINGS: ReadonlyArray<{ id: ReaderSpacingId; label: string; value: string }> = [
+  { id: "compact", label: "Compact", value: "1.35" },
+  { id: "cozy", label: "Cozy", value: "1.5" },
+  { id: "roomy", label: "Roomy", value: "1.78" },
+];
+const DEFAULT_READER_SPACING: ReaderSpacingId = "cozy";
 const IMPORT_BATCH_SIZE = 20;
 const INVALID_IMPORT_FILES_MESSAGE = "Only EPUB files are supported.";
 const DEFAULT_BOOKSHELF_SORT: BookshelfSort = {
@@ -233,6 +278,30 @@ function getStoredReaderFontScale(): number | null {
       stored <= READER_MAX_FONT_SCALE
     ) {
       return stored;
+    }
+  } catch {
+    /* localStorage unavailable */
+  }
+  return null;
+}
+
+function getStoredReaderFont(): ReaderFontId | null {
+  try {
+    const stored = localStorage.getItem(READER_FONT_KEY);
+    if (READER_FONTS.some((font) => font.id === stored)) {
+      return stored as ReaderFontId;
+    }
+  } catch {
+    /* localStorage unavailable */
+  }
+  return null;
+}
+
+function getStoredReaderSpacing(): ReaderSpacingId | null {
+  try {
+    const stored = localStorage.getItem(READER_SPACING_KEY);
+    if (READER_SPACINGS.some((spacing) => spacing.id === stored)) {
+      return stored as ReaderSpacingId;
     }
   } catch {
     /* localStorage unavailable */
@@ -4176,6 +4245,12 @@ const ReaderPage = () => {
   const frozenOffsetRef = useRef(0);
   const [tone, setTone] = useState<ReaderTone>(() => getStoredReaderTone() ?? "paper");
   const [fontScale, setFontScale] = useState(() => getStoredReaderFontScale() ?? 1);
+  const [fontFamily, setFontFamily] = useState<ReaderFontId>(
+    () => getStoredReaderFont() ?? DEFAULT_READER_FONT,
+  );
+  const [lineSpacing, setLineSpacing] = useState<ReaderSpacingId>(
+    () => getStoredReaderSpacing() ?? DEFAULT_READER_SPACING,
+  );
   // Which immersive (popout) popover is open, if any.
   const [readerPanel, setReaderPanel] = useState<null | "contents" | "appearance">(null);
   // True while a pointer drag is actively moving the page (suppresses text
@@ -4219,8 +4294,14 @@ const ReaderPage = () => {
     (currentSectionIndex >= 0 ? sectionLabels[currentSectionIndex] : activeSection?.label) ??
     reader?.title ??
     "Reader";
+  const readerFontStack =
+    READER_FONTS.find((font) => font.id === fontFamily)?.stack ?? READER_FONTS[0].stack;
+  const readerLineHeight =
+    READER_SPACINGS.find((spacing) => spacing.id === lineSpacing)?.value ?? READER_SPACINGS[1].value;
   const readerStyle = {
     "--reader-font-scale": `${fontScale}`,
+    "--reader-font-family": readerFontStack,
+    "--reader-line-height": readerLineHeight,
   } as CSSProperties;
   const currentPageIndex = Math.min(Math.max(0, currentPage - 1), Math.max(0, pageCount - 1));
   const pageOffset = pageSpan > 0 ? currentPageIndex * pageSpan : 0;
@@ -4264,6 +4345,22 @@ const ReaderPage = () => {
       /* noop */
     }
   }, [fontScale]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(READER_FONT_KEY, fontFamily);
+    } catch {
+      /* noop */
+    }
+  }, [fontFamily]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(READER_SPACING_KEY, lineSpacing);
+    } catch {
+      /* noop */
+    }
+  }, [lineSpacing]);
 
   const goToSection = useCallback(
     (
@@ -4498,7 +4595,7 @@ const ReaderPage = () => {
     return () => {
       observer.disconnect();
     };
-  }, [fontScale, sectionDocument, sectionLoading]);
+  }, [fontFamily, fontScale, lineSpacing, sectionDocument, sectionLoading]);
 
   useEffect(() => {
     if (!activeSection?.href) {
@@ -5101,6 +5198,42 @@ const ReaderPage = () => {
     </div>
   );
 
+  const fontFamilySelect = (
+    <Select
+      onValueChange={(value) => setFontFamily(value as ReaderFontId)}
+      value={fontFamily}
+    >
+      <SelectTrigger aria-label="Reading font" className="reader-font-trigger">
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent>
+        {READER_FONTS.map((font) => (
+          <SelectItem key={font.id} value={font.id}>
+            <span style={{ fontFamily: font.stack }}>{font.label}</span>
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  );
+
+  const spacingToggle = (
+    <div aria-label="Line spacing" className="view-toggle" role="group">
+      {READER_SPACINGS.map((option) => (
+        <Button
+          aria-pressed={lineSpacing === option.id}
+          className={cn("view-toggle-button", lineSpacing === option.id && "active")}
+          key={option.id}
+          onClick={() => setLineSpacing(option.id)}
+          size="sm"
+          type="button"
+          variant="ghost"
+        >
+          {option.label}
+        </Button>
+      ))}
+    </div>
+  );
+
   // The reading surface (tinted ground + floating page + paginated body) is
   // identical in both layouts — only the surrounding chrome differs.
   const readingSurface = (
@@ -5274,8 +5407,16 @@ const ReaderPage = () => {
                   {toneToggle}
                 </div>
                 <div className="reader-immersive-field">
+                  <span className="reader-immersive-field-label">Font</span>
+                  {fontFamilySelect}
+                </div>
+                <div className="reader-immersive-field">
                   <span className="reader-immersive-field-label">Text size</span>
                   {fontToggle}
+                </div>
+                <div className="reader-immersive-field">
+                  <span className="reader-immersive-field-label">Line spacing</span>
+                  {spacingToggle}
                 </div>
               </div>
             )}
@@ -5356,7 +5497,9 @@ const ReaderPage = () => {
 
             <div className="reader-toolbar-controls">
               {toneToggle}
+              {fontFamilySelect}
               {fontToggle}
+              {spacingToggle}
             </div>
           </div>
 

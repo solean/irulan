@@ -2719,11 +2719,31 @@ input::placeholder {
   justify-content: center;
 }
 
+/* Font picker: a fixed, comfortable width in the docked toolbar; full-width
+   inside the immersive appearance panel. */
+.reader-font-trigger {
+  min-height: 36px;
+  width: 9.5rem;
+  justify-content: space-between;
+  background: var(--bg-surface);
+}
+
+.reader-immersive-field .reader-font-trigger {
+  width: 100%;
+}
+
 .reader-body {
   color: var(--reader-ink);
-  font-family: "Iowan Old Style", "Palatino Linotype", "Book Antiqua", Georgia, serif;
+  font-family: var(
+    --reader-font-family,
+    "Iowan Old Style",
+    "Palatino Linotype",
+    "Book Antiqua",
+    Georgia,
+    serif
+  );
   font-size: calc(1.06rem * var(--reader-font-scale, 1));
-  line-height: 1.82;
+  line-height: var(--reader-line-height, 1.5);
   letter-spacing: 0.01em;
   text-rendering: optimizeLegibility;
   font-kerning: normal;
@@ -2786,7 +2806,14 @@ input::placeholder {
 .reader-body .reader-heading {
   margin: 1.7em 0 0.55em;
   color: var(--reader-ink);
-  font-family: "Iowan Old Style", "Palatino Linotype", "Book Antiqua", Georgia, serif;
+  font-family: var(
+    --reader-font-family,
+    "Iowan Old Style",
+    "Palatino Linotype",
+    "Book Antiqua",
+    Georgia,
+    serif
+  );
   font-weight: 600;
   letter-spacing: -0.02em;
   line-height: 1.18;
