@@ -93,8 +93,8 @@ const openReaderWindow = (bookId, search) => {
   const url = `${localServer.url}/books/${encodeURIComponent(normalizedId)}/read?${params.toString()}`;
 
   const readerWindow = buildWindow({
-    width: 900,
-    height: 1000,
+    width: 820,
+    height: 940,
     minWidth: 480,
     minHeight: 600,
   });
