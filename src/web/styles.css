@@ -2592,7 +2592,16 @@ input::placeholder {
   opacity: 1;
 }
 
-.reader-edge:hover {
+/* The edge hit area spans the full window height, so the browser's default
+   focus ring reads as a stray box down the side. Suppress it; keyboard focus
+   is already signalled by the chevron fading in and inking up. */
+.reader-edge:focus,
+.reader-edge:focus-visible {
+  outline: none;
+}
+
+.reader-edge:hover,
+.reader-edge:focus-visible {
   color: var(--reader-ink);
 }
 

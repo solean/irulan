@@ -143,9 +143,17 @@ const READER_TONE_KEY = "ebook-manager-reader-tone";
 const READER_FONT_SCALE_KEY = "ebook-manager-reader-font-scale";
 const READER_FONT_KEY = "ebook-manager-reader-font";
 const READER_SPACING_KEY = "ebook-manager-reader-spacing";
+// Reading position is saved per book so reopening the reader resumes where the
+// reader left off. Keyed by book id; the value is a { section, page } pair.
+const READER_PROGRESS_KEY_PREFIX = "ebook-manager-reader-progress";
+const getReaderProgressKey = (bookId: string) => `${READER_PROGRESS_KEY_PREFIX}:${bookId}`;
 const READER_MIN_FONT_SCALE = 0.95;
 const READER_MAX_FONT_SCALE = 1.25;
 const READER_FONT_SCALE_STEP = 0.1;
+// Sentinel "page" used when paging backwards across a chapter boundary. The
+// previous chapter's length isn't known until it loads and is measured, so we
+// aim past the end and let the page clamp settle on its real last page.
+const READER_LAST_PAGE = Number.MAX_SAFE_INTEGER;
 // Reading typefaces, mirroring Apple Books' picker. Stacks lead with the
 // macOS-native face (this ships as an Electron app on Mac) and fall back to
 // broadly available serifs elsewhere. "Original" resolves to the system
@@ -307,6 +315,36 @@ function getStoredReaderSpacing(): ReaderSpacingId | null {
     /* localStorage unavailable */
   }
   return null;
+}
+
+type StoredReaderProgress = { section: string; page: number };
+
+function getStoredReaderProgress(bookId: string): StoredReaderProgress | null {
+  if (!bookId) return null;
+  try {
+    const raw = localStorage.getItem(getReaderProgressKey(bookId));
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Partial<StoredReaderProgress> | null;
+    if (parsed && typeof parsed.section === "string" && parsed.section.length > 0) {
+      const page = Number(parsed.page);
+      return {
+        section: parsed.section,
+        page: Number.isFinite(page) && page >= 1 ? Math.round(page) : 1,
+      };
+    }
+  } catch {
+    /* localStorage unavailable or malformed */
+  }
+  return null;
+}
+
+function setStoredReaderProgress(bookId: string, progress: StoredReaderProgress) {
+  if (!bookId) return;
+  try {
+    localStorage.setItem(getReaderProgressKey(bookId), JSON.stringify(progress));
+  } catch {
+    /* localStorage unavailable */
+  }
 }
 
 function applyTheme(theme: Theme) {
@@ -4362,6 +4400,13 @@ const ReaderPage = () => {
     }
   }, [lineSpacing]);
 
+  // Remember where the reader is so reopening this book resumes here. Only once
+  // a section is in the URL — before that the position is still being restored.
+  useEffect(() => {
+    if (!reader || !selectedHref) return;
+    setStoredReaderProgress(bookId, { section: selectedHref, page: currentPage });
+  }, [bookId, currentPage, reader, selectedHref]);
+
   const goToSection = useCallback(
     (
       href: string,
@@ -4510,8 +4555,16 @@ const ReaderPage = () => {
       return;
     }
 
+    // No section in the URL means the reader was just opened: resume the saved
+    // position if one belongs to this book's spine, otherwise start at the top.
+    const saved = getStoredReaderProgress(bookId);
+    if (saved && reader.sections.some((section) => section.href === saved.section)) {
+      goToSection(saved.section, { page: saved.page, replace: true });
+      return;
+    }
+
     goToSection(reader.sections[0]?.href ?? "", { replace: true });
-  }, [goToSection, reader, selectedHref]);
+  }, [bookId, goToSection, reader, selectedHref]);
 
   useEffect(() => {
     setSectionError(null);
@@ -4557,12 +4610,26 @@ const ReaderPage = () => {
       return;
     }
 
-    body.style.setProperty("--reader-page-width", `${viewport.clientWidth}px`);
+    // Use the fractional content width, not the integer clientWidth: a sub-pixel
+    // gap between the CSS column width and our page stride accumulates across a
+    // chapter and eventually clips a few px of text at the viewport edge.
+    const pageWidth = viewport.getBoundingClientRect().width;
+    body.style.setProperty("--reader-page-width", `${pageWidth}px`);
 
     const columnGap = Number.parseFloat(window.getComputedStyle(body).columnGap || "0");
-    const nextPageSpan = viewport.clientWidth + columnGap;
-    const nextPageCount =
-      nextPageSpan > 0 ? Math.max(1, Math.ceil((body.scrollWidth + columnGap) / nextPageSpan)) : 1;
+    const stride = pageWidth + columnGap;
+    if (stride <= 0) {
+      setPageCount(1);
+      setPageSpan(0);
+      return;
+    }
+
+    // scrollWidth spans whole column boxes, so total / stride rounds to the exact
+    // column count; deriving the stride back out keeps every page edge aligned
+    // (and avoids the spurious trailing page that `ceil` produced).
+    const total = body.scrollWidth + columnGap;
+    const nextPageCount = Math.max(1, Math.round(total / stride));
+    const nextPageSpan = total / nextPageCount;
 
     setPageSpan(nextPageSpan);
     setPageCount(nextPageCount);
@@ -4602,7 +4669,9 @@ const ReaderPage = () => {
       return;
     }
 
-    if (sectionLoading || pageSpan <= 0) {
+    // Wait for the swap to finish: mid-swap, pageCount still belongs to the
+    // outgoing section, so clamping here would snap a restored page back to 1.
+    if (sectionLoading || pageSpan <= 0 || isSwappingSection) {
       return;
     }
 
@@ -4610,7 +4679,15 @@ const ReaderPage = () => {
     if (clampedPage !== currentPage) {
       goToPage(clampedPage, { preserveAnchor: true, replace: true });
     }
-  }, [activeSection?.href, currentPage, goToPage, pageCount, pageSpan, sectionLoading]);
+  }, [
+    activeSection?.href,
+    currentPage,
+    goToPage,
+    isSwappingSection,
+    pageCount,
+    pageSpan,
+    sectionLoading,
+  ]);
 
   useEffect(() => {
     if (sectionLoading || pageSpan <= 0) {
@@ -4690,7 +4767,8 @@ const ReaderPage = () => {
         }
 
         if (previousSection) {
-          goToSection(previousSection.href, { page: 1 });
+          // Land on the previous chapter's last page, not its first.
+          goToSection(previousSection.href, { page: READER_LAST_PAGE });
         }
         return;
       }
