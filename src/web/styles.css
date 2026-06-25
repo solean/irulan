@@ -2377,6 +2377,8 @@ input::placeholder {
 /* ─── Immersive reader (popped-out window) ─── */
 
 .reader-immersive {
+  --reader-immersive-bar-height: 48px;
+  --reader-immersive-panel-top: 52px;
   --reader-paper: #faf6ef;
   --reader-ink: #241d17;
   --reader-muted: #7a6858;
@@ -2412,8 +2414,15 @@ input::placeholder {
   display: flex;
   align-items: center;
   gap: 12px;
-  height: 48px;
+  height: var(--reader-immersive-bar-height);
   padding: 0 14px;
+}
+
+.electron-shell .reader-immersive {
+  /* trafficLightPosition.y is the top inset of the native macOS buttons. The
+     rendered dots center around 29px from the top, so center this row there. */
+  --reader-immersive-bar-height: 58px;
+  --reader-immersive-panel-top: 58px;
 }
 
 .electron-shell .reader-immersive-bar {
@@ -2655,7 +2664,7 @@ input::placeholder {
 
 .reader-immersive-panel {
   position: absolute;
-  top: 52px;
+  top: var(--reader-immersive-panel-top);
   z-index: 9;
   border: 1px solid var(--border-default);
   border-radius: var(--radius-lg);
