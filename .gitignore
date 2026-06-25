@@ -5,3 +5,4 @@ release
 data
 storage
 .claude/
+.DS_Store
