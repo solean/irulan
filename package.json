@@ -6,7 +6,7 @@
   "main": "electron/main.cjs",
   "scripts": {
     "dev": "concurrently -k -n server,web -c cyan,magenta \"bun run dev:server\" \"bun run dev:web\"",
-    "dev:server": "tsx watch src/server/index.ts",
+    "dev:server": "bun --env-file=.env --watch src/server/index.ts",
     "dev:web": "bunx --bun vite",
     "build": "bunx --bun vite build && bunx --bun esbuild src/server/index.ts --bundle --platform=node --target=node20 --format=cjs --outfile=dist/server/index.cjs --external:sql.js && bunx tsc --noEmit",
     "check": "bunx tsc --noEmit",

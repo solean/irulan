@@ -138,6 +138,7 @@ type ToastInput = Omit<ToastNotice, "id">;
 const THEME_KEY = "ebook-manager-theme-preference";
 const BOOKSHELF_VIEW_KEY = "ebook-manager-bookshelf-view";
 const BOOKSHELF_DENSITY_KEY = "ebook-manager-bookshelf-density";
+const ONBOARDING_DISMISSED_KEY = "ebook-manager-onboarding-dismissed";
 const ALL_BOOKSHELVES_ID = "all";
 const READER_TONE_KEY = "ebook-manager-reader-tone";
 const READER_FONT_SCALE_KEY = "ebook-manager-reader-font-scale";
@@ -265,6 +266,24 @@ function getStoredBookshelfDensity(): BookshelfDensity | null {
     /* localStorage unavailable */
   }
   return null;
+}
+
+function getStoredOnboardingDismissed(): boolean {
+  if (typeof window === "undefined") return false;
+  try {
+    return localStorage.getItem(ONBOARDING_DISMISSED_KEY) === "true";
+  } catch {
+    /* localStorage unavailable */
+  }
+  return false;
+}
+
+function setStoredOnboardingDismissed(value: boolean) {
+  try {
+    localStorage.setItem(ONBOARDING_DISMISSED_KEY, value ? "true" : "false");
+  } catch {
+    /* localStorage unavailable */
+  }
 }
 
 function getStoredReaderTone(): ReaderTone | null {
@@ -1031,6 +1050,12 @@ const MailIcon = () => (
   </svg>
 );
 
+const CheckIcon = () => (
+  <svg viewBox="0 0 16 16" aria-hidden="true">
+    <path d="m3.5 8.5 3 3 6-7" />
+  </svg>
+);
+
 const formatRatingValue = (rating: number) =>
   Number.isInteger(rating) ? String(rating) : rating.toFixed(1);
 
@@ -1052,10 +1077,12 @@ const RatingStars = ({
   compact = false,
   rating,
   filledOnly = false,
+  previewRating,
 }: {
   compact?: boolean;
   rating: number | null;
   filledOnly?: boolean;
+  previewRating?: number;
 }) => {
   const label = getRatingLabel(rating);
 
@@ -1080,17 +1107,27 @@ const RatingStars = ({
   return (
     <span
       aria-label={label}
-      className={cn("rating-stars", compact && "rating-stars-compact")}
+      className={cn(
+        "rating-stars",
+        previewRating !== undefined && "rating-stars-preview",
+        compact && "rating-stars-compact",
+      )}
       title={label}
     >
       {Array.from({ length: 5 }, (_, index) => {
         const fill = getStarFill(rating, index);
+        const previewFill = getStarFill(previewRating ?? null, index);
         return (
           <span
             aria-hidden="true"
             className="rating-star-frame"
             key={`rating-star-${index}`}
-            style={{ "--star-fill": `${fill * 100}%` } as CSSProperties}
+            style={
+              {
+                "--star-fill": `${fill * 100}%`,
+                "--star-preview-fill": `${previewFill * 100}%`,
+              } as CSSProperties
+            }
           >
             <StarIcon className="rating-star-empty" />
             <span className="rating-star-fill">
@@ -1123,43 +1160,173 @@ const BookMetadataStrip = ({
   </span>
 );
 
+type OnboardingStep = {
+  id: string;
+  title: string;
+  description: string;
+  done: boolean;
+  actionLabel: string;
+  onAction: () => void;
+  actionDisabled?: boolean;
+};
+
+const OnboardingChecklist = ({
+  steps,
+  onDismiss,
+}: {
+  steps: OnboardingStep[];
+  onDismiss: () => void;
+}) => {
+  const completedCount = steps.filter((step) => step.done).length;
+
+  return (
+    <Card className="panel onboarding-card stack-md">
+      <div className="onboarding-header">
+        <div className="stack-xs">
+          <h2 className="onboarding-title">Finish setting up Irulan</h2>
+          <p className="onboarding-subtitle">
+            {completedCount} of {steps.length} done
+          </p>
+        </div>
+        <Button
+          className="onboarding-dismiss"
+          onClick={onDismiss}
+          size="sm"
+          type="button"
+          variant="ghost"
+        >
+          Hide
+        </Button>
+      </div>
+
+      <ol className="smtp-onboarding-steps">
+        {steps.map((step, index) => (
+          <li
+            className={cn("smtp-onboarding-step", step.done && "onboarding-step-done")}
+            key={step.id}
+          >
+            <span
+              aria-hidden="true"
+              className={cn(
+                "smtp-onboarding-step-number",
+                step.done && "onboarding-step-number-done",
+              )}
+            >
+              {step.done ? <CheckIcon /> : index + 1}
+            </span>
+            <div className="stack-xs">
+              <div className="smtp-onboarding-step-heading">
+                <p className="smtp-onboarding-step-title">{step.title}</p>
+                <Badge
+                  className={cn("status-pill", step.done ? "status-sent" : "status-pending")}
+                  variant={getStatusBadgeVariant(step.done ? "configured" : "pending")}
+                >
+                  {step.done ? "Done" : "To do"}
+                </Badge>
+              </div>
+              <p className="smtp-onboarding-step-copy">{step.description}</p>
+              {!step.done ? (
+                <div className="onboarding-step-action">
+                  <Button
+                    disabled={step.actionDisabled}
+                    onClick={step.onAction}
+                    size="sm"
+                    type="button"
+                    variant="outline"
+                  >
+                    {step.actionLabel}
+                  </Button>
+                </div>
+              ) : null}
+            </div>
+          </li>
+        ))}
+      </ol>
+    </Card>
+  );
+};
+
 type RatingControlProps = {
   disabled?: boolean;
   rating: number | null;
   onChange: (rating: number | null) => void;
 };
 
-const RatingControl = ({ disabled = false, rating, onChange }: RatingControlProps) => (
-  <div aria-label="Rating" className="rating-control" role="group">
-    <div className="rating-slider-wrap">
-      <RatingStars compact rating={rating} />
-      <input
-        aria-label={rating ? `Rating: ${getRatingLabel(rating)}` : "Rating: no rating"}
-        aria-valuetext={rating ? getRatingLabel(rating) : "No rating"}
-        className="rating-range"
-        disabled={disabled}
-        max={5}
-        min={0}
-        onChange={(event) => {
-          const nextRating = Number(event.currentTarget.value);
-          onChange(nextRating === 0 ? null : nextRating);
-        }}
-        step={0.5}
-        type="range"
-        value={rating ?? 0}
-      />
+const getPointerRating = (input: HTMLInputElement, clientX: number) => {
+  const stars = input.previousElementSibling;
+  if (!(stars instanceof HTMLElement)) return null;
+
+  const starFrames = Array.from(
+    stars.querySelectorAll<HTMLElement>(".rating-star-frame"),
+  );
+  if (starFrames.length === 0) return null;
+
+  const hoveredIndex = starFrames.findIndex((star, index) => {
+    const bounds = star.getBoundingClientRect();
+    return clientX <= bounds.right || index === starFrames.length - 1;
+  });
+  const hoveredStar = starFrames[hoveredIndex];
+  const bounds = hoveredStar.getBoundingClientRect();
+  const fraction = clientX < bounds.left + bounds.width / 2 ? 0.5 : 1;
+
+  return hoveredIndex + fraction;
+};
+
+const RatingControl = ({ disabled = false, rating, onChange }: RatingControlProps) => {
+  const [hoverRating, setHoverRating] = useState<number | null>(null);
+
+  return (
+    <div aria-label="Rating" className="rating-control" role="group">
+      <div className="rating-slider-wrap">
+        <RatingStars
+          compact
+          previewRating={disabled ? undefined : (hoverRating ?? undefined)}
+          rating={rating}
+        />
+        <input
+          aria-label={rating ? `Rating: ${getRatingLabel(rating)}` : "Rating: no rating"}
+          aria-valuetext={rating ? getRatingLabel(rating) : "No rating"}
+          className="rating-range"
+          disabled={disabled}
+          max={5}
+          min={0}
+          onChange={(event) => {
+            const nextRating = Number(event.currentTarget.value);
+            onChange(nextRating === 0 ? null : nextRating);
+          }}
+          onMouseLeave={() => setHoverRating(null)}
+          onMouseMove={(event) => {
+            if (disabled) return;
+            setHoverRating(getPointerRating(event.currentTarget, event.clientX));
+          }}
+          onPointerDown={(event) => {
+            if (disabled) return;
+
+            const nextRating = getPointerRating(event.currentTarget, event.clientX);
+            if (nextRating === null) return;
+
+            event.preventDefault();
+            event.currentTarget.focus({ preventScroll: true });
+            setHoverRating(nextRating);
+            if (nextRating !== rating) onChange(nextRating);
+          }}
+          step={0.5}
+          type="range"
+          value={rating ?? 0}
+        />
+      </div>
+      <Button
+        disabled={disabled || rating === null}
+        onClick={() => onChange(null)}
+        size="sm"
+        type="button"
+        variant="ghost"
+      >
+        Clear
+      </Button>
     </div>
-    <Button
-      disabled={disabled || rating === null}
-      onClick={() => onChange(null)}
-      size="sm"
-      type="button"
-      variant="ghost"
-    >
-      Clear
-    </Button>
-  </div>
-);
+  );
+};
 
 type BookMetadataEditorProps = {
   book: BookDetail;
@@ -2625,6 +2792,7 @@ const BookshelfPage = () => {
   const [hasLoadedBooks, setHasLoadedBooks] = useState(false);
   const [hasLoadedSettings, setHasLoadedSettings] = useState(false);
   const [hasLoadedBookshelves, setHasLoadedBookshelves] = useState(false);
+  const [onboardingDismissed, setOnboardingDismissed] = useState(getStoredOnboardingDismissed);
   const [bookActionMenu, setBookActionMenu] = useState<BookshelfContextMenuState | null>(null);
   const [sendingBookId, setSendingBookId] = useState<string | null>(null);
   const [bookPendingSend, setBookPendingSend] = useState<BookSummary | null>(null);
@@ -3073,6 +3241,50 @@ const BookshelfPage = () => {
 
   const showInitialBookshelfSkeleton = loading && !hasLoadedBooks;
   const showEmptyBookshelf = !showInitialBookshelfSkeleton && visibleBooks.length === 0;
+  const totalBookCount = bookshelves.reduce(
+    (total, bookshelf) => total + bookshelf.bookCount,
+    0,
+  );
+  const onboardingStep1Done = totalBookCount > 0;
+  const onboardingStep2Done = Boolean(settings?.smtp.configured);
+  const onboardingStep3Done = bookshelves.some((bookshelf) => bookshelf.kindleEmail?.trim());
+  const onboardingComplete =
+    onboardingStep1Done && onboardingStep2Done && onboardingStep3Done;
+  const showOnboarding =
+    hasLoadedBookshelves && hasLoadedSettings && !onboardingComplete && !onboardingDismissed;
+  const onboardingSteps: OnboardingStep[] = [
+    {
+      id: "add-book",
+      title: "Add your first book",
+      description: "Drop EPUB files anywhere on this page, or browse to import them.",
+      done: onboardingStep1Done,
+      actionLabel: "Add EPUBs",
+      onAction: () => setIsImportModalOpen(true),
+      actionDisabled: uploading || !canImportBooks,
+    },
+    {
+      id: "smtp",
+      title: "Set up Send to Kindle",
+      description:
+        "Save your SMTP connection so Irulan can email books to your Kindle.",
+      done: onboardingStep2Done,
+      actionLabel: "Open settings",
+      onAction: () => navigate("/settings"),
+    },
+    {
+      id: "kindle-address",
+      title: "Add a Kindle address & send a test",
+      description:
+        "Give a bookshelf a Kindle email, then send a test from the bookshelves page.",
+      done: onboardingStep3Done,
+      actionLabel: "Open bookshelves",
+      onAction: () => navigate("/bookshelves"),
+    },
+  ];
+  const dismissOnboarding = () => {
+    setStoredOnboardingDismissed(true);
+    setOnboardingDismissed(true);
+  };
   const activeBookMenuItems: OverflowMenuItem[] = bookActionMenu
     ? [
         ...(canSendToKindleFromShelf
@@ -3115,7 +3327,7 @@ const BookshelfPage = () => {
     <div
       className={cn(
         "page bookshelf-dropzone-shell",
-        showEmptyBookshelf && "bookshelf-dropzone-shell-empty",
+        showEmptyBookshelf && !showOnboarding && "bookshelf-dropzone-shell-empty",
       )}
       onDragEnter={bookshelfDropTarget.onDragEnter}
       onDragLeave={bookshelfDropTarget.onDragLeave}
@@ -3190,10 +3402,7 @@ const BookshelfPage = () => {
         <BookshelfSidebar
           activeBookshelfId={activeBookshelfId}
           bookshelves={bookshelves}
-          totalBookCount={bookshelves.reduce(
-            (total, bookshelf) => total + bookshelf.bookCount,
-            0,
-          )}
+          totalBookCount={totalBookCount}
           statusFilter={statusFilter}
           statusCounts={statusCounts}
           onSelectBookshelf={onSelectBookshelf}
@@ -3227,7 +3436,14 @@ const BookshelfPage = () => {
             </div>
           </header>
 
-          {hasLoadedSettings && activeBookshelf && !activeBookshelf.kindleEmail ? (
+          {showOnboarding ? (
+            <OnboardingChecklist steps={onboardingSteps} onDismiss={dismissOnboarding} />
+          ) : null}
+
+          {!showOnboarding &&
+          hasLoadedSettings &&
+          activeBookshelf &&
+          !activeBookshelf.kindleEmail ? (
             <p className="bookshelf-header-note">
               <Link className="bookshelf-header-note-link" to="/settings">
                 Add a Kindle address
@@ -3380,6 +3596,12 @@ const BookshelfPage = () => {
               <UploadIcon />
             </div>
             <h2>{showingFilteredResults ? "No matching books" : "No books yet"}</h2>
+            {!showingFilteredResults ? (
+              <p className="empty-state-tagline">
+                Your private EPUB library {"\u2014"} read in the app, or send any book to your
+                Kindle.
+              </p>
+            ) : null}
             <p>
               {showingFilteredResults
                 ? "Try a different title, author, or status filter."
@@ -3983,10 +4205,6 @@ const BookDetailPage = () => {
             </div>
 
           </div>
-
-          <Link className="detail-secondary-link" to="/bookshelves">
-            Manage bookshelves <span aria-hidden="true">→</span>
-          </Link>
         </div>
       </section>
 

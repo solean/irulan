@@ -3304,12 +3304,67 @@ input::placeholder {
   font-size: 13px;
 }
 
+.empty-state .empty-state-tagline {
+  max-width: 48ch;
+  color: var(--text-secondary);
+  font-size: 14px;
+}
+
 .empty-state-actions {
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 8px;
   margin-top: 12px;
+}
+
+/* ─── Onboarding checklist ─── */
+
+.onboarding-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.onboarding-title {
+  margin: 0;
+  font-family: var(--font-serif);
+  font-optical-sizing: auto;
+  font-size: var(--fs-lg);
+  font-weight: 500;
+  line-height: var(--lh-tight);
+  letter-spacing: var(--tracking-snug);
+  color: var(--text-primary);
+}
+
+.onboarding-subtitle {
+  margin: 0;
+  color: var(--text-tertiary);
+  font-size: 13px;
+}
+
+.onboarding-dismiss {
+  flex: none;
+}
+
+.onboarding-step-action {
+  margin-top: 4px;
+}
+
+.onboarding-step-number-done {
+  background: color-mix(in srgb, var(--success) 18%, transparent);
+  color: var(--success);
+}
+
+.onboarding-step-number-done svg {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 /* ─── Panel (cards) ─── */
@@ -4078,8 +4133,8 @@ code {
   pointer-events: none;
 }
 
-.rating-slider-wrap:hover {
-  background: var(--bg-hover);
+.rating-slider-wrap:hover .rating-stars-preview .rating-star-fill {
+  width: var(--star-preview-fill);
 }
 
 .rating-slider-wrap:focus-within {
