@@ -31,7 +31,17 @@ import {
   useParams,
   useSearchParams,
 } from "react-router-dom";
-import { LibraryBig, Monitor, Moon, MoreHorizontal, Settings2, StarIcon, Sun } from "lucide-react";
+import {
+  LibraryBig,
+  Monitor,
+  Moon,
+  MoreHorizontal,
+  PanelLeftClose,
+  PanelLeftOpen,
+  Settings2,
+  StarIcon,
+  Sun,
+} from "lucide-react";
 
 import {
   AlertDialog,
@@ -138,6 +148,7 @@ type ToastInput = Omit<ToastNotice, "id">;
 const THEME_KEY = "ebook-manager-theme-preference";
 const BOOKSHELF_VIEW_KEY = "ebook-manager-bookshelf-view";
 const BOOKSHELF_DENSITY_KEY = "ebook-manager-bookshelf-density";
+const BOOKSHELF_SIDEBAR_MINIMIZED_KEY = "ebook-manager-bookshelf-sidebar-minimized";
 const ONBOARDING_DISMISSED_KEY = "ebook-manager-onboarding-dismissed";
 const ALL_BOOKSHELVES_ID = "all";
 const READER_TONE_KEY = "ebook-manager-reader-tone";
@@ -266,6 +277,16 @@ function getStoredBookshelfDensity(): BookshelfDensity | null {
     /* localStorage unavailable */
   }
   return null;
+}
+
+function getStoredBookshelfSidebarMinimized(): boolean {
+  if (typeof window === "undefined") return false;
+  try {
+    return localStorage.getItem(BOOKSHELF_SIDEBAR_MINIMIZED_KEY) === "true";
+  } catch {
+    /* localStorage unavailable */
+  }
+  return false;
 }
 
 function getStoredOnboardingDismissed(): boolean {
@@ -2321,8 +2342,10 @@ type BookshelfSidebarProps = {
   totalBookCount: number;
   statusFilter: ReadStatusFilter;
   statusCounts: Record<ReadStatusFilter, number>;
+  minimized: boolean;
   onSelectBookshelf: (bookshelfId: string) => void;
   onChangeStatusFilter: (status: ReadStatusFilter) => void;
+  onToggleMinimized: () => void;
 };
 
 type SidebarItemProps = {
@@ -2370,55 +2393,79 @@ const BookshelfSidebar = ({
   totalBookCount,
   statusFilter,
   statusCounts,
+  minimized,
   onSelectBookshelf,
   onChangeStatusFilter,
+  onToggleMinimized,
 }: BookshelfSidebarProps) => (
-  <aside aria-label="Library navigation" className="bookshelf-sidebar">
-    <Link aria-label="Irulan home" className="sidebar-brand" to="/">
-      <span className="sidebar-brand-mark" aria-hidden="true">
-        <BookIcon />
-      </span>
-      <span className="sidebar-brand-name">irulan</span>
-    </Link>
+  <aside
+    aria-label="Library navigation"
+    className={cn("bookshelf-sidebar", minimized && "bookshelf-sidebar-minimized")}
+  >
+    <div className="bookshelf-sidebar-header">
+      <Button
+        aria-expanded={!minimized}
+        aria-label={minimized ? "Expand sidebar" : "Minimize sidebar"}
+        className="sidebar-toggle"
+        onClick={onToggleMinimized}
+        size="icon-sm"
+        title={minimized ? "Expand sidebar" : "Minimize sidebar"}
+        type="button"
+        variant="ghost"
+      >
+        <span aria-hidden="true" className="sidebar-toggle-icon">
+          <PanelLeftClose className="sidebar-toggle-icon-minimize" />
+          <PanelLeftOpen className="sidebar-toggle-icon-expand" />
+        </span>
+      </Button>
+    </div>
 
-    <section className="sidebar-section">
-      <h2 className="sidebar-section-title">Library</h2>
-      <div className="sidebar-list" role="group">
-        <SidebarItem
-          active={activeBookshelfId === ALL_BOOKSHELVES_ID}
-          count={totalBookCount}
-          label="All books"
-          onSelect={() => onSelectBookshelf(ALL_BOOKSHELVES_ID)}
-        />
-        {bookshelves.map((bookshelf) => (
-          <SidebarItem
-            active={activeBookshelfId === bookshelf.id}
-            count={bookshelf.bookCount}
-            key={bookshelf.id}
-            label={bookshelf.name}
-            onSelect={() => onSelectBookshelf(bookshelf.id)}
-            title={bookshelf.kindleEmail ?? undefined}
-          />
-        ))}
-      </div>
-    </section>
+    <div
+      aria-hidden={minimized}
+      className="bookshelf-sidebar-content-shell"
+      inert={minimized ? true : undefined}
+    >
+      <div className="bookshelf-sidebar-content">
+        <section className="sidebar-section">
+          <h2 className="sidebar-section-title">Library</h2>
+          <div className="sidebar-list" role="group">
+            <SidebarItem
+              active={activeBookshelfId === ALL_BOOKSHELVES_ID}
+              count={totalBookCount}
+              label="All books"
+              onSelect={() => onSelectBookshelf(ALL_BOOKSHELVES_ID)}
+            />
+            {bookshelves.map((bookshelf) => (
+              <SidebarItem
+                active={activeBookshelfId === bookshelf.id}
+                count={bookshelf.bookCount}
+                key={bookshelf.id}
+                label={bookshelf.name}
+                onSelect={() => onSelectBookshelf(bookshelf.id)}
+                title={bookshelf.kindleEmail ?? undefined}
+              />
+            ))}
+          </div>
+        </section>
 
-    <section className="sidebar-section">
-      <h2 className="sidebar-section-title">Status</h2>
-      <div className="sidebar-list" role="radiogroup">
-        {READ_STATUS_FILTER_OPTIONS.map((option) => (
-          <SidebarItem
-            active={statusFilter === option.value}
-            count={statusCounts[option.value]}
-            key={option.value}
-            label={option.label}
-            onSelect={() => onChangeStatusFilter(option.value)}
-            variant="status"
-            statusKey={option.value}
-          />
-        ))}
+        <section className="sidebar-section">
+          <h2 className="sidebar-section-title">Status</h2>
+          <div className="sidebar-list" role="radiogroup">
+            {READ_STATUS_FILTER_OPTIONS.map((option) => (
+              <SidebarItem
+                active={statusFilter === option.value}
+                count={statusCounts[option.value]}
+                key={option.value}
+                label={option.label}
+                onSelect={() => onChangeStatusFilter(option.value)}
+                variant="status"
+                statusKey={option.value}
+              />
+            ))}
+          </div>
+        </section>
       </div>
-    </section>
+    </div>
   </aside>
 );
 
@@ -2751,6 +2798,12 @@ const Shell = () => {
       <div className="app-shell">
         <header className="main-header">
           <div className="main-header-inner">
+            <Link aria-label="Irulan home" className="main-header-home" to="/">
+              <span className="main-header-brand-icon" aria-hidden="true">
+                <BookIcon />
+              </span>
+              <span className="main-header-brand-name">irulan</span>
+            </Link>
             <div className="header-spacer" />
             <div aria-label="App controls" className="main-header-actions" role="group">
               <AppMenu />
@@ -2776,6 +2829,9 @@ const BookshelfPage = () => {
   const [view, setView] = useState<BookshelfView>(() => getStoredBookshelfView() ?? "grid");
   const [density, setDensity] = useState<BookshelfDensity>(
     () => getStoredBookshelfDensity() ?? "comfortable",
+  );
+  const [isSidebarMinimized, setIsSidebarMinimized] = useState(
+    getStoredBookshelfSidebarMinimized,
   );
   const [statusFilter, setStatusFilter] = useState<ReadStatusFilter>("all");
   const [books, setBooks] = useState<BookSummary[]>([]);
@@ -3028,6 +3084,19 @@ const BookshelfPage = () => {
       /* localStorage unavailable */
     }
   }, []);
+
+  const onToggleSidebarMinimized = useCallback(() => {
+    const nextMinimized = !isSidebarMinimized;
+    setIsSidebarMinimized(nextMinimized);
+    try {
+      localStorage.setItem(
+        BOOKSHELF_SIDEBAR_MINIMIZED_KEY,
+        nextMinimized ? "true" : "false",
+      );
+    } catch {
+      /* localStorage unavailable */
+    }
+  }, [isSidebarMinimized]);
 
   const onChangeBookshelfSort = useCallback((key: BookshelfSortKey) => {
     setBookshelfSort((current) => getNextBookshelfSort(current, key));
@@ -3396,6 +3465,7 @@ const BookshelfPage = () => {
       <div
         className={cn(
           "bookshelf-layout bookshelf-dropzone-content",
+          isSidebarMinimized && "bookshelf-layout-minimized",
           bookshelfDropTarget.isActive && "bookshelf-dropzone-content-muted",
         )}
       >
@@ -3405,8 +3475,10 @@ const BookshelfPage = () => {
           totalBookCount={totalBookCount}
           statusFilter={statusFilter}
           statusCounts={statusCounts}
+          minimized={isSidebarMinimized}
           onSelectBookshelf={onSelectBookshelf}
           onChangeStatusFilter={setStatusFilter}
+          onToggleMinimized={onToggleSidebarMinimized}
         />
 
         <div className="bookshelf-main stack-lg">
