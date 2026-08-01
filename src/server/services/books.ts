@@ -3,16 +3,23 @@ import { createReadStream } from "node:fs";
 import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 
-import { and, desc, eq, or, sql } from "drizzle-orm";
+import { and, asc, count, desc, eq, or, sql, type SQL } from "drizzle-orm";
 import type { SQLiteColumn } from "drizzle-orm/sqlite-core";
 
 import {
-  BookDetail,
-  BookReader,
-  BookshelfSummary,
-  BookSummary,
-  DeleteBookResult,
-  ImportResult,
+  BOOKS_PAGE_SIZE,
+  MAX_BOOKS_PAGE_SIZE,
+  type BookDetail,
+  type BookListOptions,
+  type BookPage,
+  type BookReader,
+  type BookSortKey,
+  type BookshelfSummary,
+  type BookSummary,
+  type DeleteBookResult,
+  type ImportResult,
+  type ReadStatus,
+  type SortDirection,
   type UpdateBookMetadataPayload,
 } from "../../shared/types";
 import { appConfig } from "../config";
@@ -98,55 +105,175 @@ const escapeLikePattern = (value: string) => value.replace(/[\\%_]/g, "\\$&");
 const containsText = (column: SQLiteColumn, value: string) =>
   sql`${column} like ${`%${escapeLikePattern(value)}%`} escape '\\'`;
 
-export const listBooks = (searchTerm?: string, bookshelfId?: string | null): BookSummary[] => {
-  const trimmed = searchTerm?.trim();
-  const searchClause = trimmed
-    ? or(
-        containsText(books.title, trimmed),
-        containsText(books.author, trimmed),
-        containsText(books.sourceFilename, trimmed),
-      )
-    : undefined;
+const bookSelection = {
+  id: books.id,
+  title: books.title,
+  author: books.author,
+  filePath: books.filePath,
+  coverPath: books.coverPath,
+  fileHash: books.fileHash,
+  sourceFilename: books.sourceFilename,
+  fileSizeBytes: books.fileSizeBytes,
+  importedAt: books.importedAt,
+  readStatus: books.readStatus,
+  rating: books.rating,
+};
 
-  if (bookshelfId?.trim()) {
-    resolveBookshelfRecord(bookshelfId);
-    const rows = db
-      .select({
-        id: books.id,
-        title: books.title,
-        author: books.author,
-        filePath: books.filePath,
-        coverPath: books.coverPath,
-        fileHash: books.fileHash,
-        sourceFilename: books.sourceFilename,
-        fileSizeBytes: books.fileSizeBytes,
-        importedAt: books.importedAt,
-        readStatus: books.readStatus,
-        rating: books.rating,
-      })
-      .from(books)
-      .innerJoin(bookShelves, eq(bookShelves.bookId, books.id))
-      .where(
-        searchClause
-          ? and(eq(bookShelves.bookshelfId, bookshelfId.trim()), searchClause)
-          : eq(bookShelves.bookshelfId, bookshelfId.trim()),
-      )
-      .orderBy(desc(books.importedAt))
-      .all();
-
-    return serializeBooks(rows);
+const getBookSortOrder = (sort: BookSortKey, direction: SortDirection) => {
+  let expression: SQLiteColumn | SQL;
+  switch (sort) {
+    case "title":
+      expression = sql`lower(${books.title})`;
+      break;
+    case "author":
+      expression = sql`lower(${books.author})`;
+      break;
+    case "sourceFilename":
+      expression = sql`lower(${books.sourceFilename})`;
+      break;
+    case "fileSizeBytes":
+      expression = books.fileSizeBytes;
+      break;
+    case "readStatus":
+      expression = sql<number>`case ${books.readStatus}
+        when 'unread' then 0
+        when 'reading' then 1
+        when 'finished' then 2
+        else 3
+      end`;
+      break;
+    case "rating":
+      expression = sql<number>`coalesce(${books.rating}, 0)`;
+      break;
+    case "importedAt":
+    default:
+      expression = books.importedAt;
+      break;
   }
 
-  const rows = searchClause
-    ? db
-        .select()
-        .from(books)
-        .where(searchClause)
-        .orderBy(desc(books.importedAt))
-        .all()
-    : db.select().from(books).orderBy(desc(books.importedAt)).all();
+  return direction === "asc" ? asc(expression) : desc(expression);
+};
 
-  return serializeBooks(rows);
+const countBooks = (bookshelfId: string | null, whereClause?: SQL) => {
+  if (bookshelfId) {
+    return (
+      db
+        .select({ value: count() })
+        .from(books)
+        .innerJoin(bookShelves, eq(bookShelves.bookId, books.id))
+        .where(and(eq(bookShelves.bookshelfId, bookshelfId), whereClause))
+        .get()?.value ?? 0
+    );
+  }
+
+  return (
+    (whereClause
+      ? db.select({ value: count() }).from(books).where(whereClause).get()
+      : db.select({ value: count() }).from(books).get()
+    )?.value ?? 0
+  );
+};
+
+const countBooksByStatus = (
+  bookshelfId: string | null,
+  searchClause?: SQL,
+): Record<ReadStatus | "all", number> => {
+  const rows = bookshelfId
+    ? db
+        .select({ readStatus: books.readStatus, value: count() })
+        .from(books)
+        .innerJoin(bookShelves, eq(bookShelves.bookId, books.id))
+        .where(and(eq(bookShelves.bookshelfId, bookshelfId), searchClause))
+        .groupBy(books.readStatus)
+        .all()
+    : searchClause
+      ? db
+          .select({ readStatus: books.readStatus, value: count() })
+          .from(books)
+          .where(searchClause)
+          .groupBy(books.readStatus)
+          .all()
+      : db
+          .select({ readStatus: books.readStatus, value: count() })
+          .from(books)
+          .groupBy(books.readStatus)
+          .all();
+
+  const counts: Record<ReadStatus | "all", number> = {
+    all: 0,
+    unread: 0,
+    reading: 0,
+    finished: 0,
+  };
+  for (const row of rows) {
+    counts[row.readStatus] = row.value;
+    counts.all += row.value;
+  }
+  return counts;
+};
+
+export const listBooks = (options: BookListOptions = {}): BookPage => {
+  const query = options.query?.trim() ?? "";
+  const bookshelfId = options.bookshelfId?.trim() || null;
+  const readStatus = options.readStatus ?? null;
+  const sort = options.sort ?? "importedAt";
+  const direction = options.direction ?? "desc";
+  const offset = Math.max(0, options.offset ?? 0);
+  const limit = Math.min(
+    MAX_BOOKS_PAGE_SIZE,
+    Math.max(1, options.limit ?? BOOKS_PAGE_SIZE),
+  );
+
+  if (bookshelfId) {
+    resolveBookshelfRecord(bookshelfId);
+  }
+
+  const searchClause = query
+    ? or(
+        containsText(books.title, query),
+        containsText(books.author, query),
+        containsText(books.sourceFilename, query),
+      )
+    : undefined;
+  const pageClause = and(searchClause, readStatus ? eq(books.readStatus, readStatus) : undefined);
+  const order = getBookSortOrder(sort, direction);
+
+  const rows = bookshelfId
+    ? db
+        .select(bookSelection)
+        .from(books)
+        .innerJoin(bookShelves, eq(bookShelves.bookId, books.id))
+        .where(and(eq(bookShelves.bookshelfId, bookshelfId), pageClause))
+        .orderBy(order, asc(books.id))
+        .limit(limit)
+        .offset(offset)
+        .all()
+    : pageClause
+      ? db
+          .select(bookSelection)
+          .from(books)
+          .where(pageClause)
+          .orderBy(order, asc(books.id))
+          .limit(limit)
+          .offset(offset)
+          .all()
+      : db
+          .select(bookSelection)
+          .from(books)
+          .orderBy(order, asc(books.id))
+          .limit(limit)
+          .offset(offset)
+          .all();
+
+  const statusCounts = countBooksByStatus(bookshelfId, searchClause);
+  return {
+    books: serializeBooks(rows),
+    offset,
+    limit,
+    total: readStatus ? statusCounts[readStatus] : statusCounts.all,
+    unfilteredTotal: query ? countBooks(bookshelfId) : statusCounts.all,
+    statusCounts,
+  };
 };
 
 export const getBook = (bookId: string): BookDetail => {

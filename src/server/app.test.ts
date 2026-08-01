@@ -109,6 +109,43 @@ describe("thrown errors become JSON (finding 23)", () => {
   });
 });
 
+describe("book list pagination (finding 15)", () => {
+  test("returns the bounded page envelope by default", async () => {
+    const response = await request("/api/books");
+
+    expect(response.status).toBe(200);
+    expect(response.json()).toEqual({
+      books: [],
+      offset: 0,
+      limit: 60,
+      total: 0,
+      unfilteredTotal: 0,
+      statusCounts: {
+        all: 0,
+        unread: 0,
+        reading: 0,
+        finished: 0,
+      },
+    });
+  });
+
+  test("rejects query values that could bypass the page bounds", async () => {
+    for (const url of [
+      "/api/books?limit=101",
+      "/api/books?limit=1.5",
+      "/api/books?offset=-1",
+      "/api/books?sort=nope",
+      "/api/books?direction=sideways",
+      "/api/books?readStatus=unknown",
+    ]) {
+      const response = await request(url);
+      expect(response.status).toBe(400);
+      expect(response.contentType).toContain("application/json");
+      expect(typeof response.json()?.error).toBe("string");
+    }
+  });
+});
+
 describe("unmatched API paths (finding 10)", () => {
   test("answers a missing endpoint with a JSON 404", async () => {
     const response = await request("/api/does-not-exist");

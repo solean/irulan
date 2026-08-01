@@ -4,6 +4,8 @@ import path from "node:path";
 
 import { afterAll, beforeEach, describe, expect, test } from "bun:test";
 
+import { eq } from "drizzle-orm";
+
 const testDirectory = mkdtempSync(path.join(os.tmpdir(), "irulan-list-books-tests-"));
 process.env.EBOOK_DATA_DIR = path.join(testDirectory, "data");
 process.env.EBOOK_STORAGE_DIR = path.join(testDirectory, "storage");
@@ -95,7 +97,7 @@ describe("listBooks shelf memberships", () => {
       ["book-1", "shelf-1"],
     ]);
 
-    const byId = new Map(listBooks().map((book) => [book.id, book]));
+    const byId = new Map(listBooks().books.map((book) => [book.id, book]));
 
     expect(byId.get("book-0")?.bookshelves.map((s) => s.name)).toEqual(["Alpha", "Gamma"]);
     expect(byId.get("book-1")?.bookshelves.map((s) => s.name)).toEqual(["Beta"]);
@@ -121,7 +123,7 @@ describe("listBooks shelf memberships", () => {
     ]);
 
     // sortOrder 0 ties break on name: Mike before Zulu, then sortOrder 5.
-    expect(listBooks()[0]?.bookshelves.map((s) => s.name)).toEqual(["Mike", "Zulu", "Alpha"]);
+    expect(listBooks().books[0]?.bookshelves.map((s) => s.name)).toEqual(["Mike", "Zulu", "Alpha"]);
   });
 
   test("reports each shelf's total book count, not the current page's", () => {
@@ -134,31 +136,29 @@ describe("listBooks shelf memberships", () => {
       ["book-3", "shelf-1"],
     ]);
 
-    const onlyBeta = listBooks(undefined, "shelf-1");
+    const onlyBeta = listBooks({ bookshelfId: "shelf-1" }).books;
     expect(onlyBeta).toHaveLength(1);
     // Beta holds one book; the count must not be affected by the filter.
     expect(onlyBeta[0]?.bookshelves[0]?.bookCount).toBe(1);
 
-    const alphaBook = listBooks().find((book) => book.id === "book-0");
+    const alphaBook = listBooks().books.find((book) => book.id === "book-0");
     expect(alphaBook?.bookshelves[0]?.bookCount).toBe(3);
   });
 
-  test("keeps memberships correct past the IN-clause chunk boundary", () => {
-    // The batch query chunks its IN list; a library larger than one chunk must
-    // still resolve every book's shelves.
+  test("keeps memberships correct for a page deep in a large library", () => {
     addBookshelves(["Alpha", "Beta"]);
     const bookIds = addBooks(950);
     addMemberships(bookIds.map((id, index) => [id, `shelf-${index % 2}`]));
 
-    const listed = listBooks();
-    expect(listed).toHaveLength(950);
+    const listed = listBooks({ offset: 900, limit: 50 }).books;
+    expect(listed).toHaveLength(50);
     expect(listed.every((book) => book.bookshelves.length === 1)).toBe(true);
 
     const byId = new Map(listed.map((book) => [book.id, book]));
-    expect(byId.get("book-0")?.bookshelves[0]?.name).toBe("Alpha");
-    expect(byId.get("book-1")?.bookshelves[0]?.name).toBe("Beta");
+    expect(byId.get("book-900")?.bookshelves[0]?.name).toBe("Alpha");
+    expect(byId.get("book-901")?.bookshelves[0]?.name).toBe("Beta");
     expect(byId.get("book-949")?.bookshelves[0]?.name).toBe("Beta");
-    expect(byId.get("book-500")?.bookshelves[0]?.bookCount).toBe(475);
+    expect(byId.get("book-900")?.bookshelves[0]?.bookCount).toBe(475);
   });
 
   test("matches the per-book lookup it replaced", () => {
@@ -176,7 +176,7 @@ describe("listBooks shelf memberships", () => {
     );
 
     // The batched path must agree with resolving one book at a time.
-    for (const book of listBooks()) {
+    for (const book of listBooks().books) {
       expect(book.bookshelves).toEqual(listBookshelvesForBook(book.id));
     }
   });
@@ -186,9 +186,145 @@ describe("listBooks shelf memberships", () => {
     addBooks(20);
     addMemberships([["book-7", "shelf-0"]]);
 
-    const found = listBooks("Title 7");
+    const found = listBooks({ query: "Title 7" }).books;
     expect(found.map((book) => book.id)).toEqual(["book-7"]);
     expect(found[0]?.bookshelves.map((s) => s.name)).toEqual(["Alpha"]);
+  });
+});
+
+describe("listBooks pagination", () => {
+  test("returns bounded, non-overlapping pages with global totals", () => {
+    addBookshelves(["Alpha"]);
+    const bookIds = addBooks(125);
+    addMemberships(bookIds.map((bookId) => [bookId, "shelf-0"]));
+
+    const first = listBooks({ bookshelfId: "shelf-0" });
+    const second = listBooks({ bookshelfId: "shelf-0", offset: first.limit });
+    const last = listBooks({ bookshelfId: "shelf-0", offset: 120 });
+
+    expect(first.books).toHaveLength(60);
+    expect(first.books[0]?.id).toBe("book-0");
+    expect(first.books[59]?.id).toBe("book-59");
+    expect(second.books).toHaveLength(60);
+    expect(second.books[0]?.id).toBe("book-60");
+    expect(second.books[59]?.id).toBe("book-119");
+    expect(last.books.map((book) => book.id)).toEqual([
+      "book-120",
+      "book-121",
+      "book-122",
+      "book-123",
+      "book-124",
+    ]);
+    expect(first).toMatchObject({
+      limit: 60,
+      offset: 0,
+      total: 125,
+      unfilteredTotal: 125,
+      statusCounts: { all: 125, unread: 125, reading: 0, finished: 0 },
+    });
+    expect(second.offset).toBe(60);
+    expect(last.total).toBe(125);
+  });
+
+  test("computes status counts outside the page and applies status before limiting", () => {
+    addBookshelves(["Alpha"]);
+    const bookIds = addBooks(6);
+    addMemberships(bookIds.map((bookId) => [bookId, "shelf-0"]));
+    client.db
+      .update(schema.books)
+      .set({ readStatus: "reading" })
+      .where(eq(schema.books.id, "book-0"))
+      .run();
+    client.db
+      .update(schema.books)
+      .set({ readStatus: "reading" })
+      .where(eq(schema.books.id, "book-1"))
+      .run();
+    client.db
+      .update(schema.books)
+      .set({ readStatus: "finished" })
+      .where(eq(schema.books.id, "book-2"))
+      .run();
+
+    const first = listBooks({
+      bookshelfId: "shelf-0",
+      readStatus: "reading",
+      limit: 1,
+    });
+    const second = listBooks({
+      bookshelfId: "shelf-0",
+      readStatus: "reading",
+      limit: 1,
+      offset: 1,
+    });
+
+    expect(first.books.map((book) => book.id)).toEqual(["book-0"]);
+    expect(second.books.map((book) => book.id)).toEqual(["book-1"]);
+    expect(first.total).toBe(2);
+    expect(first.unfilteredTotal).toBe(6);
+    expect(first.statusCounts).toEqual({
+      all: 6,
+      unread: 3,
+      reading: 2,
+      finished: 1,
+    });
+  });
+
+  test("sorts the full result before taking a page and breaks ties by id", () => {
+    addBooks(4);
+    client.db
+      .update(schema.books)
+      .set({ fileSizeBytes: 100 })
+      .where(eq(schema.books.id, "book-0"))
+      .run();
+    client.db
+      .update(schema.books)
+      .set({ fileSizeBytes: 500 })
+      .where(eq(schema.books.id, "book-1"))
+      .run();
+    client.db
+      .update(schema.books)
+      .set({ fileSizeBytes: 500 })
+      .where(eq(schema.books.id, "book-2"))
+      .run();
+    client.db
+      .update(schema.books)
+      .set({ fileSizeBytes: 300 })
+      .where(eq(schema.books.id, "book-3"))
+      .run();
+
+    const first = listBooks({
+      sort: "fileSizeBytes",
+      direction: "desc",
+      limit: 2,
+    });
+    const second = listBooks({
+      sort: "fileSizeBytes",
+      direction: "desc",
+      limit: 2,
+      offset: 2,
+    });
+
+    expect(first.books.map((book) => book.id)).toEqual(["book-1", "book-2"]);
+    expect(second.books.map((book) => book.id)).toEqual(["book-3", "book-0"]);
+  });
+
+  test("reports the shelf total separately from search results", () => {
+    addBookshelves(["Alpha"]);
+    const bookIds = addBooks(20);
+    addMemberships(bookIds.map((bookId) => [bookId, "shelf-0"]));
+
+    const page = listBooks({ bookshelfId: "shelf-0", query: "Title 7" });
+
+    expect(page.books.map((book) => book.id)).toEqual(["book-7"]);
+    expect(page.total).toBe(1);
+    expect(page.unfilteredTotal).toBe(20);
+    expect(page.statusCounts).toEqual({
+      all: 1,
+      unread: 1,
+      reading: 0,
+      finished: 0,
+    });
   });
 });
 
@@ -215,7 +351,7 @@ describe("search escaping", () => {
       .run();
   };
 
-  const titlesFor = (query: string) => listBooks(query).map((book) => book.title).sort();
+  const titlesFor = (query: string) => listBooks({ query }).books.map((book) => book.title).sort();
 
   beforeEach(() => {
     addTitled([

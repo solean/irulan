@@ -2,6 +2,25 @@ export const READ_STATUSES = ["unread", "reading", "finished"] as const;
 
 export type ReadStatus = (typeof READ_STATUSES)[number];
 
+export const BOOK_SORT_KEYS = [
+  "title",
+  "author",
+  "sourceFilename",
+  "importedAt",
+  "fileSizeBytes",
+  "readStatus",
+  "rating",
+] as const;
+
+export type BookSortKey = (typeof BOOK_SORT_KEYS)[number];
+
+export const SORT_DIRECTIONS = ["asc", "desc"] as const;
+
+export type SortDirection = (typeof SORT_DIRECTIONS)[number];
+
+export const BOOKS_PAGE_SIZE = 60;
+export const MAX_BOOKS_PAGE_SIZE = 100;
+
 export type BookshelfSummary = {
   id: string;
   name: string;
@@ -24,6 +43,25 @@ export type BookSummary = {
 };
 
 export type BookDetail = BookSummary;
+
+export type BookListOptions = {
+  query?: string;
+  bookshelfId?: string | null;
+  readStatus?: ReadStatus | null;
+  sort?: BookSortKey;
+  direction?: SortDirection;
+  offset?: number;
+  limit?: number;
+};
+
+export type BookPage = {
+  books: BookSummary[];
+  offset: number;
+  limit: number;
+  total: number;
+  unfilteredTotal: number;
+  statusCounts: Record<ReadStatus | "all", number>;
+};
 
 export type UpdateBookMetadataPayload = {
   readStatus?: ReadStatus;

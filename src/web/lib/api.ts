@@ -1,7 +1,8 @@
 import type {
   BookDetail,
+  BookListOptions,
+  BookPage,
   BookReader,
-  BookSummary,
   BookshelfSummary,
   DeleteBookResult,
   DeleteBookshelfResult,
@@ -28,18 +29,32 @@ const request = async <T>(input: string, init?: RequestInit): Promise<T> => {
 };
 
 export const api = {
-  async listBooks(query = "", bookshelfId?: string | null) {
+  async listBooks(options: BookListOptions = {}) {
     const params = new URLSearchParams();
-    if (query.trim()) {
-      params.set("q", query.trim());
+    if (options.query?.trim()) {
+      params.set("q", options.query.trim());
     }
-    if (bookshelfId?.trim()) {
-      params.set("bookshelfId", bookshelfId.trim());
+    if (options.bookshelfId?.trim()) {
+      params.set("bookshelfId", options.bookshelfId.trim());
+    }
+    if (options.readStatus) {
+      params.set("readStatus", options.readStatus);
+    }
+    if (options.sort) {
+      params.set("sort", options.sort);
+    }
+    if (options.direction) {
+      params.set("direction", options.direction);
+    }
+    if (options.offset !== undefined) {
+      params.set("offset", String(options.offset));
+    }
+    if (options.limit !== undefined) {
+      params.set("limit", String(options.limit));
     }
 
     const suffix = params.size > 0 ? `?${params.toString()}` : "";
-    const payload = await request<{ books: BookSummary[] }>(`/api/books${suffix}`);
-    return payload.books;
+    return request<BookPage>(`/api/books${suffix}`);
   },
 
   async importBooks(files: File[], bookshelfIds?: string | string[] | null) {

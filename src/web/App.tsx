@@ -12,7 +12,6 @@ import {
   startTransition,
   useCallback,
   useContext,
-  useDeferredValue,
   useEffect,
   useEffectEvent,
   useLayoutEffect,
@@ -97,10 +96,12 @@ import {
   type ThemePreference,
 } from "../shared/theme";
 import {
+  BOOKS_PAGE_SIZE,
   READ_STATUSES,
   type BookDetail,
   type BookReader,
   type BookReaderSection,
+  type BookSortKey,
   type BookSummary,
   type BookshelfSummary,
   type DeliveryRecord,
@@ -108,6 +109,7 @@ import {
   type ReadStatus,
   type SmtpSettings,
   type SettingsPayload,
+  type SortDirection,
   type UpdateBookMetadataPayload,
 } from "../shared/types";
 import { api } from "./lib/api";
@@ -124,15 +126,7 @@ type ReadStatusFilter = "all" | ReadStatus;
 type ReaderTone = "paper" | "sepia" | "night";
 type ReaderFontId = "original" | "iowan" | "georgia" | "palatino" | "charter" | "sans";
 type ReaderSpacingId = "compact" | "cozy" | "roomy";
-type BookshelfSortKey =
-  | "title"
-  | "author"
-  | "sourceFilename"
-  | "importedAt"
-  | "fileSizeBytes"
-  | "readStatus"
-  | "rating";
-type SortDirection = "asc" | "desc";
+type BookshelfSortKey = BookSortKey;
 type BookshelfSort = {
   key: BookshelfSortKey;
   direction: SortDirection;
@@ -240,10 +234,11 @@ const READ_STATUS_FILTER_OPTIONS: ReadonlyArray<{ value: ReadStatusFilter; label
   { value: "unread", label: "Unread" },
   { value: "finished", label: "Finished" },
 ];
-const READ_STATUS_ORDER: Record<ReadStatus, number> = {
+const EMPTY_STATUS_COUNTS: Record<ReadStatusFilter, number> = {
+  all: 0,
   unread: 0,
-  reading: 1,
-  finished: 2,
+  reading: 0,
+  finished: 0,
 };
 
 function getStoredThemePreference(): ThemePreference {
@@ -484,6 +479,17 @@ function useMediaQuery(query: string) {
   return useSyncExternalStore(subscribe, getSnapshot);
 }
 
+function useDebouncedValue<T>(value: T, delay: number) {
+  const [debouncedValue, setDebouncedValue] = useState(value);
+
+  useEffect(() => {
+    const timeout = window.setTimeout(() => setDebouncedValue(value), delay);
+    return () => window.clearTimeout(timeout);
+  }, [delay, value]);
+
+  return debouncedValue;
+}
+
 function useTheme() {
   const prefersDark = useMediaQuery("(prefers-color-scheme: dark)");
   const systemTheme: Theme = prefersDark ? "dark" : "light";
@@ -556,10 +562,6 @@ const numberFormatter = new Intl.NumberFormat(undefined);
 const dateFormatter = new Intl.DateTimeFormat(undefined, {
   dateStyle: "medium",
   timeStyle: "short",
-});
-const bookshelfTextCollator = new Intl.Collator(undefined, {
-  numeric: true,
-  sensitivity: "base",
 });
 
 const formatBytes = (bytes: number) => {
@@ -667,49 +669,6 @@ const getNextBookshelfSort = (current: BookshelfSort, key: BookshelfSortKey): Bo
   };
 };
 
-const compareBooks = (left: BookSummary, right: BookSummary, key: BookshelfSortKey) => {
-  switch (key) {
-    case "rating":
-      return (left.rating ?? 0) - (right.rating ?? 0);
-    case "readStatus":
-      return READ_STATUS_ORDER[left.readStatus] - READ_STATUS_ORDER[right.readStatus];
-    case "fileSizeBytes":
-      return left.fileSizeBytes - right.fileSizeBytes;
-    case "importedAt":
-      return new Date(left.importedAt).getTime() - new Date(right.importedAt).getTime();
-    case "author":
-      return bookshelfTextCollator.compare(left.author, right.author);
-    case "sourceFilename":
-      return bookshelfTextCollator.compare(left.sourceFilename, right.sourceFilename);
-    case "title":
-    default:
-      return bookshelfTextCollator.compare(left.title, right.title);
-  }
-};
-
-const getVisibleBooks = (books: BookSummary[], query: string) => {
-  const normalizedQuery = query.trim().toLocaleLowerCase();
-  if (!normalizedQuery) {
-    return books;
-  }
-
-  return books.filter((book) => {
-    const title = book.title.toLocaleLowerCase();
-    const author = book.author.toLocaleLowerCase();
-    const sourceFilename = book.sourceFilename.toLocaleLowerCase();
-
-    return (
-      title.includes(normalizedQuery) ||
-      author.includes(normalizedQuery) ||
-      sourceFilename.includes(normalizedQuery)
-    );
-  });
-};
-
-const getSortedBooks = (books: BookSummary[], sort: BookshelfSort) => {
-  const direction = sort.direction === "asc" ? 1 : -1;
-  return [...books].sort((left, right) => compareBooks(left, right, sort.key) * direction);
-};
 
 const getBookshelfHref = (bookshelfId?: string | null) => {
   if (!bookshelfId) return "/";
@@ -2839,6 +2798,11 @@ const BookshelfPage = () => {
   );
   const [statusFilter, setStatusFilter] = useState<ReadStatusFilter>("all");
   const [books, setBooks] = useState<BookSummary[]>([]);
+  const [matchingBookCount, setMatchingBookCount] = useState(0);
+  const [shelfBookCount, setShelfBookCount] = useState(0);
+  const [statusCounts, setStatusCounts] =
+    useState<Record<ReadStatusFilter, number>>(EMPTY_STATUS_COUNTS);
+  const [pageOffset, setPageOffset] = useState(0);
   const [bookshelfSort, setBookshelfSort] = useState<BookshelfSort>(DEFAULT_BOOKSHELF_SORT);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -2881,33 +2845,9 @@ const BookshelfPage = () => {
       ? "All books"
       : activeBookshelf?.name ?? "Bookshelf";
   useDocumentTitle(`${shelfLabel} — Irulan`);
-  const deferredQuery = useDeferredValue(query);
-  const queriedBooks = useMemo(() => getVisibleBooks(books, deferredQuery), [books, deferredQuery]);
-  const statusCounts = useMemo(() => {
-    const counts: Record<ReadStatusFilter, number> = {
-      all: queriedBooks.length,
-      unread: 0,
-      reading: 0,
-      finished: 0,
-    };
-    for (const book of queriedBooks) {
-      counts[book.readStatus] += 1;
-    }
-    return counts;
-  }, [queriedBooks]);
-  const visibleBooks = useMemo(
-    () =>
-      statusFilter === "all"
-        ? queriedBooks
-        : queriedBooks.filter((book) => book.readStatus === statusFilter),
-    [queriedBooks, statusFilter],
-  );
-  const sortedVisibleBooks = useMemo(
-    () => getSortedBooks(visibleBooks, bookshelfSort),
-    [visibleBooks, bookshelfSort],
-  );
+  const debouncedQuery = useDebouncedValue(query, 250);
   const showingFilteredResults =
-    deferredQuery.trim().length > 0 || statusFilter !== "all";
+    debouncedQuery.trim().length > 0 || statusFilter !== "all";
   const canSendToKindleFromShelf = Boolean(settings?.smtp.configured && activeBookshelf?.kindleEmail?.trim());
 
   const loadBookshelves = useEffectEvent(async () => {
@@ -2920,6 +2860,10 @@ const BookshelfPage = () => {
       setHasLoadedBookshelves(true);
       if (nextBookshelves.length === 0) {
         setBooks([]);
+        setMatchingBookCount(0);
+        setShelfBookCount(0);
+        setStatusCounts(EMPTY_STATUS_COUNTS);
+        setPageOffset(0);
         setLoading(false);
         setHasLoadedBooks(true);
       }
@@ -2944,22 +2888,34 @@ const BookshelfPage = () => {
     const requestId = latestBooksRequest.current + 1;
     latestBooksRequest.current = requestId;
 
-    if (!hasLoadedBooks) {
-      setLoading(true);
-    }
+    setLoading(true);
     setError(null);
 
     try {
-      const nextBooks = await api.listBooks(
-        "",
-        activeBookshelfId === ALL_BOOKSHELVES_ID ? null : activeBookshelfId,
-      );
+      const nextPage = await api.listBooks({
+        query: debouncedQuery,
+        bookshelfId:
+          activeBookshelfId === ALL_BOOKSHELVES_ID ? null : activeBookshelfId,
+        readStatus: statusFilter === "all" ? null : statusFilter,
+        sort: bookshelfSort.key,
+        direction: bookshelfSort.direction,
+        offset: pageOffset,
+        limit: BOOKS_PAGE_SIZE,
+      });
 
       if (requestId !== latestBooksRequest.current) {
         return;
       }
 
-      setBooks(nextBooks);
+      if (nextPage.books.length === 0 && nextPage.total > 0 && pageOffset >= nextPage.total) {
+        setPageOffset(Math.floor((nextPage.total - 1) / BOOKS_PAGE_SIZE) * BOOKS_PAGE_SIZE);
+        return;
+      }
+
+      setBooks(nextPage.books);
+      setMatchingBookCount(nextPage.total);
+      setShelfBookCount(nextPage.unfilteredTotal);
+      setStatusCounts(nextPage.statusCounts);
     } catch (requestError) {
       if (requestId !== latestBooksRequest.current) {
         return;
@@ -2981,7 +2937,15 @@ const BookshelfPage = () => {
   useEffect(() => {
     if (!hasLoadedBookshelves || !activeBookshelfId) return;
     void loadBooks();
-  }, [activeBookshelfId, hasLoadedBookshelves]);
+  }, [
+    activeBookshelfId,
+    bookshelfSort.direction,
+    bookshelfSort.key,
+    debouncedQuery,
+    hasLoadedBookshelves,
+    pageOffset,
+    statusFilter,
+  ]);
 
   useEffect(() => {
     if (!hasLoadedBookshelves || bookshelves.length === 0) return;
@@ -2999,8 +2963,11 @@ const BookshelfPage = () => {
 
   useEffect(() => {
     const nextQuery = searchParams.get("q") ?? "";
-    setQuery((current) => (current === nextQuery ? current : nextQuery));
-  }, [searchParams]);
+    if (nextQuery !== query) {
+      setQuery(nextQuery);
+      setPageOffset(0);
+    }
+  }, [query, searchParams]);
 
   useEffect(() => {
     if (!flashMessage) return;
@@ -3018,10 +2985,10 @@ const BookshelfPage = () => {
 
   useEffect(() => {
     if (!bookActionMenu) return;
-    if (!visibleBooks.some((book) => book.id === bookActionMenu.book.id)) {
+    if (!books.some((book) => book.id === bookActionMenu.book.id)) {
       setBookActionMenu(null);
     }
-  }, [bookActionMenu, visibleBooks]);
+  }, [bookActionMenu, books]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -3104,14 +3071,22 @@ const BookshelfPage = () => {
 
   const onChangeBookshelfSort = useCallback((key: BookshelfSortKey) => {
     setBookshelfSort((current) => getNextBookshelfSort(current, key));
+    setPageOffset(0);
   }, []);
 
   const onSelectBookshelfSort = useCallback((key: BookshelfSortKey) => {
     setBookshelfSort({ key, direction: getDefaultBookshelfSortDirection(key) });
+    setPageOffset(0);
+  }, []);
+
+  const onChangeStatusFilter = useCallback((status: ReadStatusFilter) => {
+    setStatusFilter(status);
+    setPageOffset(0);
   }, []);
 
   const onSelectBookshelf = useCallback(
     (bookshelfId: string) => {
+      setPageOffset(0);
       const nextParams = new URLSearchParams(searchParams);
       nextParams.set("shelf", bookshelfId);
       if (query.trim()) {
@@ -3193,8 +3168,8 @@ const BookshelfPage = () => {
 
     try {
       const deletion = await api.deleteBook(bookPendingDelete.id);
-      setBooks((current) => current.filter((book) => book.id !== bookPendingDelete.id));
       setBookPendingDelete(null);
+      await loadBooks();
       await loadBookshelves();
       toast({
         title: "Deleted",
@@ -3313,11 +3288,15 @@ const BookshelfPage = () => {
   });
 
   const showInitialBookshelfSkeleton = loading && !hasLoadedBooks;
-  const showEmptyBookshelf = !showInitialBookshelfSkeleton && visibleBooks.length === 0;
+  const showEmptyBookshelf = !showInitialBookshelfSkeleton && books.length === 0;
   const totalBookCount = bookshelves.reduce(
     (total, bookshelf) => total + bookshelf.bookCount,
     0,
   );
+  const pageNumber = Math.floor(pageOffset / BOOKS_PAGE_SIZE) + 1;
+  const pageCount = Math.max(1, Math.ceil(matchingBookCount / BOOKS_PAGE_SIZE));
+  const pageStart = matchingBookCount === 0 ? 0 : pageOffset + 1;
+  const pageEnd = Math.min(pageOffset + books.length, matchingBookCount);
   const onboardingStep1Done = totalBookCount > 0;
   const onboardingStep2Done = Boolean(settings?.smtp.configured);
   const onboardingStep3Done = bookshelves.some((bookshelf) => bookshelf.kindleEmail?.trim());
@@ -3481,11 +3460,11 @@ const BookshelfPage = () => {
           statusCounts={statusCounts}
           minimized={isSidebarMinimized}
           onSelectBookshelf={onSelectBookshelf}
-          onChangeStatusFilter={setStatusFilter}
+          onChangeStatusFilter={onChangeStatusFilter}
           onToggleMinimized={onToggleSidebarMinimized}
         />
 
-        <div className="bookshelf-main stack-lg">
+        <div aria-busy={loading} className="bookshelf-main stack-lg">
           <header className="bookshelf-main-header">
             <div className="bookshelf-main-heading">
               <h1 className="bookshelf-main-title">
@@ -3494,10 +3473,10 @@ const BookshelfPage = () => {
                   : activeBookshelf?.name ?? "Bookshelf"}
               </h1>
               <p className="bookshelf-main-subtitle">
-                {numberFormatter.format(books.length)}
-                {books.length === 1 ? " book" : " books"}
+                {numberFormatter.format(shelfBookCount)}
+                {shelfBookCount === 1 ? " book" : " books"}
                 {showingFilteredResults
-                  ? ` \u00b7 ${numberFormatter.format(visibleBooks.length)} shown`
+                  ? ` \u00b7 ${numberFormatter.format(matchingBookCount)} shown`
                   : ""}
               </p>
             </div>
@@ -3569,6 +3548,7 @@ const BookshelfPage = () => {
               onChange={(event) => {
                 const nextValue = event.currentTarget.value;
                 setQuery(nextValue);
+                setPageOffset(0);
                 startTransition(() => {
                   const nextParams = new URLSearchParams(searchParams);
                   if (nextValue) {
@@ -3666,7 +3646,7 @@ const BookshelfPage = () => {
 
         {showInitialBookshelfSkeleton ? (
           <BookshelfSkeleton view={view} />
-        ) : visibleBooks.length === 0 ? (
+        ) : books.length === 0 ? (
           <section className="empty-state empty-dropzone stack-sm">
             <div className="empty-dropzone-icon" aria-hidden="true">
               <UploadIcon />
@@ -3699,6 +3679,7 @@ const BookshelfPage = () => {
                   onClick={() => {
                     setStatusFilter("all");
                     setQuery("");
+                    setPageOffset(0);
                     const nextParams = new URLSearchParams(searchParams);
                     nextParams.delete("q");
                     setSearchParams(nextParams);
@@ -3714,7 +3695,7 @@ const BookshelfPage = () => {
           </section>
         ) : view === "list" ? (
           <BookshelfList
-            books={sortedVisibleBooks}
+            books={books}
             bookshelfId={activeBookshelfId}
             density={density}
             onBookContextKeyDown={onBookContextKeyDown}
@@ -3724,7 +3705,7 @@ const BookshelfPage = () => {
           />
         ) : (
           <BookshelfGrid
-            books={sortedVisibleBooks}
+            books={books}
             bookshelfId={activeBookshelfId}
             density={density}
             sortKey={bookshelfSort.key}
@@ -3733,6 +3714,33 @@ const BookshelfPage = () => {
             onOpenActionMenu={onOpenBookActionMenu}
           />
         )}
+        {!showInitialBookshelfSkeleton && matchingBookCount > 0 ? (
+          <nav aria-label="Bookshelf pages" className="bookshelf-pagination">
+            <Button
+              disabled={loading || pageOffset === 0}
+              onClick={() => setPageOffset((current) => Math.max(0, current - BOOKS_PAGE_SIZE))}
+              size="sm"
+              type="button"
+              variant="outline"
+            >
+              Previous
+            </Button>
+            <p aria-live="polite" className="bookshelf-pagination-status">
+              Showing {numberFormatter.format(pageStart)}–{numberFormatter.format(pageEnd)} of{" "}
+              {numberFormatter.format(matchingBookCount)} · Page {numberFormatter.format(pageNumber)}{" "}
+              of {numberFormatter.format(pageCount)}
+            </p>
+            <Button
+              disabled={loading || pageOffset + books.length >= matchingBookCount}
+              onClick={() => setPageOffset((current) => current + BOOKS_PAGE_SIZE)}
+              size="sm"
+              type="button"
+              variant="outline"
+            >
+              Next
+            </Button>
+          </nav>
+        ) : null}
         </div>
       </div>
     </div>

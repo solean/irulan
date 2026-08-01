@@ -3,7 +3,13 @@ import { access, readFile } from "node:fs/promises";
 import { Hono } from "hono";
 import { z } from "zod";
 
-import { READ_STATUSES } from "../../shared/types";
+import {
+  BOOK_SORT_KEYS,
+  BOOKS_PAGE_SIZE,
+  MAX_BOOKS_PAGE_SIZE,
+  READ_STATUSES,
+  SORT_DIRECTIONS,
+} from "../../shared/types";
 import { AppError } from "../errors";
 import { coverContentType, readerAssetContentType } from "../lib/storage";
 import {
@@ -18,6 +24,21 @@ import {
 } from "../services/books";
 import { replaceBookBookshelves } from "../services/bookshelves";
 import { listDeliveriesForBook, sendBookToKindle } from "../services/delivery";
+
+const listBooksQuerySchema = z.object({
+  q: z.string().default(""),
+  bookshelfId: z.string().trim().optional(),
+  readStatus: z.enum(READ_STATUSES).optional(),
+  sort: z.enum(BOOK_SORT_KEYS).default("importedAt"),
+  direction: z.enum(SORT_DIRECTIONS).default("desc"),
+  offset: z.coerce.number().int().min(0).default(0),
+  limit: z.coerce
+    .number()
+    .int()
+    .min(1)
+    .max(MAX_BOOKS_PAGE_SIZE)
+    .default(BOOKS_PAGE_SIZE),
+});
 
 const sendSchema = z.object({
   bookshelfId: z.string().trim().min(1).nullish(),
@@ -51,9 +72,19 @@ const getReaderAssetRequestPath = (requestPath: string, bookId: string) => {
 };
 
 booksRoutes.get("/", (c) => {
-  const query = c.req.query("q") ?? "";
-  const bookshelfId = c.req.query("bookshelfId") ?? null;
-  return c.json({ books: listBooks(query, bookshelfId === "all" ? null : bookshelfId) });
+  const query = listBooksQuerySchema.parse(c.req.query());
+  return c.json(
+    listBooks({
+      query: query.q,
+      bookshelfId:
+        !query.bookshelfId || query.bookshelfId === "all" ? null : query.bookshelfId,
+      readStatus: query.readStatus,
+      sort: query.sort,
+      direction: query.direction,
+      offset: query.offset,
+      limit: query.limit,
+    }),
+  );
 });
 
 booksRoutes.post("/import", async (c) => {

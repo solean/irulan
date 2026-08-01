@@ -1345,6 +1345,24 @@ input::placeholder {
   text-wrap: balance;
 }
 
+.bookshelf-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding-top: 4px;
+}
+
+.bookshelf-pagination-status {
+  min-width: min(100%, 280px);
+  margin: 0;
+  color: var(--text-tertiary);
+  font-size: var(--fs-sm);
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+
 /* ─── Book grid ─── */
 
 .books-grid {

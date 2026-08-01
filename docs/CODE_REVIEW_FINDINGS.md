@@ -33,7 +33,7 @@ roughly ordered by consequence within each section.
 | 12 | One bad zip entry makes a whole book unreadable | ⚪ **Not reachable** — see below (`d6d3e6f`) |
 | 13 | LIKE wildcards unescaped in search | 🟢 Fixed — `c768acf` |
 | 14 | `parseNumber` treats empty env var as 0 | 🟢 Fixed — `b9fb5f3` |
-| 15 | No pagination or virtualization | 🟡 Open |
+| 15 | No pagination or virtualization | 🟢 Fixed |
 | 16 | Reader extracts the full zip to disk | 🟡 Open |
 | 17 | Imports buffer in memory, no size cap | 🟡 Open |
 | 18 | SMTP password round-trips to the browser | 🟡 Open |
@@ -252,11 +252,12 @@ Related: two concurrent imports of the same file can both pass the `fileHash` ch
 
 ## Performance
 
-### 🟡 15. No pagination or virtualization
+### 🟢 15. No pagination or virtualization — fixed
 
-`GET /api/books` has no `LIMIT`, and `BookshelfGrid` renders every book. `loading="lazy"`
-on covers helps, but a Calibre-scale library — which `docs/todo.md` lists as a goal — will
-render thousands of DOM nodes and re-sort them client-side on every keystroke.
+`GET /api/books` now validates a bounded page request (60 books by default, 100 maximum)
+and applies shelf, search, status, and stable sorting in SQLite before `LIMIT`/`OFFSET`.
+The response includes global totals and status counts, while the web client keeps only the
+current page and renders accessible Previous/Next controls for both grid and list views.
 
 ### 🟡 16. Reader prep extracts the full zip to disk
 
