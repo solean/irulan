@@ -15,6 +15,19 @@ const normalizeKindleEmail = (value: string | null | undefined) => {
   return trimmed.length > 0 ? trimmed : null;
 };
 
+// Every value in an `IN (…)` list is a bound parameter, and SQLite caps how many
+// a single statement may carry. Chunking well under the lowest historical limit
+// (999) keeps a large library from ever tripping it.
+const IN_CLAUSE_CHUNK_SIZE = 400;
+
+const chunk = <T>(values: T[], size: number): T[][] => {
+  const chunks: T[][] = [];
+  for (let index = 0; index < values.length; index += size) {
+    chunks.push(values.slice(index, index + size));
+  }
+  return chunks;
+};
+
 const getBookCount = (bookshelfId: string) =>
   db
     .select({ value: count() })
@@ -22,37 +35,92 @@ const getBookCount = (bookshelfId: string) =>
     .where(eq(bookShelves.bookshelfId, bookshelfId))
     .get()?.value ?? 0;
 
-export const serializeBookshelf = (bookshelf: BookshelfRecord): BookshelfSummary => ({
+/** Book totals for every shelf at once, so a list render never counts per shelf. */
+const getBookCountsByBookshelf = (): Map<string, number> =>
+  new Map(
+    db
+      .select({ bookshelfId: bookShelves.bookshelfId, value: count() })
+      .from(bookShelves)
+      .groupBy(bookShelves.bookshelfId)
+      .all()
+      .map((row) => [row.bookshelfId, row.value] as const),
+  );
+
+const toBookshelfSummary = (
+  bookshelf: BookshelfRecord,
+  bookCount: number,
+): BookshelfSummary => ({
   id: bookshelf.id,
   name: bookshelf.name,
   kindleEmail: bookshelf.kindleEmail?.trim() || null,
-  bookCount: getBookCount(bookshelf.id),
+  bookCount,
   createdAt: bookshelf.createdAt.toISOString(),
 });
 
-export const listBookshelves = (): BookshelfSummary[] =>
-  db
+export const serializeBookshelf = (bookshelf: BookshelfRecord): BookshelfSummary =>
+  toBookshelfSummary(bookshelf, getBookCount(bookshelf.id));
+
+export const listBookshelves = (): BookshelfSummary[] => {
+  const bookCounts = getBookCountsByBookshelf();
+
+  return db
     .select()
     .from(bookshelves)
     .orderBy(asc(bookshelves.sortOrder), asc(bookshelves.name))
     .all()
-    .map(serializeBookshelf);
+    .map((bookshelf) => toBookshelfSummary(bookshelf, bookCounts.get(bookshelf.id) ?? 0));
+};
+
+/**
+ * Shelf memberships for many books, keyed by book id.
+ *
+ * Resolving these one book at a time is what made listing a library quadratic:
+ * a membership query per book, and a `COUNT(*)` per shelf on every one of them.
+ * Here the counts are gathered once and the memberships in a handful of queries
+ * regardless of how many books are asked for.
+ */
+export const listBookshelvesForBooks = (
+  bookIds: string[],
+): Map<string, BookshelfSummary[]> => {
+  const grouped = new Map<string, BookshelfSummary[]>();
+  if (bookIds.length === 0) {
+    return grouped;
+  }
+
+  const bookCounts = getBookCountsByBookshelf();
+
+  for (const bookIdChunk of chunk(bookIds, IN_CLAUSE_CHUNK_SIZE)) {
+    const rows = db
+      .select({
+        bookId: bookShelves.bookId,
+        id: bookshelves.id,
+        name: bookshelves.name,
+        kindleEmail: bookshelves.kindleEmail,
+        sortOrder: bookshelves.sortOrder,
+        createdAt: bookshelves.createdAt,
+      })
+      .from(bookShelves)
+      .innerJoin(bookshelves, eq(bookShelves.bookshelfId, bookshelves.id))
+      .where(inArray(bookShelves.bookId, bookIdChunk))
+      .orderBy(asc(bookshelves.sortOrder), asc(bookshelves.name))
+      .all();
+
+    for (const row of rows) {
+      const summary = toBookshelfSummary(row, bookCounts.get(row.id) ?? 0);
+      const existing = grouped.get(row.bookId);
+      if (existing) {
+        existing.push(summary);
+      } else {
+        grouped.set(row.bookId, [summary]);
+      }
+    }
+  }
+
+  return grouped;
+};
 
 export const listBookshelvesForBook = (bookId: string): BookshelfSummary[] =>
-  db
-    .select({
-      id: bookshelves.id,
-      name: bookshelves.name,
-      kindleEmail: bookshelves.kindleEmail,
-      sortOrder: bookshelves.sortOrder,
-      createdAt: bookshelves.createdAt,
-    })
-    .from(bookShelves)
-    .innerJoin(bookshelves, eq(bookShelves.bookshelfId, bookshelves.id))
-    .where(eq(bookShelves.bookId, bookId))
-    .orderBy(asc(bookshelves.sortOrder), asc(bookshelves.name))
-    .all()
-    .map(serializeBookshelf);
+  listBookshelvesForBooks([bookId]).get(bookId) ?? [];
 
 export const getBookshelfRecord = (bookshelfId: string) => {
   const row = db.select().from(bookshelves).where(eq(bookshelves.id, bookshelfId)).get();

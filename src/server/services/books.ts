@@ -8,6 +8,7 @@ import { and, desc, eq, like, or } from "drizzle-orm";
 import {
   BookDetail,
   BookReader,
+  BookshelfSummary,
   BookSummary,
   DeleteBookResult,
   ImportResult,
@@ -22,6 +23,7 @@ import { extractEpubMetadata, prepareEpubReader, resolveEpubReaderAssetPath } fr
 import {
   addBookToBookshelf,
   listBookshelvesForBook,
+  listBookshelvesForBooks,
   getFirstBookshelfRecord,
   resolveBookshelfRecord,
 } from "./bookshelves";
@@ -65,7 +67,7 @@ const normalizeRating = (rating: number | null) => {
   return Number.isInteger(rating * 2) && rating >= 0.5 && rating <= 5 ? rating : null;
 };
 
-export const serializeBook = (book: BookRecord): BookSummary => ({
+const toBookSummary = (book: BookRecord, bookshelves: BookshelfSummary[]): BookSummary => ({
   id: book.id,
   title: book.title,
   author: book.author,
@@ -75,8 +77,17 @@ export const serializeBook = (book: BookRecord): BookSummary => ({
   coverUrl: book.coverPath ? `/api/books/${book.id}/cover` : null,
   readStatus: book.readStatus,
   rating: normalizeRating(book.rating),
-  bookshelves: listBookshelvesForBook(book.id),
+  bookshelves,
 });
+
+export const serializeBook = (book: BookRecord): BookSummary =>
+  toBookSummary(book, listBookshelvesForBook(book.id));
+
+/** Serialize a whole page of books without re-querying memberships per book. */
+const serializeBooks = (rows: BookRecord[]): BookSummary[] => {
+  const bookshelvesByBook = listBookshelvesForBooks(rows.map((row) => row.id));
+  return rows.map((row) => toBookSummary(row, bookshelvesByBook.get(row.id) ?? []));
+};
 
 export const listBooks = (searchTerm?: string, bookshelfId?: string | null): BookSummary[] => {
   const trimmed = searchTerm?.trim();
@@ -114,7 +125,7 @@ export const listBooks = (searchTerm?: string, bookshelfId?: string | null): Boo
       .orderBy(desc(books.importedAt))
       .all();
 
-    return rows.map(serializeBook);
+    return serializeBooks(rows);
   }
 
   const rows = searchClause
@@ -126,7 +137,7 @@ export const listBooks = (searchTerm?: string, bookshelfId?: string | null): Boo
         .all()
     : db.select().from(books).orderBy(desc(books.importedAt)).all();
 
-  return rows.map(serializeBook);
+  return serializeBooks(rows);
 };
 
 export const getBook = (bookId: string): BookDetail => {
