@@ -23,7 +23,7 @@ roughly ordered by consequence within each section.
 | 6 | Saves block the event loop | Open (architectural) |
 | 7 | Transient memory ~2× database size per save | Open (architectural) |
 | 8 | `listBooks` is O(books × shelves) in queries | **Open — highest value quick win** |
-| 9 | `shell.openExternal` has no scheme allowlist | **Open — smallest security fix** |
+| 9 | `shell.openExternal` has no scheme allowlist | Fixed — `abc530b` |
 | 10 | Unmatched `/api/*` returns HTML with status 200 | Open |
 | 11 | `decodeURIComponent` throws outside try → 500 | Open |
 | 12 | One bad zip entry makes a whole book unreadable | Open |
@@ -214,13 +214,20 @@ Calibrated for a local-first, loopback-bound, single-user app. The reader is alr
 hardened: tag allowlist, `script`/`style`/`link` dropped, `javascript:` rejected, no
 `dangerouslySetInnerHTML`, and `contextIsolation` + `sandbox` on every Electron window.
 
-### 9. `shell.openExternal` has no scheme allowlist — smallest meaningful fix
+### 9. `shell.openExternal` had no scheme allowlist — fixed in `abc530b`
 
-`electron/main.cjs:113-114`. EPUBs are untrusted input, and the reader deliberately renders
-external links as `target="_blank"`, which routes through this handler. A crafted book can
-hand the OS an arbitrary URL — `file:`, `smb:`, or any registered custom-protocol handler.
+`setWindowOpenHandler` passed every URL straight to `shell.openExternal`, which dispatches
+through the OS handler registry. A crafted book could hand the OS a `file:`, `smb:`, or
+app-registered custom scheme URL.
 
-Fix: gate on `http:` / `https:` / `mailto:` before opening.
+Fixed by checking against the schemes the reader actually produces — `http`, `https`,
+`mailto`, `tel`, matching `getReaderLinkTarget` — with the rules in
+`electron/url-policy.cjs` so they are testable without booting Electron. `will-navigate`
+is guarded the same way, and `openExternal`'s promise is no longer left unhandled.
+
+Not covered by a test: that clicking a link in a real book still reaches the browser. The
+policy decisions are unit tested and the app was confirmed to boot, but the end-to-end
+click path needs a human.
 
 ### 18. SMTP password round-trips to the browser
 
@@ -309,9 +316,8 @@ same-origin — and it silently breaks if Vite falls back off `WEB_PORT`.
 
 ## Suggested order
 
-1. **9** — `openExternal` allowlist. Smallest security fix on the list.
-2. **8** — the N+1. Contained to two service files, and it compounds with finding 6.
-3. **10, 11, 12, 13, 14** — small correctness fixes, all independent.
-4. **23** — `app.onError()`. Deletes code and fixes the unguarded handlers.
-5. **24 → 5/6/7** — settle the schema question, then swap the SQLite driver.
-6. **22** — the `App.tsx` split, once nothing else is in flight over it.
+1. **8** — the N+1. Contained to two service files, and it compounds with finding 6.
+2. **10, 11, 12, 13, 14** — small correctness fixes, all independent.
+3. **23** — `app.onError()`. Deletes code and fixes the unguarded handlers.
+4. **24 → 5/6/7** — settle the schema question, then swap the SQLite driver.
+5. **22** — the `App.tsx` split, once nothing else is in flight over it.
