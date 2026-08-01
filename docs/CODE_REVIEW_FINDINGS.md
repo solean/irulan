@@ -3,7 +3,7 @@
 Findings from a full read of the codebase (server, web client, Electron shell, build
 config) on 2026-07-31, plus the follow-up review of the fixes that landed the same day.
 
-Line references were verified against `3b05559`. They will drift — treat them as a
+Line references were verified against `ab2e4b1`. They will drift — treat them as a
 starting point, not gospel. `App.tsx` in particular moves constantly.
 
 Nothing here is a blocker for a local single-user app that works today. The list is
@@ -22,7 +22,7 @@ roughly ordered by consequence within each section.
 | 5 | Failed save leaves memory ahead of disk | **Open — highest priority** |
 | 6 | Saves block the event loop | Open (architectural) |
 | 7 | Transient memory ~2× database size per save | Open (architectural) |
-| 8 | `listBooks` is O(books × shelves) in queries | **Open — highest value quick win** |
+| 8 | `listBooks` is O(books × shelves) in queries | Fixed — `ab2e4b1` |
 | 9 | `shell.openExternal` has no scheme allowlist | Fixed — `abc530b` |
 | 10 | Unmatched `/api/*` returns HTML with status 200 | Open |
 | 11 | `decodeURIComponent` throws outside try → 500 | Open |
@@ -59,8 +59,8 @@ rewriting it wholesale — it cannot be repaired inside `persistence.ts`.
 src/server/db/client.ts:175
 src/server/services/settings.ts:29,63
 src/server/services/delivery.ts:99,133,142
-src/server/services/books.ts:162,227,320
-src/server/services/bookshelves.ts:110,139,158,183,197,225
+src/server/services/books.ts:173,238,331
+src/server/services/bookshelves.ts:178,207,226,251,265,293
 ```
 
 The in-memory mutation always happens before the persist. If the persist throws — disk
@@ -91,13 +91,31 @@ All three dissolve with a real SQLite driver, which writes only changed pages, g
 transactions where a failed write fails atomically, and lets `src/server/db/persistence.ts`
 be deleted entirely.
 
-Two things to check before picking a driver:
+This is a bigger job than it first looks. Drizzle 0.45.2 ships these SQLite drivers:
 
-- Whether Drizzle has a `node:sqlite` driver. This matters more than it sounds:
-  `node:sqlite` is built into the Node that Electron 41 ships, while `better-sqlite3` is a
-  native addon needing an ABI rebuild at package time.
-- `ensureSchema` in `src/server/db/client.ts` is raw DDL and would need to move or be
-  re-pointed. See finding 24.
+```
+better-sqlite3  bun-sqlite  durable-sqlite  expo-sqlite  op-sqlite  sqlite-core  sqlite-proxy
+```
+
+**There is no `node:sqlite` driver.** That rules out the cleanest option and leaves:
+
+- **`better-sqlite3`** — the realistic choice, but it is a native addon and the project has
+  two runtimes. `bun run start` executes `dist/server/index.cjs` under plain Node, while
+  Electron runs the same bundle under Electron's Node. A build for one ABI will not load in
+  the other. electron-builder rebuilds it for the packaged app, but `bun run electron`
+  against the repo's `node_modules` needs the Electron-ABI build.
+- **`bun-sqlite`** — dev only. Production and Electron are both Node.
+- **`sqlite-proxy` + `node:sqlite`** — sidesteps native modules entirely and is arguably the
+  better end state, but `node:sqlite` needs Node 22+ (the local toolchain is on v21.7.3) and
+  Drizzle's proxy driver is async, which would ripple `await` through every `.get()`,
+  `.all()` and `.run()` in the 15 service call sites.
+
+Worth a spike to resolve the ABI question before committing to it. `ensureSchema` in
+`src/server/db/client.ts` is raw DDL and would need to move or be re-pointed either way —
+see finding 24.
+
+Until that lands, finding 5 stops being throwaway work: if the swap is not near-term, the
+reload-in-memory-from-disk-on-persist-failure guard is worth having on its own merits.
 
 ### 20. Recovery is silent to the user
 
@@ -129,17 +147,27 @@ discards the other's work.
 
 ## Correctness
 
-### 8. `listBooks` is O(books × shelves) in queries — highest value quick win
+### 8. `listBooks` was O(books × shelves) in queries — fixed in `ab2e4b1`
 
-`serializeBook` (`src/server/services/books.ts:78`) calls `listBookshelvesForBook` per
-book. Each returned shelf then goes through `serializeBookshelf`
-(`src/server/services/bookshelves.ts:25`), which runs a separate `COUNT(*)` via
-`getBookCount` (`:18`).
+`serializeBook` resolved each book's shelves with its own query, and every shelf that came
+back ran a `COUNT(*)` to fill in `bookCount` — several thousand statements for one render.
 
-Listing 1,000 books across 3 shelves fires roughly 4,000 queries per bookshelf render.
+Fixed by gathering shelf totals once with a `GROUP BY` and fetching memberships for a whole
+page of books through `listBookshelvesForBooks`. Measured medians for `listBooks()`:
 
-Fix: fetch memberships in one `IN` query and compute shelf counts once with a `GROUP BY`.
-`bookCount` arguably does not belong in the per-book payload at all.
+| library | before | after |
+|---|---|---|
+| 200 books, 3 shelves | 41 ms | 5 ms |
+| 1,000 books, 5 shelves | 182 ms | 13 ms |
+| 5,000 books, 8 shelves | 1,623 ms | 47 ms |
+
+Two things worth knowing for future batch queries here:
+
+- Every value in an `IN (…)` list is a bound parameter and SQLite caps how many a statement
+  may carry. Seeding 5,000 books in one insert hit `too many SQL variables`, so the
+  membership query chunks its `IN` list at 400.
+- `bookCount` is a whole-library total, not a count within the current filter. A test pins
+  this, because the batched shape makes it easy to accidentally scope it to the page.
 
 ### 10. Unmatched `/api/*` returns HTML with status 200
 
@@ -316,8 +344,9 @@ same-origin — and it silently breaks if Vite falls back off `WEB_PORT`.
 
 ## Suggested order
 
-1. **8** — the N+1. Contained to two service files, and it compounds with finding 6.
-2. **10, 11, 12, 13, 14** — small correctness fixes, all independent.
-3. **23** — `app.onError()`. Deletes code and fixes the unguarded handlers.
+1. **10, 11, 12, 13, 14** — small correctness fixes, all independent and cheap.
+2. **23** — `app.onError()`. Deletes code and fixes the unguarded handlers.
+3. **Spike the driver question** (see "Fix for 5, 6, and 7"). The answer decides whether
+   **5** gets patched in place or waits for the swap.
 4. **24 → 5/6/7** — settle the schema question, then swap the SQLite driver.
 5. **22** — the `App.tsx` split, once nothing else is in flight over it.
