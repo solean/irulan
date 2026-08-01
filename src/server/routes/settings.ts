@@ -1,7 +1,6 @@
 import { Hono } from "hono";
 import { z } from "zod";
 
-import { AppError, errorMessage } from "../errors";
 import {
   getSettingsPayload,
   saveDefaultKindleEmail,
@@ -26,61 +25,23 @@ const testEmailSchema = z.object({
   recipientEmail: z.string().trim().email(),
 });
 
-const routeError = (error: unknown) => {
-  if (error instanceof AppError) {
-    return new Response(JSON.stringify({ error: error.message }), {
-      status: error.status,
-      headers: { "Content-Type": "application/json" },
-    });
-  }
-
-  if (error instanceof z.ZodError) {
-    return new Response(JSON.stringify({ error: error.issues[0]?.message ?? "Invalid request." }), {
-      status: 400,
-      headers: { "Content-Type": "application/json" },
-    });
-  }
-
-  console.error(error);
-  return new Response(JSON.stringify({ error: errorMessage(error) }), {
-    status: 500,
-    headers: { "Content-Type": "application/json" },
-  });
-};
-
 export const settingsRoutes = new Hono();
 
 settingsRoutes.get("/", (c) => c.json(getSettingsPayload()));
 
 settingsRoutes.put("/", async (c) => {
-  try {
-    const body = await c.req.json();
-    const payload = kindleSettingsSchema.parse(body);
-    saveDefaultKindleEmail(payload.defaultKindleEmail || null);
-    return c.json(getSettingsPayload());
-  } catch (error) {
-    return routeError(error);
-  }
+  const payload = kindleSettingsSchema.parse(await c.req.json());
+  saveDefaultKindleEmail(payload.defaultKindleEmail || null);
+  return c.json(getSettingsPayload());
 });
 
 settingsRoutes.put("/smtp", async (c) => {
-  try {
-    const body = await c.req.json();
-    const payload = smtpSettingsSchema.parse(body);
-    saveSmtpSettings(payload);
-    return c.json(getSettingsPayload());
-  } catch (error) {
-    return routeError(error);
-  }
+  saveSmtpSettings(smtpSettingsSchema.parse(await c.req.json()));
+  return c.json(getSettingsPayload());
 });
 
 settingsRoutes.post("/test-email", async (c) => {
-  try {
-    const body = await c.req.json();
-    const payload = testEmailSchema.parse(body);
-    await sendTestEmail(payload.recipientEmail);
-    return c.json({ ok: true });
-  } catch (error) {
-    return routeError(error);
-  }
+  const payload = testEmailSchema.parse(await c.req.json());
+  await sendTestEmail(payload.recipientEmail);
+  return c.json({ ok: true });
 });

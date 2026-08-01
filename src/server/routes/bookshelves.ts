@@ -1,7 +1,6 @@
 import { Hono } from "hono";
 import { z } from "zod";
 
-import { AppError, errorMessage } from "../errors";
 import {
   addBookToBookshelf,
   createBookshelf,
@@ -20,76 +19,31 @@ const bookMembershipSchema = z.object({
   bookId: z.string().trim().min(1),
 });
 
-const routeError = (error: unknown) => {
-  if (error instanceof AppError) {
-    return new Response(JSON.stringify({ error: error.message }), {
-      status: error.status,
-      headers: { "Content-Type": "application/json" },
-    });
-  }
-
-  if (error instanceof z.ZodError) {
-    return new Response(JSON.stringify({ error: error.issues[0]?.message ?? "Invalid request." }), {
-      status: 400,
-      headers: { "Content-Type": "application/json" },
-    });
-  }
-
-  console.error(error);
-  return new Response(JSON.stringify({ error: errorMessage(error) }), {
-    status: 500,
-    headers: { "Content-Type": "application/json" },
-  });
-};
-
 export const bookshelvesRoutes = new Hono();
 
 bookshelvesRoutes.get("/", (c) => c.json({ bookshelves: listBookshelves() }));
 
 bookshelvesRoutes.post("/", async (c) => {
-  try {
-    const body = await c.req.json();
-    const payload = bookshelfSchema.parse(body);
-    return c.json({ bookshelf: createBookshelf(payload) });
-  } catch (error) {
-    return routeError(error);
-  }
+  const payload = bookshelfSchema.parse(await c.req.json());
+  return c.json({ bookshelf: createBookshelf(payload) });
 });
 
 bookshelvesRoutes.put("/:id", async (c) => {
-  try {
-    const body = await c.req.json();
-    const payload = bookshelfSchema.parse(body);
-    return c.json({ bookshelf: updateBookshelf(c.req.param("id"), payload) });
-  } catch (error) {
-    return routeError(error);
-  }
+  const payload = bookshelfSchema.parse(await c.req.json());
+  return c.json({ bookshelf: updateBookshelf(c.req.param("id"), payload) });
 });
 
-bookshelvesRoutes.delete("/:id", (c) => {
-  try {
-    return c.json({ deletion: deleteBookshelf(c.req.param("id")) });
-  } catch (error) {
-    return routeError(error);
-  }
-});
+bookshelvesRoutes.delete("/:id", (c) =>
+  c.json({ deletion: deleteBookshelf(c.req.param("id")) }),
+);
 
 bookshelvesRoutes.post("/:id/books", async (c) => {
-  try {
-    const body = await c.req.json();
-    const payload = bookMembershipSchema.parse(body);
-    addBookToBookshelf(payload.bookId, c.req.param("id"));
-    return c.json({ bookshelves: listBookshelves() });
-  } catch (error) {
-    return routeError(error);
-  }
+  const payload = bookMembershipSchema.parse(await c.req.json());
+  addBookToBookshelf(payload.bookId, c.req.param("id"));
+  return c.json({ bookshelves: listBookshelves() });
 });
 
 bookshelvesRoutes.delete("/:id/books/:bookId", (c) => {
-  try {
-    removeBookFromBookshelf(c.req.param("bookId"), c.req.param("id"));
-    return c.json({ bookshelves: listBookshelves() });
-  } catch (error) {
-    return routeError(error);
-  }
+  removeBookFromBookshelf(c.req.param("bookId"), c.req.param("id"));
+  return c.json({ bookshelves: listBookshelves() });
 });

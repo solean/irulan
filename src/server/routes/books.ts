@@ -4,7 +4,7 @@ import { Hono } from "hono";
 import { z } from "zod";
 
 import { READ_STATUSES } from "../../shared/types";
-import { AppError, errorMessage } from "../errors";
+import { AppError } from "../errors";
 import { coverContentType, readerAssetContentType } from "../lib/storage";
 import {
   deleteBook,
@@ -39,28 +39,6 @@ const bookMetadataSchema = z.object({
     .optional(),
 });
 
-const routeError = (error: unknown) => {
-  if (error instanceof AppError) {
-    return new Response(JSON.stringify({ error: error.message }), {
-      status: error.status,
-      headers: { "Content-Type": "application/json" },
-    });
-  }
-
-  if (error instanceof z.ZodError) {
-    return new Response(JSON.stringify({ error: error.issues[0]?.message ?? "Invalid request." }), {
-      status: 400,
-      headers: { "Content-Type": "application/json" },
-    });
-  }
-
-  console.error(error);
-  return new Response(JSON.stringify({ error: errorMessage(error) }), {
-    status: 500,
-    headers: { "Content-Type": "application/json" },
-  });
-};
-
 export const booksRoutes = new Hono();
 
 const getReaderAssetRequestPath = (requestPath: string, bookId: string) => {
@@ -79,130 +57,85 @@ booksRoutes.get("/", (c) => {
 });
 
 booksRoutes.post("/import", async (c) => {
-  try {
-    const formData = await c.req.formData();
-    const files = formData.getAll("files").filter((entry): entry is File => entry instanceof File);
-    const bookshelfIds = new URL(c.req.url).searchParams.getAll("bookshelfId");
+  const formData = await c.req.formData();
+  const files = formData.getAll("files").filter((entry): entry is File => entry instanceof File);
+  const bookshelfIds = new URL(c.req.url).searchParams.getAll("bookshelfId");
 
-    if (files.length === 0) {
-      throw new AppError(400, "Choose at least one EPUB file to import.");
-    }
-
-    const results = [];
-    for (const file of files) {
-      results.push(await importBookFile(file, bookshelfIds));
-    }
-
-    return c.json({ results });
-  } catch (error) {
-    return routeError(error);
+  if (files.length === 0) {
+    throw new AppError(400, "Choose at least one EPUB file to import.");
   }
+
+  const results = [];
+  for (const file of files) {
+    results.push(await importBookFile(file, bookshelfIds));
+  }
+
+  return c.json({ results });
 });
 
-booksRoutes.delete("/:id", async (c) => {
-  try {
-    return c.json({ deletion: await deleteBook(c.req.param("id")) });
-  } catch (error) {
-    return routeError(error);
-  }
-});
+booksRoutes.delete("/:id", async (c) =>
+  c.json({ deletion: await deleteBook(c.req.param("id")) }),
+);
 
 booksRoutes.get("/:id/cover", async (c) => {
-  try {
-    const book = getBookRecord(c.req.param("id"));
-    if (!book.coverPath) {
-      throw new AppError(404, "This book does not have a cover image.");
-    }
-
-    const bytes = await readFile(book.coverPath);
-    return new Response(bytes, {
-      headers: {
-        "Content-Type": coverContentType(book.coverPath),
-        "Cache-Control": "public, max-age=3600",
-      },
-    });
-  } catch (error) {
-    return routeError(error);
+  const book = getBookRecord(c.req.param("id"));
+  if (!book.coverPath) {
+    throw new AppError(404, "This book does not have a cover image.");
   }
+
+  const bytes = await readFile(book.coverPath);
+  return new Response(bytes, {
+    headers: {
+      "Content-Type": coverContentType(book.coverPath),
+      "Cache-Control": "public, max-age=3600",
+    },
+  });
 });
 
-booksRoutes.get("/:id/read", async (c) => {
-  try {
-    return c.json({ reader: await getBookReader(c.req.param("id")) });
-  } catch (error) {
-    return routeError(error);
-  }
-});
+booksRoutes.get("/:id/read", async (c) =>
+  c.json({ reader: await getBookReader(c.req.param("id")) }),
+);
 
 booksRoutes.get("/:id/read/*", async (c) => {
-  try {
-    const bookId = c.req.param("id");
-    const assetPath = getReaderAssetRequestPath(c.req.path, bookId);
-    const filePath = await getBookReaderAssetPath(bookId, assetPath);
+  const bookId = c.req.param("id");
+  const assetPath = getReaderAssetRequestPath(c.req.path, bookId);
+  const filePath = await getBookReaderAssetPath(bookId, assetPath);
 
-    if (!(await access(filePath).then(() => true).catch(() => false))) {
-      throw new AppError(404, "Reader asset not found.");
-    }
-
-    const bytes = await readFile(filePath);
-    return new Response(bytes, {
-      headers: {
-        "Content-Type": readerAssetContentType(filePath),
-        "Cache-Control": "public, max-age=3600",
-      },
-    });
-  } catch (error) {
-    return routeError(error);
+  if (!(await access(filePath).then(() => true).catch(() => false))) {
+    throw new AppError(404, "Reader asset not found.");
   }
+
+  const bytes = await readFile(filePath);
+  return new Response(bytes, {
+    headers: {
+      "Content-Type": readerAssetContentType(filePath),
+      "Cache-Control": "public, max-age=3600",
+    },
+  });
 });
 
-booksRoutes.get("/:id/deliveries", (c) => {
-  try {
-    return c.json({ deliveries: listDeliveriesForBook(c.req.param("id")) });
-  } catch (error) {
-    return routeError(error);
-  }
-});
+booksRoutes.get("/:id/deliveries", (c) =>
+  c.json({ deliveries: listDeliveriesForBook(c.req.param("id")) }),
+);
 
 booksRoutes.put("/:id/bookshelves", async (c) => {
-  try {
-    const body = await c.req.json();
-    const payload = bookBookshelvesSchema.parse(body);
-    replaceBookBookshelves(c.req.param("id"), payload.bookshelfIds);
-    return c.json({ book: getBook(c.req.param("id")) });
-  } catch (error) {
-    return routeError(error);
-  }
+  const payload = bookBookshelvesSchema.parse(await c.req.json());
+  replaceBookBookshelves(c.req.param("id"), payload.bookshelfIds);
+  return c.json({ book: getBook(c.req.param("id")) });
 });
 
 booksRoutes.patch("/:id/metadata", async (c) => {
-  try {
-    const body = await c.req.json();
-    const payload = bookMetadataSchema.parse(body);
-    return c.json({ book: updateBookMetadata(c.req.param("id"), payload) });
-  } catch (error) {
-    return routeError(error);
-  }
+  const payload = bookMetadataSchema.parse(await c.req.json());
+  return c.json({ book: updateBookMetadata(c.req.param("id"), payload) });
 });
 
-booksRoutes.get("/:id", (c) => {
-  try {
-    return c.json({ book: getBook(c.req.param("id")) });
-  } catch (error) {
-    return routeError(error);
-  }
-});
+booksRoutes.get("/:id", (c) => c.json({ book: getBook(c.req.param("id")) }));
 
 booksRoutes.post("/:id/send", async (c) => {
-  try {
-    const body = await c.req.json().catch(() => ({}));
-    const payload = sendSchema.parse(body);
-    const delivery = await sendBookToKindle(c.req.param("id"), {
-      bookshelfId: payload.bookshelfId ?? null,
-      recipientEmail: payload.recipientEmail ?? null,
-    });
-    return c.json({ delivery });
-  } catch (error) {
-    return routeError(error);
-  }
+  const payload = sendSchema.parse(await c.req.json().catch(() => ({})));
+  const delivery = await sendBookToKindle(c.req.param("id"), {
+    bookshelfId: payload.bookshelfId ?? null,
+    recipientEmail: payload.recipientEmail ?? null,
+  });
+  return c.json({ delivery });
 });
