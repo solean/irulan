@@ -6,26 +6,48 @@ const rootDir = path.resolve(env.IRULAN_ROOT_DIR ?? process.cwd());
 const resolveFromRoot = (value: string | undefined, fallback: string) =>
   path.resolve(rootDir, value ?? fallback);
 
-const parseNumber = (value: string | undefined, fallback: number, label: string) => {
-  const parsed = Number(value ?? fallback);
-  if (Number.isNaN(parsed)) {
+/**
+ * Read a numeric setting from the environment.
+ *
+ * A blank value means "not set". `Number("")` is 0, not NaN, so a bare `PORT=`
+ * in .env used to bind a random port and `WEB_PORT=` produced a localhost:0
+ * CORS origin instead of falling back.
+ *
+ * Exported for tests: this module reads the environment once at import, so the
+ * parsing rules cannot be exercised through `appConfig`.
+ */
+export const parseNumber = (value: string | undefined, fallback: number, label: string) => {
+  const trimmed = value?.trim();
+  if (!trimmed) {
+    return fallback;
+  }
+
+  const parsed = Number(trimmed);
+  if (!Number.isFinite(parsed)) {
     throw new Error(`${label} must be a valid number.`);
   }
+
   return parsed;
 };
 
-const port = Number(env.PORT ?? 8787);
-const webPort = parseNumber(env.WEB_PORT, 5173, "WEB_PORT");
-const smtpPort = parseNumber(env.SMTP_PORT, 587, "SMTP_PORT");
+/** Port 0 is kept legal: the Electron shell sets `PORT=0` to get a free port. */
+export const parsePort = (value: string | undefined, fallback: number, label: string) => {
+  const parsed = parseNumber(value, fallback, label);
+  if (!Number.isInteger(parsed) || parsed < 0 || parsed > 65535) {
+    throw new Error(`${label} must be a whole number between 0 and 65535.`);
+  }
+
+  return parsed;
+};
+
+const port = parsePort(env.PORT, 8787, "PORT");
+const webPort = parsePort(env.WEB_PORT, 5173, "WEB_PORT");
+const smtpPort = parsePort(env.SMTP_PORT, 587, "SMTP_PORT");
 const serverIdleTimeout = parseNumber(
   env.SERVER_IDLE_TIMEOUT_SECONDS,
   120,
   "SERVER_IDLE_TIMEOUT_SECONDS",
 );
-
-if (Number.isNaN(port)) {
-  throw new Error("PORT must be a valid number.");
-}
 
 if (serverIdleTimeout <= 0) {
   throw new Error("SERVER_IDLE_TIMEOUT_SECONDS must be greater than 0.");
