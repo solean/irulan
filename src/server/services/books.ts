@@ -3,7 +3,8 @@ import { createReadStream } from "node:fs";
 import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 
-import { and, desc, eq, like, or } from "drizzle-orm";
+import { and, desc, eq, or, sql } from "drizzle-orm";
+import type { SQLiteColumn } from "drizzle-orm/sqlite-core";
 
 import {
   BookDetail,
@@ -89,13 +90,21 @@ const serializeBooks = (rows: BookRecord[]): BookSummary[] => {
   return rows.map((row) => toBookSummary(row, bookshelvesByBook.get(row.id) ?? []));
 };
 
+// LIKE reads % and _ as wildcards, so searching for "100%" or "a_b" would match
+// far more than the reader typed. Escape those and the escape character itself,
+// then tell SQLite which character is doing the escaping.
+const escapeLikePattern = (value: string) => value.replace(/[\\%_]/g, "\\$&");
+
+const containsText = (column: SQLiteColumn, value: string) =>
+  sql`${column} like ${`%${escapeLikePattern(value)}%`} escape '\\'`;
+
 export const listBooks = (searchTerm?: string, bookshelfId?: string | null): BookSummary[] => {
   const trimmed = searchTerm?.trim();
   const searchClause = trimmed
     ? or(
-        like(books.title, `%${trimmed}%`),
-        like(books.author, `%${trimmed}%`),
-        like(books.sourceFilename, `%${trimmed}%`),
+        containsText(books.title, trimmed),
+        containsText(books.author, trimmed),
+        containsText(books.sourceFilename, trimmed),
       )
     : undefined;
 

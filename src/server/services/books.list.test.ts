@@ -192,6 +192,69 @@ describe("listBooks shelf memberships", () => {
   });
 });
 
+describe("search escaping", () => {
+  const addTitled = (entries: Array<[string, string]>) => {
+    const now2 = new Date();
+    client.db
+      .insert(schema.books)
+      .values(
+        entries.map(([id, title], index) => ({
+          id,
+          title,
+          author: `Author ${index}`,
+          filePath: `/tmp/${id}/original.epub`,
+          coverPath: null,
+          fileHash: `hash-${id}`,
+          sourceFilename: `${id}.epub`,
+          fileSizeBytes: 1024,
+          importedAt: new Date(now2.getTime() - index * 1000),
+          readStatus: "unread" as const,
+          rating: null,
+        })),
+      )
+      .run();
+  };
+
+  const titlesFor = (query: string) => listBooks(query).map((book) => book.title).sort();
+
+  beforeEach(() => {
+    addTitled([
+      ["b-pct", "100% Cotton"],
+      ["b-plain", "One Hundred Books"],
+      ["b-under", "a_b test"],
+      ["b-any", "axb test"],
+      ["b-slash", "back\\slash"],
+    ]);
+  });
+
+  test("treats % as a literal, not a wildcard", () => {
+    // Unescaped this becomes "%100%%" and matches far more than it should.
+    expect(titlesFor("100%")).toEqual(["100% Cotton"]);
+  });
+
+  test("treats _ as a literal, not a single-character wildcard", () => {
+    // "a_b" would otherwise also match "axb".
+    expect(titlesFor("a_b")).toEqual(["a_b test"]);
+  });
+
+  test("treats a lone % as a search for that character", () => {
+    expect(titlesFor("%")).toEqual(["100% Cotton"]);
+  });
+
+  test("treats the escape character itself as a literal", () => {
+    expect(titlesFor("back\\slash")).toEqual(["back\\slash"]);
+  });
+
+  test("still matches ordinary substrings, case-insensitively", () => {
+    expect(titlesFor("cotton")).toEqual(["100% Cotton"]);
+    expect(titlesFor("hundred")).toEqual(["One Hundred Books"]);
+  });
+
+  test("returns nothing when the literal text is absent", () => {
+    expect(titlesFor("%%%")).toEqual([]);
+  });
+});
+
 describe("listBookshelvesForBooks", () => {
   test("returns an empty map for no ids without touching the database", () => {
     expect(listBookshelvesForBooks([]).size).toBe(0);
