@@ -1715,10 +1715,6 @@ input::placeholder {
   fill: currentColor;
 }
 
-.rating-stars-label {
-  margin-left: 3px;
-  color: var(--text-secondary);
-}
 
 .books-table-shell [data-slot="table-container"] {
   border: 1px solid var(--border-default);

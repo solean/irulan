@@ -1120,11 +1120,6 @@ const RatingStars = ({
           </span>
         );
       })}
-      {!compact ? (
-        <span className="rating-stars-label">
-          {rating ? `${formatRatingValue(rating)}/5` : "No rating"}
-        </span>
-      ) : null}
     </span>
   );
 };
