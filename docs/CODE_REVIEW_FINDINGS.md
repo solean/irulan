@@ -19,7 +19,7 @@ roughly ordered by consequence within each section.
 | 2 | `deleteBook` rollback lost shelf memberships | Fixed — `bea269b` |
 | 3 | Database writes were non-atomic and unrecoverable | Fixed — `0e0989d` |
 | 4 | Save path did 4× redundant integrity checks; bad primary blocked all writes | Fixed — `3b05559` |
-| 5 | Failed save leaves memory ahead of disk | **Open — highest priority** |
+| 5 | Failed save leaves memory ahead of disk | Fixed — `88233a6` |
 | 6 | Saves block the event loop | Open (architectural) |
 | 7 | Transient memory ~2× database size per save | Open (architectural) |
 | 8 | `listBooks` is O(books × shelves) in queries | Fixed — `ab2e4b1` |
@@ -51,27 +51,30 @@ primary recovers from backup at startup, and the save path no longer does redund
 work. What remains below is a property of keeping the whole database in memory and
 rewriting it wholesale — it cannot be repaired inside `persistence.ts`.
 
-### 5. A failed save leaves memory ahead of disk — highest priority
+### 5. A failed save left memory ahead of disk — fixed in `88233a6`
 
-`persistDatabase()` is called at 15 sites, none of them guarded:
+Every mutation applied its change in memory and then called `persistDatabase()` at one of
+15 unguarded call sites. A failed save returned 500 while the change stayed in memory, so
+the API reported it as saved until the next restart dropped it.
 
-```
-src/server/db/client.ts:175
-src/server/services/settings.ts:29,63
-src/server/services/delivery.ts:99,133,142
-src/server/services/books.ts:173,238,331
-src/server/services/bookshelves.ts:178,207,226,251,265,293
-```
+`persistDatabase` now reopens the database from disk when a save fails, so memory matches
+what is stored before the error propagates. Observed through the API with the data
+directory made read-only, patching a rating from 2 to 5:
 
-The in-memory mutation always happens before the persist. If the persist throws — disk
-full, permissions, IO error — the route returns 500 but the in-memory database keeps the
-change. The client refetches, sees the change, and it looks like it worked. It silently
-vanishes on the next restart.
+| | PATCH result | rating read back | rating on disk |
+|---|---|---|---|
+| before | 500 | 5 | 2 |
+| after | 500 | 2 | 2 |
 
-`3b05559` removed the most likely trigger (a corrupt primary can no longer abort the
-save), but `ENOSPC` and `EACCES` are still live. There is no clean repair short of
-reloading the in-memory database from disk on every persist failure, which is expensive
-and still leaves a window.
+The mechanism worth remembering: `db` is a live export binding, and reassignment carries
+through both Bun and the esbuild CJS bundle (verified both), so services that imported it
+pick up the replacement on their next query. The old handle is closed only once the
+replacement is open. A test calls through a service that resolved `db` before the swap,
+since that is where a stale handle would surface.
+
+This is a guard, not a cure — it costs a full reload on the failure path, and the swap in
+findings 6 and 7 would make it unnecessary. It earns its place because that swap is not
+near-term.
 
 ### 6. Saves block the event loop
 
@@ -85,11 +88,11 @@ queues behind a rating click.
 Measured on a 39.5 MB database: `export()` adds 38 MB, the integrity-check copy adds
 another 41 MB. RSS goes 362 MB → 441 MB and back on every save.
 
-### Fix for 5, 6, and 7
+### Fix for 6 and 7
 
-All three dissolve with a real SQLite driver, which writes only changed pages, gives real
+Both dissolve with a real SQLite driver, which writes only changed pages, gives real
 transactions where a failed write fails atomically, and lets `src/server/db/persistence.ts`
-be deleted entirely.
+and the rollback guard from finding 5 be deleted entirely.
 
 This is a bigger job than it first looks. Drizzle 0.45.2 ships these SQLite drivers:
 
@@ -114,8 +117,8 @@ Worth a spike to resolve the ABI question before committing to it. `ensureSchema
 `src/server/db/client.ts` is raw DDL and would need to move or be re-pointed either way —
 see finding 24.
 
-Until that lands, finding 5 stops being throwaway work: if the swap is not near-term, the
-reload-in-memory-from-disk-on-persist-failure guard is worth having on its own merits.
+Because that spike has not happened, finding 5 was fixed in place rather than waiting for
+the swap to delete it.
 
 ### 20. Recovery is silent to the user
 
@@ -346,7 +349,11 @@ same-origin — and it silently breaks if Vite falls back off `WEB_PORT`.
 
 1. **10, 11, 12, 13, 14** — small correctness fixes, all independent and cheap.
 2. **23** — `app.onError()`. Deletes code and fixes the unguarded handlers.
-3. **Spike the driver question** (see "Fix for 5, 6, and 7"). The answer decides whether
-   **5** gets patched in place or waits for the swap.
-4. **24 → 5/6/7** — settle the schema question, then swap the SQLite driver.
+3. **20** — surface database recovery to the user. Needs a UX decision first.
+4. **24 → 6/7** — settle the schema question, then spike and swap the SQLite driver.
 5. **22** — the `App.tsx` split, once nothing else is in flight over it.
+
+Ordering note: prefer consequence over cheapness. An earlier revision of this list put the
+cheap correctness batch ahead of finding 5 on the grounds that the driver swap would soon
+delete any fix for it. When the swap turned out not to be near-term that reasoning expired,
+but the order was not revisited.
