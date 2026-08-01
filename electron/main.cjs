@@ -4,6 +4,25 @@ const { readFileSync, writeFileSync } = require("node:fs");
 
 const { app, BrowserWindow, ipcMain, nativeTheme, shell } = require("electron");
 
+const { isExternallyOpenable, isSameOrigin } = require("./url-policy.cjs");
+
+/**
+ * Hand a URL to the system browser, but only if its scheme is one the reader
+ * can legitimately produce. Books are untrusted input and openExternal resolves
+ * through the OS handler registry, so an unfiltered URL here is a way for a
+ * crafted EPUB to launch whatever is registered for `file:` or a custom scheme.
+ */
+const openExternalUrl = (url) => {
+  if (!isExternallyOpenable(url)) {
+    console.warn(`Refused to open a URL with an unsupported scheme: ${url}`);
+    return;
+  }
+
+  shell.openExternal(url).catch((error) => {
+    console.error(`Could not open ${url} in the system browser.`, error);
+  });
+};
+
 let mainWindow = null;
 let localServer = null;
 // Dedicated reader windows, keyed by book id so a second "pop out" focuses the
@@ -111,8 +130,20 @@ const buildWindow = (overrides = {}) => {
   // Keep every window locked down: external links go to the system browser,
   // never an uncontrolled in-app window.
   window.webContents.setWindowOpenHandler(({ url }) => {
-    shell.openExternal(url);
+    openExternalUrl(url);
     return { action: "deny" };
+  });
+
+  // Book content must never carry a window off the local app. React Router
+  // navigates with pushState, which does not fire this, and our own loadURL
+  // calls do not either — so anything arriving here came from page content.
+  window.webContents.on("will-navigate", (event, url) => {
+    if (localServer && isSameOrigin(url, localServer.url)) {
+      return;
+    }
+
+    event.preventDefault();
+    openExternalUrl(url);
   });
 
   return window;
