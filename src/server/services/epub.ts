@@ -333,9 +333,30 @@ const buildReaderSections = async (
   return sections;
 };
 
-const ensureSafeRelativePath = (value: string) => {
+/**
+ * A normalized path that stays inside the reader directory, or null if it escapes.
+ *
+ * Normalizing first means the only forms left to reject are a leading "../", or
+ * a path that collapses to "." or ".." outright. Those last two matter: ".." has
+ * no trailing slash, so a `startsWith("../")` check alone let it through and it
+ * resolved to the directory above the extracted content.
+ */
+const safeRelativePath = (value: string) => {
   const normalized = normalizeZipPath(value);
-  if (!normalized || normalized.startsWith("../") || normalized.includes("/../")) {
+  if (
+    !normalized ||
+    normalized === "." ||
+    normalized === ".." ||
+    normalized.startsWith("../")
+  ) {
+    return null;
+  }
+  return normalized;
+};
+
+const ensureSafeRelativePath = (value: string) => {
+  const normalized = safeRelativePath(value);
+  if (!normalized) {
     throw new AppError(400, "Invalid reader asset path.");
   }
   return normalized;
@@ -451,7 +472,20 @@ export const prepareEpubReader = async (
   for (const entry of Object.values(parsed.zip.files)) {
     if (entry.dir) continue;
 
-    const relativePath = ensureSafeRelativePath(entry.name);
+    // Drop an entry whose name would land outside the reader directory rather
+    // than failing the extraction. Throwing here aborted the whole book after
+    // the reader directory had already been cleared, so one odd name made an
+    // otherwise readable EPUB report itself as invalid.
+    //
+    // Only the path is treated this way. A write that fails for other reasons —
+    // a full disk above all — must still surface, or a half-extracted book gets
+    // cached behind a manifest that claims it is complete.
+    const relativePath = safeRelativePath(entry.name);
+    if (!relativePath) {
+      console.warn(`Skipped an unsafe entry in ${bookId}: ${entry.name}`);
+      continue;
+    }
+
     const targetPath = path.join(extractedContentDir, relativePath);
     await mkdir(path.dirname(targetPath), { recursive: true });
     await writeFile(targetPath, await entry.async("uint8array"));
