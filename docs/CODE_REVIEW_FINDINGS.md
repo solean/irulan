@@ -37,7 +37,7 @@ roughly ordered by consequence within each section.
 | 16 | Reader extracts the full zip to disk | 🟡 Open |
 | 17 | Imports buffer in memory, no size cap | 🟡 Open |
 | 18 | SMTP password round-trips to the browser | 🟡 Open |
-| 19 | No CSP; dead Google Fonts preconnect | 🟡 Open |
+| 19 | No CSP; dead Google Fonts preconnect | 🟢 Fixed |
 | 20 | Database recovery is silent to the user | 🟡 Open |
 | 21 | No cross-process locking | 🟡 Open |
 | 22 | `App.tsx` is 6,648 lines | 🟡 Open |
@@ -299,13 +299,19 @@ cheap: return `hasPassword: boolean`, and treat an empty `pass` on save as "keep
 That also removes the credential from renderer memory and from anything that later logs a
 settings response.
 
-### 🟡 19. No CSP; dead Google Fonts preconnect
+### 🟢 19. No CSP; dead Google Fonts preconnect — fixed
 
-`index.html` has no CSP. Given the reader renders untrusted book content into the same
-origin, `default-src 'self'` is meaningful defence in depth.
+The app now sends a restrictive Content-Security-Policy header for the SPA shell
+in production, with the Vite development policy relaxing inline-script and
+WebSocket restrictions needed by React Refresh/HMR during local development.
+Production allows the inline theme bootstrap through an automatically generated
+SHA-256 hash rather than `unsafe-inline` script execution. The policy keeps
+scripts, fonts, connections, and book assets same-origin, permits the reader's
+data-backed inline SVG images, and disables plugins, base-URI changes, and
+framing.
 
-The `preconnect` hints at `index.html:7-8` are dead — fonts are self-hosted via
-`@fontsource-variable` — so they are pure latency and an unnecessary third-party DNS lookup.
+The unused Google Fonts preconnect hints were removed from `index.html`; fonts
+are self-hosted through `@fontsource-variable`.
 
 ---
 
@@ -386,9 +392,8 @@ same-origin — and it silently breaks if Vite falls back off `WEB_PORT`.
 1. **20** — surface database recovery to the user. Needs a UX decision first.
 2. **24 → 6/7** — settle the schema question, then spike and swap the SQLite driver.
 3. **18** — mask the SMTP password on read. Small, and needs a "leave blank to keep" flow.
-4. **19** — a CSP, and drop the dead font preconnects.
-5. **22** — the `App.tsx` split, once nothing else is in flight over it.
-6. **15, 16, 17** — the scale items, once a library large enough to need them exists.
+4. **22** — the `App.tsx` split, once nothing else is in flight over it.
+5. **15, 16, 17** — the scale items, once a library large enough to need them exists.
 
 Ordering note: prefer consequence over cheapness. An earlier revision of this list put the
 cheap correctness batch ahead of finding 5 on the grounds that the driver swap would soon

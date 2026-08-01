@@ -4,6 +4,7 @@ import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import { defineConfig, loadEnv, type Plugin } from "vite";
 
+import { contentSecurityPolicy } from "./src/security/csp";
 import { themeBootstrapScript } from "./src/shared/theme";
 
 const THEME_BOOTSTRAP_TOKEN = "__THEME_BOOTSTRAP__";
@@ -45,6 +46,9 @@ export default defineConfig(({ mode }) => {
     },
     server: {
       port: webPort,
+      headers: {
+        "Content-Security-Policy": contentSecurityPolicy({ allowViteHmr: true }),
+      },
       proxy: {
         "/api": `http://localhost:${apiPort}`,
       },

@@ -33,6 +33,7 @@ const request = async (url: string, init?: RequestInit) => {
   return {
     status: response.status,
     contentType: response.headers.get("content-type") ?? "",
+    csp: response.headers.get("content-security-policy") ?? "",
     body,
     json: () => {
       try {
@@ -143,6 +144,19 @@ describe("book list pagination (finding 15)", () => {
       expect(response.contentType).toContain("application/json");
       expect(typeof response.json()?.error).toBe("string");
     }
+  });
+});
+
+describe("SPA content security policy (finding 19)", () => {
+  test("serves a restrictive policy with a hashed bootstrap script", async () => {
+    const response = await request("/books/abc/read");
+
+    expect(response.status).toBe(200);
+    expect(response.csp).toContain("default-src 'self'");
+    expect(response.csp).toContain("script-src 'self' 'sha256-");
+    expect(response.csp).toContain("img-src 'self' data:");
+    expect(response.csp).toContain("object-src 'none'");
+    expect(response.csp).toContain("frame-ancestors 'none'");
   });
 });
 

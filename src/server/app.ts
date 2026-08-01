@@ -4,6 +4,7 @@ import path from "node:path";
 import { cors } from "hono/cors";
 import { Hono } from "hono";
 
+import { contentSecurityPolicy } from "../security/csp";
 import { appConfig } from "./config";
 import { toErrorResponse } from "./errors";
 import { booksRoutes } from "./routes/books";
@@ -11,6 +12,8 @@ import { bookshelvesRoutes } from "./routes/bookshelves";
 import { settingsRoutes } from "./routes/settings";
 
 export const app = new Hono();
+
+const cspHeaders = { "Content-Security-Policy": contentSecurityPolicy() };
 
 // One place to turn a thrown error into a response, for this app and every
 // router mounted on it. Handlers throw; they no longer each carry a copy of the
@@ -113,11 +116,12 @@ app.get("*", async (c) => {
     const bytes = await readFile(indexPath);
     return new Response(bytes, {
       headers: {
+        ...cspHeaders,
         "Content-Type": "text/html; charset=utf-8",
       },
     });
   } catch {
-    return c.html(
+    return new Response(
       [
         "<!doctype html>",
         "<html><body style='font-family:system-ui;padding:32px'>",
@@ -125,7 +129,13 @@ app.get("*", async (c) => {
         "<p>Run <code>bun run dev</code> for local development or <code>bun run build</code> before <code>bun run start</code>.</p>",
         "</body></html>",
       ].join(""),
-      404,
+      {
+        headers: {
+          ...cspHeaders,
+          "Content-Type": "text/html; charset=utf-8",
+        },
+        status: 404,
+      },
     );
   }
 });
