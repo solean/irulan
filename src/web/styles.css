@@ -1779,6 +1779,10 @@ input::placeholder {
   transition: background-color 120ms ease;
 }
 
+.books-table-row-clickable {
+  cursor: pointer;
+}
+
 .books-table-row:hover {
   background: var(--bg-hover);
 }

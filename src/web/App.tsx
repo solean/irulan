@@ -2184,6 +2184,8 @@ const BookshelfList = ({
   onBookContextMenu,
   onChangeSort,
 }: BookshelfListProps) => {
+  const navigate = useNavigate();
+
   return (
     <section
       aria-label="Bookshelf list"
@@ -2248,8 +2250,12 @@ const BookshelfList = ({
         <TableBody>
           {books.map((book) => (
             <TableRow
-              className="books-table-row border-0"
+              className="books-table-row books-table-row-clickable border-0"
               key={book.id}
+              onClick={(event) => {
+                if ((event.target as HTMLElement).closest("a, button")) return;
+                navigate(getBookHref(book.id, bookshelfId));
+              }}
               onContextMenu={(event) => onBookContextMenu(book, event)}
             >
               <TableCell className="books-table-title-cell">
