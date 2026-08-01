@@ -1,0 +1,142 @@
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
+import os from "node:os";
+import path from "node:path";
+
+import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
+import initSqlJs, { type Database, type SqlJsStatic } from "sql.js";
+
+import { openDatabaseWithRecovery, persistDatabaseAtomically } from "./persistence";
+
+let SQL: SqlJsStatic;
+let testDirectory: string;
+let databasePath: string;
+
+const backupPath = () => `${databasePath}.bak`;
+const temporaryPath = () => `${databasePath}.tmp`;
+const backupTemporaryPath = () => `${backupPath()}.tmp`;
+
+const createDatabase = () => {
+  const database = new SQL.Database();
+  database.run("CREATE TABLE entries (name TEXT PRIMARY KEY NOT NULL);");
+  return database;
+};
+
+const addEntry = (database: Database, name: string) => {
+  database.run("INSERT INTO entries (name) VALUES (?);", [name]);
+};
+
+const readEntries = (filePath: string) => {
+  const database = new SQL.Database(readFileSync(filePath));
+
+  try {
+    const result = database.exec("SELECT name FROM entries ORDER BY name;");
+    return (result[0]?.values ?? []).map((row) => row[0]);
+  } finally {
+    database.close();
+  }
+};
+
+beforeAll(async () => {
+  SQL = await initSqlJs({
+    locateFile: (file) => path.join(process.cwd(), "node_modules/sql.js/dist", file),
+  });
+  testDirectory = mkdtempSync(path.join(os.tmpdir(), "irulan-persistence-tests-"));
+});
+
+beforeEach(() => {
+  rmSync(testDirectory, { force: true, recursive: true });
+  databasePath = path.join(testDirectory, "data", "app.db");
+  mkdirSync(path.dirname(databasePath), { recursive: true });
+});
+
+afterAll(() => {
+  rmSync(testDirectory, { force: true, recursive: true });
+});
+
+describe("database persistence", () => {
+  test("atomically replaces the primary database and rotates the prior state", () => {
+    const database = createDatabase();
+
+    try {
+      addEntry(database, "first");
+      persistDatabaseAtomically(SQL, database, databasePath);
+
+      expect(readEntries(databasePath)).toEqual(["first"]);
+      expect(existsSync(backupPath())).toBe(false);
+      expect(existsSync(temporaryPath())).toBe(false);
+
+      addEntry(database, "second");
+      persistDatabaseAtomically(SQL, database, databasePath);
+
+      expect(readEntries(databasePath)).toEqual(["first", "second"]);
+      expect(readEntries(backupPath())).toEqual(["first"]);
+      expect(existsSync(temporaryPath())).toBe(false);
+      expect(existsSync(backupTemporaryPath())).toBe(false);
+    } finally {
+      database.close();
+    }
+  });
+
+  test("recovers an invalid primary database from the known-good backup", () => {
+    const database = createDatabase();
+
+    addEntry(database, "recoverable");
+    persistDatabaseAtomically(SQL, database, databasePath);
+    addEntry(database, "latest");
+    persistDatabaseAtomically(SQL, database, databasePath);
+    database.close();
+
+    writeFileSync(databasePath, "not a sqlite database");
+
+    const opened = openDatabaseWithRecovery(SQL, databasePath);
+    try {
+      expect(opened.recoveredFromBackup).toBe(true);
+      const result = opened.database.exec("SELECT name FROM entries ORDER BY name;");
+      expect((result[0]?.values ?? []).map((row) => row[0])).toEqual(["recoverable"]);
+    } finally {
+      opened.database.close();
+    }
+
+    expect(readEntries(databasePath)).toEqual(["recoverable"]);
+    expect(readEntries(backupPath())).toEqual(["recoverable"]);
+    expect(existsSync(temporaryPath())).toBe(false);
+  });
+
+  test("discards stale temporary files without replacing a valid primary", () => {
+    const database = createDatabase();
+    addEntry(database, "committed");
+    persistDatabaseAtomically(SQL, database, databasePath);
+    database.close();
+
+    writeFileSync(temporaryPath(), "interrupted primary write");
+    writeFileSync(backupTemporaryPath(), "interrupted backup write");
+
+    const opened = openDatabaseWithRecovery(SQL, databasePath);
+    try {
+      expect(opened.recoveredFromBackup).toBe(false);
+      const result = opened.database.exec("SELECT name FROM entries;");
+      expect(result[0]?.values[0]?.[0]).toBe("committed");
+    } finally {
+      opened.database.close();
+    }
+
+    expect(existsSync(temporaryPath())).toBe(false);
+    expect(existsSync(backupTemporaryPath())).toBe(false);
+    expect(readEntries(databasePath)).toEqual(["committed"]);
+  });
+
+  test("refuses to replace an invalid primary when no backup exists", () => {
+    writeFileSync(databasePath, "not a sqlite database", { flag: "w" });
+
+    expect(() => openDatabaseWithRecovery(SQL, databasePath)).toThrow(
+      "The primary database is invalid and no backup is available",
+    );
+  });
+});

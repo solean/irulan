@@ -50,6 +50,13 @@ bun run build
 bun run start
 ```
 
+## Test
+
+```bash
+bun test
+bun run check
+```
+
 ## macOS Desktop
 
 Run the Electron app locally:
@@ -88,6 +95,7 @@ SMTP success only confirms the email was accepted by your SMTP server. Amazon ma
 Local app data is stored under:
 
 - `data/app.db`
+- `data/app.db.bak`
 - `storage/books/<book-id>/original.epub`
 - `storage/books/<book-id>/cover.*`
 - `storage/books/<book-id>/reader/`
@@ -96,3 +104,24 @@ You can override the storage locations with:
 
 - `EBOOK_DATA_DIR`
 - `EBOOK_STORAGE_DIR`
+
+## Database Durability
+
+Writes to `data/app.db` never modify the live file in place. Every save:
+
+1. exports the database and verifies it with `PRAGMA integrity_check`
+2. writes the bytes to `data/app.db.tmp` and flushes them to disk
+3. rotates the previous known-good database to `data/app.db.bak`
+4. atomically renames the temporary file over `data/app.db`
+
+If the app is killed mid-save, the interrupted `.tmp` file is discarded on the
+next start and the committed database is used unchanged.
+
+On startup the primary database is opened and integrity-checked. If it is
+missing or unreadable, Irulan restores `data/app.db.bak`, logs
+`Recovered Irulan database from …`, and continues. Recovery rolls the library
+back to the state before the last successful save. If neither file is valid,
+startup fails loudly instead of silently creating an empty library.
+
+Only the SQLite catalog is covered. Imported EPUBs, covers, and extracted
+reader content under `storage/` are not yet backed up — see `docs/PLAN.md`.

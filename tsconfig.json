@@ -15,7 +15,7 @@
     "isolatedModules": true,
     "noEmit": true,
     "jsx": "react-jsx",
-    "types": ["node"],
+    "types": ["node", "bun"],
     "ignoreDeprecations": "6.0",
     "baseUrl": ".",
     "paths": {

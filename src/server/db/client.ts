@@ -1,15 +1,14 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
 import { drizzle, type SQLJsDatabase } from "drizzle-orm/sql-js";
-import initSqlJs, { type Database } from "sql.js";
+import initSqlJs, { type Database, type SqlJsStatic } from "sql.js";
 
 import { appConfig } from "../config";
+import { openDatabaseWithRecovery, persistDatabaseAtomically } from "./persistence";
 import * as schema from "./schema";
 
-mkdirSync(path.dirname(appConfig.dbPath), { recursive: true });
-
 let sqlite: Database | null = null;
+let sqlModule: SqlJsStatic | null = null;
 
 export let db: SQLJsDatabase<typeof schema>;
 
@@ -21,9 +20,16 @@ const requireSqlite = () => {
   return sqlite;
 };
 
+const requireSqlModule = () => {
+  if (!sqlModule) {
+    throw new Error("Database has not been initialized.");
+  }
+
+  return sqlModule;
+};
+
 export const persistDatabase = () => {
-  const client = requireSqlite();
-  writeFileSync(appConfig.dbPath, Buffer.from(client.export()));
+  persistDatabaseAtomically(requireSqlModule(), requireSqlite(), appConfig.dbPath);
 };
 
 export const initializeDatabase = async () => {
@@ -35,8 +41,12 @@ export const initializeDatabase = async () => {
     locateFile: (file) => path.join(appConfig.rootDir, "node_modules/sql.js/dist", file),
   });
 
-  const dbBytes = existsSync(appConfig.dbPath) ? readFileSync(appConfig.dbPath) : null;
-  sqlite = new SQL.Database(dbBytes);
+  const opened = openDatabaseWithRecovery(SQL, appConfig.dbPath);
+  sqlModule = SQL;
+  sqlite = opened.database;
+  if (opened.recoveredFromBackup) {
+    console.warn(`Recovered Irulan database from ${appConfig.dbPath}.bak`);
+  }
   sqlite.run("PRAGMA foreign_keys = ON;");
   db = drizzle(sqlite, { schema });
 };
