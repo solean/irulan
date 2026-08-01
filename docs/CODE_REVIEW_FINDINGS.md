@@ -13,34 +13,38 @@ roughly ordered by consequence within each section.
 
 ## Status summary
 
+🟢 fixed  ·  🟡 open  ·  ⚪ no action needed
+
+**13 of 26 resolved** — 12 fixed, 1 that turned out not to need fixing. 13 open.
+
 | # | Finding | Status |
 |---|---|---|
-| 1 | Theme pre-paint script read the wrong storage key | Fixed — `441d77c` |
-| 2 | `deleteBook` rollback lost shelf memberships | Fixed — `bea269b` |
-| 3 | Database writes were non-atomic and unrecoverable | Fixed — `0e0989d` |
-| 4 | Save path did 4× redundant integrity checks; bad primary blocked all writes | Fixed — `3b05559` |
-| 5 | Failed save leaves memory ahead of disk | Fixed — `88233a6` |
-| 6 | Saves block the event loop | Open (architectural) |
-| 7 | Transient memory ~2× database size per save | Open (architectural) |
-| 8 | `listBooks` is O(books × shelves) in queries | Fixed — `ab2e4b1` |
-| 9 | `shell.openExternal` has no scheme allowlist | Fixed — `abc530b` |
-| 10 | Unmatched `/api/*` returns HTML with status 200 | Fixed — `da165f3` |
-| 11 | `decodeURIComponent` throws outside try → 500 | Fixed — `da165f3` |
-| 12 | One bad zip entry makes a whole book unreadable | **Not reachable** — see below (`d6d3e6f`) |
-| 13 | LIKE wildcards unescaped in search | Fixed — `c768acf` |
-| 14 | `parseNumber` treats empty env var as 0 | Fixed — `b9fb5f3` |
-| 15 | No pagination or virtualization | Open |
-| 16 | Reader extracts the full zip to disk | Open |
-| 17 | Imports buffer in memory, no size cap | Open |
-| 18 | SMTP password round-trips to the browser | Open |
-| 19 | No CSP; dead Google Fonts preconnect | Open |
-| 20 | Database recovery is silent to the user | Open |
-| 21 | No cross-process locking | Open |
-| 22 | `App.tsx` is 6,648 lines | Open |
-| 23 | `routeError` duplicated 3×; `GET /` handlers unguarded | Fixed — `da165f3` |
-| 24 | Two sources of schema truth | Open |
-| 25 | Thin test coverage, no linter | Open |
-| 26 | `.trash` never swept; dead code | Open |
+| 1 | Theme pre-paint script read the wrong storage key | 🟢 Fixed — `441d77c` |
+| 2 | `deleteBook` rollback lost shelf memberships | 🟢 Fixed — `bea269b` |
+| 3 | Database writes were non-atomic and unrecoverable | 🟢 Fixed — `0e0989d` |
+| 4 | Save path did 4× redundant integrity checks; bad primary blocked all writes | 🟢 Fixed — `3b05559` |
+| 5 | Failed save leaves memory ahead of disk | 🟢 Fixed — `88233a6` |
+| 6 | Saves block the event loop | 🟡 Open (architectural) |
+| 7 | Transient memory ~2× database size per save | 🟡 Open (architectural) |
+| 8 | `listBooks` is O(books × shelves) in queries | 🟢 Fixed — `ab2e4b1` |
+| 9 | `shell.openExternal` has no scheme allowlist | 🟢 Fixed — `abc530b` |
+| 10 | Unmatched `/api/*` returns HTML with status 200 | 🟢 Fixed — `da165f3` |
+| 11 | `decodeURIComponent` throws outside try → 500 | 🟢 Fixed — `da165f3` |
+| 12 | One bad zip entry makes a whole book unreadable | ⚪ **Not reachable** — see below (`d6d3e6f`) |
+| 13 | LIKE wildcards unescaped in search | 🟢 Fixed — `c768acf` |
+| 14 | `parseNumber` treats empty env var as 0 | 🟢 Fixed — `b9fb5f3` |
+| 15 | No pagination or virtualization | 🟡 Open |
+| 16 | Reader extracts the full zip to disk | 🟡 Open |
+| 17 | Imports buffer in memory, no size cap | 🟡 Open |
+| 18 | SMTP password round-trips to the browser | 🟡 Open |
+| 19 | No CSP; dead Google Fonts preconnect | 🟡 Open |
+| 20 | Database recovery is silent to the user | 🟡 Open |
+| 21 | No cross-process locking | 🟡 Open |
+| 22 | `App.tsx` is 6,648 lines | 🟡 Open |
+| 23 | `routeError` duplicated 3×; `GET /` handlers unguarded | 🟢 Fixed — `da165f3` |
+| 24 | Two sources of schema truth | 🟡 Open |
+| 25 | Thin test coverage, no linter | 🟡 Open |
+| 26 | `.trash` never swept; dead code | 🟡 Open |
 
 ---
 
@@ -51,7 +55,7 @@ primary recovers from backup at startup, and the save path no longer does redund
 work. What remains below is a property of keeping the whole database in memory and
 rewriting it wholesale — it cannot be repaired inside `persistence.ts`.
 
-### 5. A failed save left memory ahead of disk — fixed in `88233a6`
+### 🟢 5. A failed save left memory ahead of disk — fixed in `88233a6`
 
 Every mutation applied its change in memory and then called `persistDatabase()` at one of
 15 unguarded call sites. A failed save returned 500 while the change stayed in memory, so
@@ -76,14 +80,14 @@ This is a guard, not a cure — it costs a full reload on the failure path, and 
 findings 6 and 7 would make it unnecessary. It earns its place because that swap is not
 near-term.
 
-### 6. Saves block the event loop
+### 🟡 6. Saves block the event loop
 
 `persistDatabaseAtomically` is synchronous end to end. A 1 ms sampling timer set during a
 save never fires once — the whole server is frozen for the duration. Measured median
 45 ms on a 39.5 MB database, so every concurrent cover fetch and reader asset request
 queues behind a rating click.
 
-### 7. Transient memory is ~2× the database size per save
+### 🟡 7. Transient memory is ~2× the database size per save
 
 Measured on a 39.5 MB database: `export()` adds 38 MB, the integrity-check copy adds
 another 41 MB. RSS goes 362 MB → 441 MB and back on every save.
@@ -120,7 +124,7 @@ see finding 24.
 Because that spike has not happened, finding 5 was fixed in place rather than waiting for
 the swap to delete it.
 
-### 20. Recovery is silent to the user
+### 🟡 20. Recovery is silent to the user
 
 `openDatabaseWithRecovery` returns `recoveredFromBackup: true` and
 `src/server/db/client.ts:85` turns it into a `console.warn`. If the primary is corrupt at
@@ -128,7 +132,7 @@ startup you are rolled back to an older state, losing whatever the last save hel
 UI says nothing. Needs a product decision on how to surface it (toast, settings banner, or
 a field on an API response).
 
-### 21. No cross-process locking
+### 🟡 21. No cross-process locking
 
 Running `bun run dev` and the packaged Electron app against the same data directory means
 two processes doing whole-file writes with no coordination. Last writer wins and silently
@@ -150,7 +154,7 @@ discards the other's work.
 
 ## Correctness
 
-### 8. `listBooks` was O(books × shelves) in queries — fixed in `ab2e4b1`
+### 🟢 8. `listBooks` was O(books × shelves) in queries — fixed in `ab2e4b1`
 
 `serializeBook` resolved each book's shelves with its own query, and every shelf that came
 back ran a `COUNT(*)` to fill in `bookCount` — several thousand statements for one render.
@@ -172,7 +176,7 @@ Two things worth knowing for future batch queries here:
 - `bookCount` is a whole-library total, not a count within the current filter. A test pins
   this, because the batched shape makes it easy to accidentally scope it to the page.
 
-### 10. Unmatched `/api/*` returned HTML with status 200 — fixed in `da165f3`
+### 🟢 10. Unmatched `/api/*` returned HTML with status 200 — fixed in `da165f3`
 
 The SPA catch-all sat behind no API 404 guard, so a missing endpoint returned index.html
 with a 200. `response.ok` was true, `response.json()` threw, and the fallback `{error: …}`
@@ -181,7 +185,7 @@ was returned *as* `T`, leaving callers to render undefined fields.
 Fixed with `app.all("/api/*", …)` returning a JSON 404, registered after the routers and
 before the catch-all. Non-API routes still reach the SPA.
 
-### 11. `decodeURIComponent` threw outside the try — fixed in `da165f3`
+### 🟢 11. `decodeURIComponent` threw outside the try — fixed in `da165f3`
 
 A request for `/assets/%` produced an uncaught `URIError` and a 500. `resolvePublicPath`
 now returns null for a malformed escape, which the handler already treats as a miss.
@@ -189,7 +193,7 @@ now returns null for a malformed escape, which the handler already treats as a m
 Worth knowing for future path tests: URL parsing collapses a literal `../` before the app
 sees it, so traversal has to be percent-encoded to reach the guard at all.
 
-### 12. One bad zip entry makes a whole book unreadable — premise was wrong
+### ⚪ 12. One bad zip entry makes a whole book unreadable — premise was wrong
 
 **This finding was not reachable as written.** JSZip 3.10.1 runs every entry name through
 `utils.resolve()` when loading an archive (`load.js:66`), which collapses `..` and cannot
@@ -218,21 +222,21 @@ belonged. Both are rejected now.
 Worth carrying forward: a check for path traversal that runs *after* normalization has to
 handle the bare `".."` and `"."` forms explicitly, not just prefixed ones.
 
-### 13. LIKE wildcards unescaped in search — fixed in `c768acf`
+### 🟢 13. LIKE wildcards unescaped in search — fixed in `c768acf`
 
 Values were parameterized so there was no injection, but `%` and `_` stayed live
 metacharacters: `100%` built the pattern `%100%%` and matched every book, and `a_b` also
 matched `axb`. The pattern now escapes `%`, `_` and the escape character, and the query
 names the escape character explicitly.
 
-### 14. `parseNumber` treated an empty env var as 0 — fixed in `b9fb5f3`
+### 🟢 14. `parseNumber` treated an empty env var as 0 — fixed in `b9fb5f3`
 
 `Number("")` is `0`, not `NaN`, so a bare `PORT=` bound a random port and `WEB_PORT=` gave a
 `localhost:0` CORS origin. Blank now means "not set". Ports are range-checked too, which the
 duplicated inline parsing for `PORT` never did; port 0 stays legal because the Electron
 shell sets it deliberately to get a free port.
 
-### 17. Imports buffer in memory, twice, with no size cap
+### 🟡 17. Imports buffer in memory, twice, with no size cap
 
 `src/server/services/books.ts:277` holds the whole EPUB via `await file.arrayBuffer()`,
 then `:293` reads it back in full to parse metadata, and `hashStoredFile` streams it a
@@ -248,13 +252,13 @@ Related: two concurrent imports of the same file can both pass the `fileHash` ch
 
 ## Performance
 
-### 15. No pagination or virtualization
+### 🟡 15. No pagination or virtualization
 
 `GET /api/books` has no `LIMIT`, and `BookshelfGrid` renders every book. `loading="lazy"`
 on covers helps, but a Calibre-scale library — which `docs/todo.md` lists as a goal — will
 render thousands of DOM nodes and re-sort them client-side on every keystroke.
 
-### 16. Reader prep extracts the full zip to disk
+### 🟡 16. Reader prep extracts the full zip to disk
 
 `src/server/services/epub.ts:472` writes *every* entry, including fonts and unused assets,
 permanently doubling (uncompressed) storage per book. Serving assets on demand from the
@@ -268,7 +272,7 @@ Calibrated for a local-first, loopback-bound, single-user app. The reader is alr
 hardened: tag allowlist, `script`/`style`/`link` dropped, `javascript:` rejected, no
 `dangerouslySetInnerHTML`, and `contextIsolation` + `sandbox` on every Electron window.
 
-### 9. `shell.openExternal` had no scheme allowlist — fixed in `abc530b`
+### 🟢 9. `shell.openExternal` had no scheme allowlist — fixed in `abc530b`
 
 `setWindowOpenHandler` passed every URL straight to `shell.openExternal`, which dispatches
 through the OS handler registry. A crafted book could hand the OS a `file:`, `smb:`, or
@@ -283,7 +287,7 @@ Not covered by a test: that clicking a link in a real book still reaches the bro
 policy decisions are unit tested and the app was confirmed to boot, but the end-to-end
 click path needs a human.
 
-### 18. SMTP password round-trips to the browser
+### 🟡 18. SMTP password round-trips to the browser
 
 `getSettingsPayload` (`src/server/services/settings.ts:109`) returns `smtp.pass` in
 plaintext (`:82`), and the Settings form sends it back on save. Stored plaintext in the
@@ -294,7 +298,7 @@ cheap: return `hasPassword: boolean`, and treat an empty `pass` on save as "keep
 That also removes the credential from renderer memory and from anything that later logs a
 settings response.
 
-### 19. No CSP; dead Google Fonts preconnect
+### 🟡 19. No CSP; dead Google Fonts preconnect
 
 `index.html` has no CSP. Given the reader renders untrusted book content into the same
 origin, `default-src 'self'` is meaningful defence in depth.
@@ -306,7 +310,7 @@ The `preconnect` hints at `index.html:7-8` are dead — fonts are self-hosted vi
 
 ## Structure and maintainability
 
-### 22. `App.tsx` is 6,648 lines
+### 🟡 22. `App.tsx` is 6,648 lines
 
 It holds 5 page components (`ReaderPage` alone is ~1,350 lines), ~30 inline SVG icon
 components, 83 `useState`s, 53 `useEffect`s, and all the formatting and storage helpers.
@@ -319,7 +323,7 @@ Natural seams: `icons.tsx`; `lib/storage.ts` for the localStorage getters/setter
 
 `src/web/styles.css` at 5,236 lines wants the same treatment.
 
-### 23. `routeError` duplicated 3×; `GET /` handlers unguarded — fixed in `da165f3`
+### 🟢 23. `routeError` duplicated 3×; `GET /` handlers unguarded — fixed in `da165f3`
 
 `app.onError` now shapes every error once, for the app and every router mounted on it
 (verified: errors from mounted sub-routers do reach the root handler).
@@ -336,7 +340,7 @@ after   GET /api/books?bookshelfId=deleted-shelf -> 404 {"error":"Bookshelf not 
 That path is reachable from an ordinary bookmark, since the selected shelf lives in the URL.
 Handlers now throw and return directly, taking 105 lines out of the routing layer.
 
-### 24. Two sources of schema truth
+### 🟡 24. Two sources of schema truth
 
 `drizzle.config.ts` points `out` at `./drizzle`, but no migrations directory exists. The
 real schema is the raw DDL plus ad-hoc `hasColumn` ALTERs in `ensureSchema`
@@ -346,7 +350,7 @@ silently — they already disagree cosmetically (`readStatus` ↔ `reading_statu
 Either commit to `drizzle-kit generate` migrations or drop `drizzle.config.ts` and document
 the DDL as authoritative. Worth settling before the driver swap in finding 5.
 
-### 25. Thin test coverage, no linter
+### 🟡 25. Thin test coverage, no linter
 
 `bun test` is wired up with two files: `src/server/db/persistence.test.ts` and
 `src/server/services/books.delete.test.ts`. No ESLint or Biome config anywhere.
@@ -361,7 +365,7 @@ Highest-value untested targets, all pure and easy:
 These are the parts most exposed to real-world EPUB variety and most likely to regress
 silently.
 
-### 26. `.trash` never swept; dead code
+### 🟡 26. `.trash` never swept; dead code
 
 `deleteBook` `rm`s the trash directory on success, but a failed cleanup
 (`src/server/services/books.ts:242`) just logs and leaves it. No startup sweep, so orphans
