@@ -3,7 +3,7 @@
 Findings from a full read of the codebase (server, web client, Electron shell, build
 config) on 2026-07-31, plus the follow-up review of the fixes that landed the same day.
 
-Line references were verified against `ab2e4b1`. They will drift — treat them as a
+Line references were verified against `da165f3`. They will drift — treat them as a
 starting point, not gospel. `App.tsx` in particular moves constantly.
 
 Nothing here is a blocker for a local single-user app that works today. The list is
@@ -24,8 +24,8 @@ roughly ordered by consequence within each section.
 | 7 | Transient memory ~2× database size per save | Open (architectural) |
 | 8 | `listBooks` is O(books × shelves) in queries | Fixed — `ab2e4b1` |
 | 9 | `shell.openExternal` has no scheme allowlist | Fixed — `abc530b` |
-| 10 | Unmatched `/api/*` returns HTML with status 200 | Open |
-| 11 | `decodeURIComponent` throws outside try → 500 | Open |
+| 10 | Unmatched `/api/*` returns HTML with status 200 | Fixed — `da165f3` |
+| 11 | `decodeURIComponent` throws outside try → 500 | Fixed — `da165f3` |
 | 12 | One bad zip entry makes a whole book unreadable | Open |
 | 13 | LIKE wildcards unescaped in search | Open |
 | 14 | `parseNumber` treats empty env var as 0 | Open |
@@ -37,7 +37,7 @@ roughly ordered by consequence within each section.
 | 20 | Database recovery is silent to the user | Open |
 | 21 | No cross-process locking | Open |
 | 22 | `App.tsx` is 6,648 lines | Open |
-| 23 | `routeError` duplicated 3×; `GET /` handlers unguarded | Open |
+| 23 | `routeError` duplicated 3×; `GET /` handlers unguarded | Fixed — `da165f3` |
 | 24 | Two sources of schema truth | Open |
 | 25 | Thin test coverage, no linter | Open |
 | 26 | `.trash` never swept; dead code | Open |
@@ -172,19 +172,22 @@ Two things worth knowing for future batch queries here:
 - `bookCount` is a whole-library total, not a count within the current filter. A test pins
   this, because the batched shape makes it easy to accidentally scope it to the page.
 
-### 10. Unmatched `/api/*` returns HTML with status 200
+### 10. Unmatched `/api/*` returned HTML with status 200 — fixed in `da165f3`
 
-The SPA catch-all at `src/server/app.ts:88` sits behind no API 404 guard. In
-`src/web/lib/api.ts`, `response.ok` is true, `response.json()` throws, and the fallback
-`{error: …}` object is returned *as* `T` — so callers render undefined fields instead of
-surfacing an error.
+The SPA catch-all sat behind no API 404 guard, so a missing endpoint returned index.html
+with a 200. `response.ok` was true, `response.json()` threw, and the fallback `{error: …}`
+was returned *as* `T`, leaving callers to render undefined fields.
 
-Fix: `app.all("/api/*", …)` returning JSON 404, registered before the catch-all.
+Fixed with `app.all("/api/*", …)` returning a JSON 404, registered after the routers and
+before the catch-all. Non-API routes still reach the SPA.
 
-### 11. `decodeURIComponent` throws outside the try
+### 11. `decodeURIComponent` threw outside the try — fixed in `da165f3`
 
-`resolvePublicPath` (`src/server/app.ts:43`) is called at `:76`, outside the `try`. A
-request for `/assets/%` produces an uncaught `URIError` → 500 instead of 404.
+A request for `/assets/%` produced an uncaught `URIError` and a 500. `resolvePublicPath`
+now returns null for a malformed escape, which the handler already treats as a miss.
+
+Worth knowing for future path tests: URL parsing collapses a literal `../` before the app
+sees it, so traversal has to be percent-encoded to reach the guard at all.
 
 ### 12. One bad zip entry makes a whole book unreadable
 
@@ -198,7 +201,7 @@ of throwing.
 
 ### 13. LIKE wildcards unescaped in search
 
-`src/server/services/books.ts:85`. Values are parameterized so there is no injection, but
+`src/server/services/books.ts:96`. Values are parameterized so there is no injection, but
 `%` and `_` in a user's query are still LIKE metacharacters. Searching `100%` or `a_b`
 silently over-matches.
 
@@ -296,14 +299,22 @@ Natural seams: `icons.tsx`; `lib/storage.ts` for the localStorage getters/setter
 
 `src/web/styles.css` at 5,236 lines wants the same treatment.
 
-### 23. `routeError` duplicated 3×; `GET /` handlers unguarded
+### 23. `routeError` duplicated 3×; `GET /` handlers unguarded — fixed in `da165f3`
 
-Identical copies at `src/server/routes/books.ts:42`, `bookshelves.ts:23`, and
-`settings.ts:29`, and every handler wraps itself in the same try/catch — except the three
-`GET /` handlers (`books.ts:75`, `bookshelves.ts:47`, `settings.ts:53`), which have none
-and so return Hono's default HTML 500 with no `error` field for the client to read.
+`app.onError` now shapes every error once, for the app and every router mounted on it
+(verified: errors from mounted sub-routers do reach the root handler).
 
-Hono's `app.onError()` replaces all of it and fixes that inconsistency for free.
+The ranking here was initially backwards. The duplication was cosmetic; the real defect was
+the three `GET /` handlers with no try/catch, which let a deliberate error escape as Hono's
+default plain-text 500:
+
+```
+before  GET /api/books?bookshelfId=deleted-shelf -> 500 text/plain "Internal Server Error"
+after   GET /api/books?bookshelfId=deleted-shelf -> 404 {"error":"Bookshelf not found."}
+```
+
+That path is reachable from an ordinary bookmark, since the selected shelf lives in the URL.
+Handlers now throw and return directly, taking 105 lines out of the routing layer.
 
 ### 24. Two sources of schema truth
 
@@ -336,7 +347,7 @@ silently.
 (`src/server/services/books.ts:242`) just logs and leaves it. No startup sweep, so orphans
 accumulate invisibly.
 
-`addBookToResolvedBookshelf` (`src/server/services/bookshelves.ts:186`) is dead code.
+`addBookToResolvedBookshelf` (`src/server/services/bookshelves.ts:254`) is dead code.
 
 `appConfig.webOrigins` is effectively vestigial in dev, since Vite proxies `/api`
 same-origin — and it silently breaks if Vite falls back off `WEB_PORT`.
@@ -347,11 +358,11 @@ same-origin — and it silently breaks if Vite falls back off `WEB_PORT`.
 
 ## Suggested order
 
-1. **10, 11, 12, 13, 14** — small correctness fixes, all independent and cheap.
-2. **23** — `app.onError()`. Deletes code and fixes the unguarded handlers.
-3. **20** — surface database recovery to the user. Needs a UX decision first.
-4. **24 → 6/7** — settle the schema question, then spike and swap the SQLite driver.
-5. **22** — the `App.tsx` split, once nothing else is in flight over it.
+1. **12, 13, 14** — small correctness fixes, all independent and cheap. **12** first: a
+   book that will not open is the most visible of the three.
+2. **20** — surface database recovery to the user. Needs a UX decision first.
+3. **24 → 6/7** — settle the schema question, then spike and swap the SQLite driver.
+4. **22** — the `App.tsx` split, once nothing else is in flight over it.
 
 Ordering note: prefer consequence over cheapness. An earlier revision of this list put the
 cheap correctness batch ahead of finding 5 on the grounds that the driver swap would soon
