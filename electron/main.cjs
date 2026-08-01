@@ -1,7 +1,8 @@
 const path = require("node:path");
 const { access } = require("node:fs/promises");
+const { readFileSync, writeFileSync } = require("node:fs");
 
-const { app, BrowserWindow, ipcMain, shell } = require("electron");
+const { app, BrowserWindow, ipcMain, nativeTheme, shell } = require("electron");
 
 let mainWindow = null;
 let localServer = null;
@@ -15,6 +16,50 @@ const appRoot = isDev ? path.resolve(__dirname, "..") : app.getAppPath();
 const publicDir = path.join(appRoot, "dist", "client");
 const serverEntry = path.join(appRoot, "dist", "server", "index.cjs");
 const preloadEntry = path.join(__dirname, "preload.cjs");
+
+// Keep in sync with THEME_BACKGROUNDS in src/shared/theme.ts (--bg-base in
+// src/web/styles.css). The renderer drives the preference while it runs, but
+// windows are painted before any renderer exists, so the main process keeps a
+// durable copy on disk and seeds every renderer with it at startup.
+const THEME_BACKGROUNDS = { dark: "#15100B", light: "#F6F4EE" };
+const THEME_PREFERENCES = new Set(["system", "light", "dark"]);
+const THEME_PREFERENCE_SWITCH = "--irulan-theme-preference=";
+
+const themePreferenceFile = () => path.join(app.getPath("userData"), "theme.json");
+
+const loadThemePreference = () => {
+  try {
+    const stored = JSON.parse(readFileSync(themePreferenceFile(), "utf8"));
+    if (THEME_PREFERENCES.has(stored?.preference)) return stored.preference;
+  } catch {
+    /* no preference stored yet */
+  }
+  return "system";
+};
+
+const windowBackgroundColor = () =>
+  nativeTheme.shouldUseDarkColors ? THEME_BACKGROUNDS.dark : THEME_BACKGROUNDS.light;
+
+const repaintWindowBackgrounds = () => {
+  const color = windowBackgroundColor();
+  for (const window of BrowserWindow.getAllWindows()) {
+    if (!window.isDestroyed()) window.setBackgroundColor(color);
+  }
+};
+
+const setThemePreference = (value) => {
+  const preference = THEME_PREFERENCES.has(value) ? value : "system";
+  if (nativeTheme.themeSource === preference) return;
+
+  // Drives native chrome (traffic lights, scrollbars) and shouldUseDarkColors,
+  // which in turn repaints window backgrounds via the "updated" listener.
+  nativeTheme.themeSource = preference;
+  try {
+    writeFileSync(themePreferenceFile(), JSON.stringify({ preference }));
+  } catch (error) {
+    console.error("Failed to persist the theme preference.", error);
+  }
+};
 
 const configureServerEnvironment = () => {
   const appDataDir = path.join(app.getPath("userData"), "data");
@@ -45,12 +90,16 @@ const buildWindow = (overrides = {}) => {
     title: "Irulan",
     titleBarStyle: "hiddenInset",
     trafficLightPosition: { x: 18, y: 22 },
-    backgroundColor: "#15100B",
+    backgroundColor: windowBackgroundColor(),
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,
       preload: preloadEntry,
       sandbox: true,
+      // The local server binds an ephemeral port, so every launch is a new
+      // origin with empty localStorage. Hand the renderer the persisted
+      // preference instead of letting it fall back to "system".
+      additionalArguments: [`${THEME_PREFERENCE_SWITCH}${nativeTheme.themeSource}`],
     },
     ...overrides,
   });
@@ -128,6 +177,10 @@ ipcMain.handle("reader:popout", (_event, payload) => {
   openReaderWindow(payload?.bookId, payload?.search);
 });
 
+ipcMain.handle("theme:preference", (_event, payload) => {
+  setThemePreference(payload?.preference);
+});
+
 ipcMain.handle("book:showFile", async (_event, payload) => {
   const filePath = getStoredBookFilePath(payload?.bookId);
   try {
@@ -139,6 +192,9 @@ ipcMain.handle("book:showFile", async (_event, payload) => {
 });
 
 app.whenReady().then(async () => {
+  nativeTheme.themeSource = loadThemePreference();
+  nativeTheme.on("updated", repaintWindowBackgrounds);
+
   await createMainWindow();
 
   app.on("activate", async () => {

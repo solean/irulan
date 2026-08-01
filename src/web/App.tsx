@@ -89,6 +89,14 @@ import {
 import { cn } from "@/lib/utils";
 
 import {
+  parseThemePreference,
+  resolveTheme,
+  THEME_BACKGROUNDS,
+  THEME_STORAGE_KEY,
+  type Theme,
+  type ThemePreference,
+} from "../shared/theme";
+import {
   READ_STATUSES,
   type BookDetail,
   type BookReader,
@@ -110,8 +118,6 @@ import {
   type ReaderLinkTarget,
 } from "./lib/reader";
 
-type Theme = "light" | "dark";
-type ThemePreference = "system" | Theme;
 type BookshelfView = "grid" | "list";
 type BookshelfDensity = "comfortable" | "compact";
 type ReadStatusFilter = "all" | ReadStatus;
@@ -145,7 +151,6 @@ type ToastNotice = {
 };
 type ToastInput = Omit<ToastNotice, "id">;
 
-const THEME_KEY = "ebook-manager-theme-preference";
 const BOOKSHELF_VIEW_KEY = "ebook-manager-bookshelf-view";
 const BOOKSHELF_DENSITY_KEY = "ebook-manager-bookshelf-density";
 const BOOKSHELF_SIDEBAR_MINIMIZED_KEY = "ebook-manager-bookshelf-sidebar-minimized";
@@ -240,20 +245,17 @@ const READ_STATUS_ORDER: Record<ReadStatus, number> = {
   reading: 1,
   finished: 2,
 };
-const THEME_META_COLORS: Record<Theme, string> = {
-  dark: "#15100B",
-  light: "#F6F4EE",
-};
 
 function getStoredThemePreference(): ThemePreference {
   try {
-    const stored = localStorage.getItem(THEME_KEY);
-    if (stored === "system" || stored === null) return "system";
-    if (stored === "light" || stored === "dark") return stored;
+    const stored = localStorage.getItem(THEME_STORAGE_KEY);
+    if (stored !== null) return parseThemePreference(stored);
   } catch {
     /* localStorage unavailable */
   }
-  return "system";
+  // Inside Electron the served origin changes every launch, so localStorage is
+  // empty on boot and the shell holds the durable preference.
+  return parseThemePreference(window.irulan?.themePreference);
 }
 
 function getStoredBookshelfView(): BookshelfView | null {
@@ -391,11 +393,7 @@ function applyTheme(theme: Theme) {
   document.documentElement.setAttribute("data-theme", theme);
   document.documentElement.classList.toggle("dark", theme === "dark");
   const meta = document.querySelector<HTMLMetaElement>('meta[name="theme-color"]');
-  if (meta) meta.content = THEME_META_COLORS[theme];
-}
-
-function resolveTheme(preference: ThemePreference, systemTheme: Theme): Theme {
-  return preference === "system" ? systemTheme : preference;
+  if (meta) meta.content = THEME_BACKGROUNDS[theme];
 }
 
 function isTextEntryTarget(target: EventTarget | null) {
@@ -498,9 +496,15 @@ function useTheme() {
     applyTheme(theme);
   }, [theme]);
 
+  // The Electron shell paints window backgrounds before any renderer runs, so
+  // it needs its own copy of the preference to avoid a wrong-theme flash.
+  useEffect(() => {
+    void window.irulan?.setThemePreference?.(themePreference);
+  }, [themePreference]);
+
   const setThemePreference = useCallback((next: ThemePreference) => {
     try {
-      localStorage.setItem(THEME_KEY, next);
+      localStorage.setItem(THEME_STORAGE_KEY, next);
     } catch {
       /* noop */
     }
@@ -512,7 +516,7 @@ function useTheme() {
       const current = resolveTheme(prev, systemTheme);
       const next = current === "dark" ? "light" : "dark";
       try {
-        localStorage.setItem(THEME_KEY, next);
+        localStorage.setItem(THEME_STORAGE_KEY, next);
       } catch {
         /* noop */
       }
