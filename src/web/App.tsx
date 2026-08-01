@@ -6583,7 +6583,7 @@ const BookshelvesPage = () => {
                   const value = event.currentTarget.value;
                   setNewBookshelf((current) => ({ ...current, name: value }));
                 }}
-                placeholder="Kid"
+                placeholder="bookshelf name"
                 spellCheck={false}
                 type="text"
                 value={newBookshelf.name}
