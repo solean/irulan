@@ -27,7 +27,6 @@ import {
 } from "./bookshelves";
 
 type BookRecord = typeof books.$inferSelect;
-type DeliveryRecord = typeof deliveries.$inferSelect;
 type PreparedBookReader = Awaited<ReturnType<typeof prepareEpubReader>>;
 
 const preparedReaderRequests = new Map<string, Promise<PreparedBookReader>>();
@@ -202,11 +201,6 @@ export const getBookReaderAssetPath = async (bookId: string, assetPath: string) 
 
 export const deleteBook = async (bookId: string): Promise<DeleteBookResult> => {
   const book = getBookRecord(bookId);
-  const bookDeliveries: DeliveryRecord[] = db
-    .select()
-    .from(deliveries)
-    .where(eq(deliveries.bookId, book.id))
-    .all();
   const sourceDir = bookDirectory(book.id);
   const trashRoot = path.join(appConfig.storageDir, ".trash");
   const trashDir = path.join(trashRoot, `${book.id}-${Date.now()}`);
@@ -225,21 +219,20 @@ export const deleteBook = async (bookId: string): Promise<DeleteBookResult> => {
   }
 
   try {
-    db.delete(deliveries).where(eq(deliveries.bookId, book.id)).run();
-    db.delete(bookShelves).where(eq(bookShelves.bookId, book.id)).run();
-    db.delete(books).where(eq(books.id, book.id)).run();
+    db.transaction((tx) => {
+      tx.delete(deliveries).where(eq(deliveries.bookId, book.id)).run();
+      tx.delete(bookShelves).where(eq(bookShelves.bookId, book.id)).run();
+      tx.delete(books).where(eq(books.id, book.id)).run();
+    });
     persistDatabase();
   } catch (error) {
+    // The transaction rolled back every row it touched, so the in-memory database
+    // already matches what is on disk. Only the filesystem move needs undoing.
     if (movedToTrash) {
       await rename(trashDir, sourceDir).catch((restoreError) => {
-        console.error("Failed to restore book after delete rollback.", restoreError);
+        console.error("Failed to restore book files after delete rollback.", restoreError);
       });
     }
-
-    if (bookDeliveries.length > 0) {
-      db.insert(deliveries).values(bookDeliveries).run();
-    }
-    persistDatabase();
 
     console.error("Failed to delete book record.", error);
     throw new AppError(500, "The book could not be deleted.");
