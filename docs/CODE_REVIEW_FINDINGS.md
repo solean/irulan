@@ -3,7 +3,7 @@
 Findings from a full read of the codebase (server, web client, Electron shell, build
 config) on 2026-07-31, plus the follow-up review of the fixes that landed the same day.
 
-Line references were verified against `da165f3`. They will drift — treat them as a
+Line references were verified against `b9fb5f3`. They will drift — treat them as a
 starting point, not gospel. `App.tsx` in particular moves constantly.
 
 Nothing here is a blocker for a local single-user app that works today. The list is
@@ -26,9 +26,9 @@ roughly ordered by consequence within each section.
 | 9 | `shell.openExternal` has no scheme allowlist | Fixed — `abc530b` |
 | 10 | Unmatched `/api/*` returns HTML with status 200 | Fixed — `da165f3` |
 | 11 | `decodeURIComponent` throws outside try → 500 | Fixed — `da165f3` |
-| 12 | One bad zip entry makes a whole book unreadable | Open |
-| 13 | LIKE wildcards unescaped in search | Open |
-| 14 | `parseNumber` treats empty env var as 0 | Open |
+| 12 | One bad zip entry makes a whole book unreadable | **Not reachable** — see below (`d6d3e6f`) |
+| 13 | LIKE wildcards unescaped in search | Fixed — `c768acf` |
+| 14 | `parseNumber` treats empty env var as 0 | Fixed — `b9fb5f3` |
 | 15 | No pagination or virtualization | Open |
 | 16 | Reader extracts the full zip to disk | Open |
 | 17 | Imports buffer in memory, no size cap | Open |
@@ -123,7 +123,7 @@ the swap to delete it.
 ### 20. Recovery is silent to the user
 
 `openDatabaseWithRecovery` returns `recoveredFromBackup: true` and
-`src/server/db/client.ts:47` turns it into a `console.warn`. If the primary is corrupt at
+`src/server/db/client.ts:85` turns it into a `console.warn`. If the primary is corrupt at
 startup you are rolled back to an older state, losing whatever the last save held, and the
 UI says nothing. Needs a product decision on how to surface it (toast, settings banner, or
 a field on an API response).
@@ -189,28 +189,48 @@ now returns null for a malformed escape, which the handler already treats as a m
 Worth knowing for future path tests: URL parsing collapses a literal `../` before the app
 sees it, so traversal has to be percent-encoded to reach the guard at all.
 
-### 12. One bad zip entry makes a whole book unreadable
+### 12. One bad zip entry makes a whole book unreadable — premise was wrong
 
-`src/server/services/epub.ts:454`: `ensureSafeRelativePath(entry.name)` *throws* inside the
-extraction loop, aborting `prepareEpubReader` after `:448` has already `rm`'d the reader
-directory. A single odd entry name (absolute path, stray `..`) means the EPUB never opens,
-with a 400 that reads like the file is corrupt.
+**This finding was not reachable as written.** JSZip 3.10.1 runs every entry name through
+`utils.resolve()` when loading an archive (`load.js:66`), which collapses `..` and cannot
+climb past the root; the original name survives only as `unsafeOriginalName`, which this
+code never reads. So `entry.name` can never carry a traversal, and the throw in the
+extraction loop could not fire. No EPUB was ever made unreadable this way.
 
-The traversal guard itself is correct — the failure mode is wrong. Skip the entry instead
-of throwing.
+Changed anyway in `d6d3e6f`: the loop skips an unsafe entry rather than throwing, so the
+guarantee no longer rests on a dependency's sanitizing behaviour — the kind of thing that
+is silently load-bearing until it changes. Only the *path* is treated that way; a write
+that fails for any other reason (a full disk above all) still surfaces, rather than caching
+a half-extracted book behind a manifest that claims it is complete.
 
-### 13. LIKE wildcards unescaped in search
+**What the tests did find**, in the same guard, on the path that genuinely faces untrusted
+input — `resolveEpubReaderAssetPath` takes its argument straight from the request URL:
 
-`src/server/services/books.ts:96`. Values are parameterized so there is no injection, but
-`%` and `_` in a user's query are still LIKE metacharacters. Searching `100%` or `a_b`
-silently over-matches.
+- `".."` has no trailing slash, so it slipped past a `startsWith("../")` check and resolved
+  to the directory above the extracted content.
+- `""` normalizes to `"."`, so the emptiness check never fired and it resolved to the
+  content directory itself.
 
-### 14. `parseNumber` treats an empty env var as 0
+Neither could reach a file outside the reader directory — any deeper traversal *does*
+normalize to a leading `"../"` and was caught — so the effect was a 500 where a 400
+belonged. Both are rejected now.
 
-`src/server/config.ts:9`: `Number(value ?? fallback)` never reaches the fallback for `""`,
-and `Number("")` is `0`, not `NaN`. A bare `PORT=` in `.env` binds a random port; `WEB_PORT=`
-yields a `localhost:0` CORS origin. Check for empty/blank before converting, and
-range-check ports.
+Worth carrying forward: a check for path traversal that runs *after* normalization has to
+handle the bare `".."` and `"."` forms explicitly, not just prefixed ones.
+
+### 13. LIKE wildcards unescaped in search — fixed in `c768acf`
+
+Values were parameterized so there was no injection, but `%` and `_` stayed live
+metacharacters: `100%` built the pattern `%100%%` and matched every book, and `a_b` also
+matched `axb`. The pattern now escapes `%`, `_` and the escape character, and the query
+names the escape character explicitly.
+
+### 14. `parseNumber` treated an empty env var as 0 — fixed in `b9fb5f3`
+
+`Number("")` is `0`, not `NaN`, so a bare `PORT=` bound a random port and `WEB_PORT=` gave a
+`localhost:0` CORS origin. Blank now means "not set". Ports are range-checked too, which the
+duplicated inline parsing for `PORT` never did; port 0 stays legal because the Electron
+shell sets it deliberately to get a free port.
 
 ### 17. Imports buffer in memory, twice, with no size cap
 
@@ -236,7 +256,7 @@ render thousands of DOM nodes and re-sort them client-side on every keystroke.
 
 ### 16. Reader prep extracts the full zip to disk
 
-`src/server/services/epub.ts:451` writes *every* entry, including fonts and unused assets,
+`src/server/services/epub.ts:472` writes *every* entry, including fonts and unused assets,
 permanently doubling (uncompressed) storage per book. Serving assets on demand from the
 zip, or extracting only spine-reachable files, would avoid it.
 
@@ -358,11 +378,12 @@ same-origin — and it silently breaks if Vite falls back off `WEB_PORT`.
 
 ## Suggested order
 
-1. **12, 13, 14** — small correctness fixes, all independent and cheap. **12** first: a
-   book that will not open is the most visible of the three.
-2. **20** — surface database recovery to the user. Needs a UX decision first.
-3. **24 → 6/7** — settle the schema question, then spike and swap the SQLite driver.
-4. **22** — the `App.tsx` split, once nothing else is in flight over it.
+1. **20** — surface database recovery to the user. Needs a UX decision first.
+2. **24 → 6/7** — settle the schema question, then spike and swap the SQLite driver.
+3. **18** — mask the SMTP password on read. Small, and needs a "leave blank to keep" flow.
+4. **19** — a CSP, and drop the dead font preconnects.
+5. **22** — the `App.tsx` split, once nothing else is in flight over it.
+6. **15, 16, 17** — the scale items, once a library large enough to need them exists.
 
 Ordering note: prefer consequence over cheapness. An earlier revision of this list put the
 cheap correctness batch ahead of finding 5 on the grounds that the driver swap would soon
