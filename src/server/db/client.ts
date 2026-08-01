@@ -28,8 +28,45 @@ const requireSqlModule = () => {
   return sqlModule;
 };
 
+/**
+ * Point the in-memory database at what is currently stored.
+ *
+ * `db` is a live export binding, so every service that imported it picks up the
+ * replacement on its next query rather than holding the old handle.
+ */
+const reloadFromDisk = () => {
+  const previous = sqlite;
+  const opened = openDatabaseWithRecovery(requireSqlModule(), appConfig.dbPath);
+
+  // Only give up the working handle once the replacement is open.
+  sqlite = opened.database;
+  sqlite.run("PRAGMA foreign_keys = ON;");
+  db = drizzle(sqlite, { schema });
+  previous?.close();
+
+  return opened.recoveredFromBackup;
+};
+
 export const persistDatabase = () => {
-  persistDatabaseAtomically(requireSqlModule(), requireSqlite(), appConfig.dbPath);
+  try {
+    persistDatabaseAtomically(requireSqlModule(), requireSqlite(), appConfig.dbPath);
+  } catch (error) {
+    // The caller already applied its change in memory, but it never reached
+    // disk. Left alone, the API would report that change as saved and it would
+    // disappear on the next restart, so roll memory back to what is stored and
+    // let the failure surface.
+    try {
+      reloadFromDisk();
+    } catch (reloadError) {
+      console.error(
+        "The database could not be saved, and the in-memory copy could not be rolled " +
+          "back to match what is stored. It now holds changes that are not on disk.",
+        reloadError,
+      );
+    }
+
+    throw error;
+  }
 };
 
 export const initializeDatabase = async () => {
