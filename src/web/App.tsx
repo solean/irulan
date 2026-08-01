@@ -6579,12 +6579,10 @@ const BookshelvesPage = () => {
                 autoComplete="off"
                 id="new-bookshelf-name"
                 name="new_bookshelf_name"
-                onChange={(event) =>
-                  setNewBookshelf((current) => ({
-                    ...current,
-                    name: event.currentTarget.value,
-                  }))
-                }
+                onChange={(event) => {
+                  const value = event.currentTarget.value;
+                  setNewBookshelf((current) => ({ ...current, name: value }));
+                }}
                 placeholder="Kid"
                 spellCheck={false}
                 type="text"
@@ -6599,12 +6597,10 @@ const BookshelvesPage = () => {
                 autoComplete="email"
                 id="new-bookshelf-kindle"
                 name="new_bookshelf_kindle"
-                onChange={(event) =>
-                  setNewBookshelf((current) => ({
-                    ...current,
-                    kindleEmail: event.currentTarget.value,
-                  }))
-                }
+                onChange={(event) => {
+                  const value = event.currentTarget.value;
+                  setNewBookshelf((current) => ({ ...current, kindleEmail: value }));
+                }}
                 placeholder="name@kindle.com"
                 spellCheck={false}
                 type="email"
