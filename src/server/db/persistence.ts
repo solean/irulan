@@ -2,9 +2,11 @@ import {
   closeSync,
   existsSync,
   fsyncSync,
+  linkSync,
   mkdirSync,
   openSync,
   readFileSync,
+  readSync,
   renameSync,
   rmSync,
   writeFileSync,
@@ -26,6 +28,31 @@ const temporaryPathFor = (filePath: string) => `${filePath}.tmp`;
 
 const removeTemporaryFile = (filePath: string) => {
   rmSync(filePath, { force: true });
+};
+
+const SQLITE_FILE_HEADER = Buffer.from("SQLite format 3\0", "latin1");
+
+/**
+ * Constant-time sanity check on a file that is already known to have been
+ * written by us. A full `PRAGMA integrity_check` would rescan every page on
+ * every save; these bytes were verified before they were written, so the only
+ * thing left to catch is a file clobbered or truncated from outside the app.
+ */
+const looksLikeSqliteDatabase = (filePath: string) => {
+  const header = Buffer.alloc(SQLITE_FILE_HEADER.length);
+
+  try {
+    const descriptor = openSync(filePath, "r");
+
+    try {
+      const bytesRead = readSync(descriptor, header, 0, header.length, 0);
+      return bytesRead === header.length && header.equals(SQLITE_FILE_HEADER);
+    } finally {
+      closeSync(descriptor);
+    }
+  } catch {
+    return false;
+  }
 };
 
 const assertDatabaseIntegrity = (database: Database, label: string) => {
@@ -177,6 +204,50 @@ export const openDatabaseWithRecovery = (
   };
 };
 
+/**
+ * Rotate the current database file into the backup slot.
+ *
+ * Best effort by design. The backup exists only to recover a corrupt primary,
+ * and a stale-but-valid backup still serves that purpose, so nothing here may
+ * abort the save in progress: a primary that cannot be read would otherwise
+ * lock out every future write while the in-memory database drifts ahead of
+ * what is on disk.
+ *
+ * Hard-linking rather than copying keeps the primary in place for the whole
+ * rotation — there is no instant where a crash leaves no database at all — and
+ * costs one directory entry instead of a full read and write.
+ */
+const rotateBackup = (databasePath: string, backupPath: string) => {
+  const backupTemporaryPath = temporaryPathFor(backupPath);
+
+  try {
+    if (!looksLikeSqliteDatabase(databasePath)) {
+      // Keep whatever the backup already holds; promoting a clobbered primary
+      // would throw away the last state known to be recoverable.
+      console.warn(
+        `Skipped the database backup: ${databasePath} is no longer a readable SQLite file.`,
+      );
+      return;
+    }
+
+    removeTemporaryFile(backupTemporaryPath);
+
+    try {
+      linkSync(databasePath, backupTemporaryPath);
+    } catch {
+      // Not every filesystem supports hard links — a library kept on an exFAT
+      // external drive, say. Those still deserve a backup, so fall back to a
+      // durable copy and pay for it only where linking cannot work.
+      writeDurableFile(backupTemporaryPath, readFileSync(databasePath));
+    }
+
+    renameSync(backupTemporaryPath, backupPath);
+  } catch (error) {
+    removeTemporaryFile(backupTemporaryPath);
+    console.warn(`Could not refresh the database backup at ${backupPath}.`, error);
+  }
+};
+
 export const persistDatabaseAtomically = (
   SQL: SqlJsStatic,
   database: Database,
@@ -192,21 +263,21 @@ export const persistDatabaseAtomically = (
   removeTemporaryFile(backupTemporaryPath);
 
   try {
+    // The one integrity check on the write path, and the only one that buys
+    // anything: it stops a corrupt export before it can reach disk. Every step
+    // below moves these same verified bytes around, so re-checking them would
+    // rescan the whole database for no additional guarantee.
     const nextBytes = database.export();
     validateDatabaseBytes(SQL, nextBytes, "Exported database");
     writeDurableFile(databaseTemporaryPath, nextBytes);
-    validateDatabaseBytes(SQL, readFileSync(databaseTemporaryPath), "Temporary database");
 
     if (existsSync(databasePath)) {
-      const previousBytes = readFileSync(databasePath);
-      validateDatabaseBytes(SQL, previousBytes, "Current database");
-      writeDurableFile(backupTemporaryPath, previousBytes);
-      validateDatabaseBytes(SQL, readFileSync(backupTemporaryPath), "Temporary database backup");
-      renameSync(backupTemporaryPath, backupPath);
-      syncParentDirectory(backupPath);
+      rotateBackup(databasePath, backupPath);
     }
 
     renameSync(databaseTemporaryPath, databasePath);
+    // Both renames land in this one directory, so a single flush makes both
+    // directory entries durable.
     syncParentDirectory(databasePath);
   } catch (error) {
     throw new Error(`Could not persist the database safely: ${errorMessage(error)}`, {

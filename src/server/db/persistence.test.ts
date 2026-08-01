@@ -84,6 +84,51 @@ describe("database persistence", () => {
     }
   });
 
+  test("saves over a clobbered primary instead of failing every later write", () => {
+    const database = createDatabase();
+
+    try {
+      addEntry(database, "first");
+      persistDatabaseAtomically(SQL, database, databasePath);
+      addEntry(database, "second");
+      persistDatabaseAtomically(SQL, database, databasePath);
+
+      writeFileSync(databasePath, "not a sqlite database");
+
+      addEntry(database, "third");
+      persistDatabaseAtomically(SQL, database, databasePath);
+
+      expect(readEntries(databasePath)).toEqual(["first", "second", "third"]);
+      // The clobbered file must not be rotated over the last recoverable state.
+      expect(readEntries(backupPath())).toEqual(["first"]);
+      expect(existsSync(temporaryPath())).toBe(false);
+      expect(existsSync(backupTemporaryPath())).toBe(false);
+    } finally {
+      database.close();
+    }
+  });
+
+  test("keeps the backup independent of the primary after rotation", () => {
+    const database = createDatabase();
+
+    try {
+      addEntry(database, "first");
+      persistDatabaseAtomically(SQL, database, databasePath);
+      addEntry(database, "second");
+      persistDatabaseAtomically(SQL, database, databasePath);
+
+      // The rotation hard-links the primary into the backup slot, so the next
+      // save must not write through that link and take the backup with it.
+      addEntry(database, "third");
+      persistDatabaseAtomically(SQL, database, databasePath);
+
+      expect(readEntries(databasePath)).toEqual(["first", "second", "third"]);
+      expect(readEntries(backupPath())).toEqual(["first", "second"]);
+    } finally {
+      database.close();
+    }
+  });
+
   test("recovers an invalid primary database from the known-good backup", () => {
     const database = createDatabase();
 
