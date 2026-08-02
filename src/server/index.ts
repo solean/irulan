@@ -4,6 +4,7 @@ import type { AddressInfo } from "node:net";
 import { app } from "./app";
 import { appConfig } from "./config";
 import { ensureSchema, initializeDatabase } from "./db/client";
+import { migrateLegacySmtpPassword } from "./services/smtp-credentials";
 import { ensureStorageLayout } from "./lib/storage";
 
 export type StartedServer = {
@@ -17,7 +18,7 @@ export const startServer = async (options: { port?: number; hostname?: string } 
   await ensureStorageLayout();
   await initializeDatabase();
   ensureSchema();
-
+  migrateLegacySmtpPassword();
   const hostname = options.hostname ?? "127.0.0.1";
   const requestedPort = options.port ?? appConfig.port;
 

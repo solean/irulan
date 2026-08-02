@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
@@ -9,12 +9,15 @@ const publicDirectory = path.join(testDirectory, "public");
 process.env.EBOOK_DATA_DIR = path.join(testDirectory, "data");
 process.env.EBOOK_STORAGE_DIR = path.join(testDirectory, "storage");
 process.env.IRULAN_PUBLIC_DIR = publicDirectory;
+delete process.env.SMTP_PASS;
 
 // Dynamic: `appConfig` snapshots the environment at module evaluation, so these modules
 // must not be hoisted above the overrides set immediately above.
 const client = await import("./db/client");
 const schema = await import("./db/schema");
 const { app } = await import("./app");
+const smtpCredentials = await import("./services/smtp-credentials");
+const smtpSettings = await import("./services/settings");
 
 await client.initializeDatabase();
 client.ensureSchema();
@@ -51,10 +54,34 @@ const json = (payload: unknown): RequestInit => ({
   body: JSON.stringify(payload),
 });
 
+type TestGlobal = typeof globalThis & {
+  irulanSafeStorage?: {
+    isEncryptionAvailable: () => boolean;
+    encryptString: (value: string) => Buffer;
+    decryptString: (value: Buffer) => string;
+  };
+};
+
+const testGlobal = globalThis as TestGlobal;
+
+const installFakeSafeStorage = () => {
+  testGlobal.irulanSafeStorage = {
+    isEncryptionAvailable: () => true,
+    encryptString: (value) => Buffer.from(`encrypted:${value}`),
+    decryptString: (value) => {
+      const decoded = value.toString();
+      if (!decoded.startsWith("encrypted:")) throw new Error("Invalid encrypted value.");
+      return decoded.slice("encrypted:".length);
+    },
+  };
+};
+
 beforeEach(() => {
+  delete testGlobal.irulanSafeStorage;
   client.db.delete(schema.bookShelves).run();
   client.db.delete(schema.books).run();
   client.db.delete(schema.bookshelves).run();
+  client.db.delete(schema.settings).run();
   client.db
     .insert(schema.bookshelves)
     .values({ id: "shelf-1", name: "Shelf", kindleEmail: null, sortOrder: 0, createdAt: new Date() })
@@ -107,6 +134,239 @@ describe("thrown errors become JSON (finding 23)", () => {
 
     expect(response.status).toBe(200);
     expect(response.json()).toHaveProperty("bookshelves");
+  });
+});
+
+describe("SMTP password handling (finding 18)", () => {
+  const smtpPayload = {
+    host: "smtp.example.com",
+    port: 587,
+    secure: false,
+    user: "sender@example.com",
+    from: "sender@example.com",
+  };
+
+  test("settings responses expose only password state", async () => {
+    const response = await request("/api/settings");
+    const smtp = response.json()?.smtp as Record<string, unknown>;
+
+    expect(response.status).toBe(200);
+    expect(smtp.hasPassword).toBe(false);
+    expect(smtp.passwordSource).toBe("none");
+    expect(smtp).not.toHaveProperty("pass");
+    expect(smtp).not.toHaveProperty("password");
+  });
+
+  test("saving SMTP fields without a password does not create one", async () => {
+    const response = await request("/api/settings/smtp", json(smtpPayload));
+    const smtp = response.json()?.smtp as Record<string, unknown>;
+
+    expect(response.status).toBe(200);
+    expect(smtp.hasPassword).toBe(false);
+    expect(smtp.passwordSource).toBe("none");
+    expect(client.db.select().from(schema.settings).all()).not.toContainEqual(
+      expect.objectContaining({ key: "smtp_pass_encrypted" }),
+    );
+  });
+
+  test("saves, preserves, and replaces an encrypted app password", async () => {
+    installFakeSafeStorage();
+
+    const created = await request(
+      "/api/settings/smtp",
+      json({ ...smtpPayload, password: "first-secret" }),
+    );
+    expect(created.status).toBe(200);
+    expect((created.json()?.smtp as Record<string, unknown>).passwordSource).toBe("app");
+    expect(created.body).not.toContain("first-secret");
+    expect(smtpSettings.getSmtpPassword()).toBe("first-secret");
+
+    const encryptedRow = client.db
+      .select()
+      .from(schema.settings)
+      .all()
+      .find((row) => row.key === "smtp_pass_encrypted");
+    expect(encryptedRow?.value).not.toContain("first-secret");
+    expect(client.db.select().from(schema.settings).all()).not.toContainEqual(
+      expect.objectContaining({ key: "smtp_pass" }),
+    );
+
+    const preserved = await request(
+      "/api/settings/smtp",
+      json({ ...smtpPayload, host: "smtp.changed.example.com" }),
+    );
+    expect(preserved.status).toBe(200);
+    expect(smtpSettings.getSmtpPassword()).toBe("first-secret");
+
+    const replaced = await request(
+      "/api/settings/smtp",
+      json({ ...smtpPayload, password: "second-secret" }),
+    );
+    expect(replaced.status).toBe(200);
+    expect(replaced.body).not.toContain("second-secret");
+    expect(smtpSettings.getSmtpPassword()).toBe("second-secret");
+  });
+
+  test("explicitly clears an app password", async () => {
+    installFakeSafeStorage();
+    await request("/api/settings/smtp", json({ ...smtpPayload, password: "saved-secret" }));
+
+    const response = await request(
+      "/api/settings/smtp",
+      json({ ...smtpPayload, clearPassword: true }),
+    );
+    const smtp = response.json()?.smtp as Record<string, unknown>;
+
+    expect(response.status).toBe(200);
+    expect(smtp.hasPassword).toBe(false);
+    expect(smtp.passwordSource).toBe("none");
+    expect(smtpSettings.getSmtpPassword()).toBeNull();
+  });
+
+  test("rejects clearing when there is no app password", async () => {
+    const response = await request(
+      "/api/settings/smtp",
+      json({ ...smtpPayload, clearPassword: true }),
+    );
+
+    expect(response.status).toBe(400);
+    expect(response.json()).toEqual({ error: "There is no saved app password to clear." });
+  });
+
+  test("migrates a legacy password into encrypted storage", () => {
+    installFakeSafeStorage();
+    client.db.insert(schema.settings).values({ key: "smtp_pass", value: "legacy-secret" }).run();
+
+    smtpCredentials.migrateLegacySmtpPassword(null);
+
+    expect(smtpSettings.getSmtpPassword()).toBe("legacy-secret");
+    expect(client.db.select().from(schema.settings).all()).not.toContainEqual(
+      expect.objectContaining({ key: "smtp_pass" }),
+    );
+    expect(client.db.select().from(schema.settings).all()).toContainEqual(
+      expect.objectContaining({ key: "smtp_pass_encrypted" }),
+    );
+  });
+
+  test("standalone migration discards plaintext when SMTP_PASS replaces it", () => {
+    client.db.insert(schema.settings).values({ key: "smtp_pass", value: "legacy-secret" }).run();
+
+    smtpCredentials.migrateLegacySmtpPassword("environment-secret");
+
+    expect(client.db.select().from(schema.settings).all()).not.toContainEqual(
+      expect.objectContaining({ key: "smtp_pass" }),
+    );
+    expect(smtpCredentials.resolveSmtpPassword("environment-secret")).toBe(
+      "environment-secret",
+    );
+  });
+
+  test("standalone migration keeps plaintext when no safe replacement exists", () => {
+    client.db.insert(schema.settings).values({ key: "smtp_pass", value: "legacy-secret" }).run();
+
+    expect(() => smtpCredentials.migrateLegacySmtpPassword(null)).toThrow(
+      "migrated by the Electron app or replaced with SMTP_PASS",
+    );
+    expect(client.db.select().from(schema.settings).all()).toContainEqual({
+      key: "smtp_pass",
+      value: "legacy-secret",
+    });
+  });
+
+  test("standalone settings remain readable with an encrypted app credential", async () => {
+    client.db
+      .insert(schema.settings)
+      .values({ key: "smtp_pass_encrypted", value: "unavailable-ciphertext" })
+      .run();
+
+    const response = await request("/api/settings");
+    const smtp = response.json()?.smtp as Record<string, unknown>;
+
+    expect(response.status).toBe(200);
+    expect(smtp.hasPassword).toBe(true);
+    expect(smtp.passwordSource).toBe("app");
+    expect(() => smtpSettings.getSmtpPassword()).toThrow(
+      "The saved SMTP password requires Electron secure storage",
+    );
+  });
+
+  test("a credential that cannot decrypt does not block replacement", async () => {
+    installFakeSafeStorage();
+    client.db
+      .insert(schema.settings)
+      .values({ key: "smtp_pass_encrypted", value: "unavailable-ciphertext" })
+      .run();
+
+    const loaded = await request("/api/settings");
+    expect(loaded.status).toBe(200);
+    expect((loaded.json()?.smtp as Record<string, unknown>).passwordSource).toBe("app");
+
+    const replaced = await request(
+      "/api/settings/smtp",
+      json({ ...smtpPayload, password: "replacement-secret" }),
+    );
+    expect(replaced.status).toBe(200);
+    expect(smtpSettings.getSmtpPassword()).toBe("replacement-secret");
+  });
+
+  test("environment password wins when encrypted storage is unavailable", () => {
+    client.db
+      .insert(schema.settings)
+      .values({ key: "smtp_pass_encrypted", value: "unavailable-ciphertext" })
+      .run();
+
+    expect(smtpCredentials.getSmtpPasswordSource("environment-secret")).toBe("environment");
+    expect(smtpCredentials.resolveSmtpPassword("environment-secret")).toBe(
+      "environment-secret",
+    );
+  });
+
+  test("rejects a password replacement and clear request together", async () => {
+    const response = await request(
+      "/api/settings/smtp",
+      json({
+        ...smtpPayload,
+        password: "plaintext-secret",
+        clearPassword: true,
+      }),
+    );
+
+    expect(response.status).toBe(400);
+    expect(response.json()).toEqual({ error: "Set a password or clear it, not both." });
+  });
+
+  test("standalone server refuses to persist a password without secure storage", async () => {
+    const response = await request(
+      "/api/settings/smtp",
+      json({ ...smtpPayload, password: "plaintext-secret" }),
+    );
+
+    expect(response.status).toBe(503);
+    expect(response.json()).toEqual({
+      error:
+        "Secure password storage is unavailable. Configure SMTP_PASS in the environment instead.",
+    });
+  });
+
+  test("a failed persist rolls back the password and ordinary settings together", async () => {
+    installFakeSafeStorage();
+    await request("/api/settings/smtp", json({ ...smtpPayload, password: "kept-secret" }));
+
+    chmodSync(path.join(testDirectory, "data"), 0o500);
+    try {
+      expect(() =>
+        smtpSettings.saveSmtpSettings({
+          ...smtpPayload,
+          host: "smtp.unsaved.example.com",
+          password: "lost-secret",
+        }),
+      ).toThrow("Could not persist the database safely");
+    } finally {
+      chmodSync(path.join(testDirectory, "data"), 0o700);
+    }
+
+    expect(smtpSettings.getSmtpSettings().host).toBe("smtp.example.com");
+    expect(smtpSettings.getSmtpPassword()).toBe("kept-secret");
   });
 });
 

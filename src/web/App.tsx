@@ -849,7 +849,9 @@ type SmtpFormState = {
   port: string;
   secure: boolean;
   user: string;
-  pass: string;
+  password: string;
+  clearPassword: boolean;
+  editingPassword: boolean;
   from: string;
 };
 
@@ -863,7 +865,9 @@ const toSmtpFormState = (smtp: SettingsPayload["smtp"]): SmtpFormState => ({
   port: String(smtp.port),
   secure: smtp.secure,
   user: smtp.user,
-  pass: smtp.pass,
+  password: "",
+  clearPassword: false,
+  editingPassword: !smtp.hasPassword,
   from: smtp.from,
 });
 
@@ -5894,6 +5898,7 @@ const ReaderPage = () => {
 const SettingsPage = () => {
   useDocumentTitle("Settings \u2014 Irulan");
   const toast = useToast();
+  const passwordInputRef = useRef<HTMLInputElement | null>(null);
 
   const [settings, setSettings] = useState<SettingsPayload | null>(null);
   const [bookshelves, setBookshelves] = useState<BookshelfSummary[]>([]);
@@ -5902,7 +5907,9 @@ const SettingsPage = () => {
     port: "587",
     secure: false,
     user: "",
-    pass: "",
+    password: "",
+    clearPassword: false,
+    editingPassword: true,
     from: "",
   });
   const [loading, setLoading] = useState(true);
@@ -5934,6 +5941,12 @@ const SettingsPage = () => {
     void loadSettings();
   }, []);
 
+  useEffect(() => {
+    if (smtpForm.editingPassword && settings?.smtp.hasPassword && !smtpForm.clearPassword) {
+      passwordInputRef.current?.focus();
+    }
+  }, [settings?.smtp.hasPassword, smtpForm.clearPassword, smtpForm.editingPassword]);
+
   const onSaveSmtp = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setSavingSmtp(true);
@@ -5955,7 +5968,8 @@ const SettingsPage = () => {
         port: nextPort,
         secure: smtpForm.secure,
         user: smtpForm.user.trim(),
-        pass: smtpForm.pass,
+        password: smtpForm.password || undefined,
+        clearPassword: smtpForm.clearPassword,
         from: smtpForm.from.trim(),
       });
       setSettings(payload);
@@ -5995,7 +6009,8 @@ const SettingsPage = () => {
         (!Number.isInteger(normalizedSmtpPort) || normalizedSmtpPort !== settings.smtp.port) ||
         smtpForm.secure !== settings.smtp.secure ||
         smtpForm.user.trim() !== settings.smtp.user ||
-        smtpForm.pass !== settings.smtp.pass ||
+        smtpForm.password.length > 0 ||
+        smtpForm.clearPassword ||
         smtpForm.from.trim() !== settings.smtp.from),
   );
 
@@ -6211,22 +6226,118 @@ const SettingsPage = () => {
               />
             </div>
             <div className="stack-xs">
-              <Label className="field-label" htmlFor="smtp-pass">
+              <Label className="field-label" htmlFor="smtp-password">
                 Password or app password
               </Label>
               <Input
-                autoComplete="current-password"
-                id="smtp-pass"
-                name="smtp_pass"
+                autoComplete="new-password"
+                disabled={smtpForm.clearPassword || !smtpForm.editingPassword}
+                id="smtp-password"
+                name="smtp_password"
                 onChange={(event) => {
                   const value = event.currentTarget.value;
-                  setSmtpForm((current) => ({ ...current, pass: value }));
+                  setSmtpForm((current) => ({
+                    ...current,
+                    password: value,
+                    clearPassword: false,
+                  }));
                 }}
-                placeholder="Required by many providers"
+                placeholder={
+                  smtpForm.clearPassword
+                    ? "Password will be removed"
+                    : smtpForm.editingPassword
+                      ? settings?.smtp.hasPassword
+                        ? "Enter a new password"
+                        : "Required by many providers"
+                      : settings?.smtp.passwordSource === "environment"
+                        ? "Managed by environment"
+                        : "Password saved"
+                }
+                ref={passwordInputRef}
                 spellCheck={false}
                 type="password"
-                value={smtpForm.pass}
+                value={smtpForm.password}
               />
+              {settings?.smtp.hasPassword ? (
+                <div
+                  aria-live="polite"
+                  className={cn(
+                    "smtp-password-state",
+                    smtpForm.clearPassword && "smtp-password-state-pending",
+                  )}
+                >
+                  {smtpForm.clearPassword ? (
+                    <>
+                      <span>Will be removed on save.</span>
+                      <Button
+                        onClick={() =>
+                          setSmtpForm((current) => ({
+                            ...current,
+                            clearPassword: false,
+                            editingPassword: false,
+                          }))
+                        }
+                        size="xs"
+                        type="button"
+                        variant="outline"
+                      >
+                        Undo
+                      </Button>
+                    </>
+                  ) : smtpForm.editingPassword ? (
+                    <>
+                      <span>Enter a replacement password.</span>
+                      <Button
+                        onClick={() =>
+                          setSmtpForm((current) => ({
+                            ...current,
+                            password: "",
+                            editingPassword: false,
+                          }))
+                        }
+                        size="xs"
+                        type="button"
+                        variant="outline"
+                      >
+                        Cancel
+                      </Button>
+                    </>
+                  ) : (
+                    <>
+                      <Button
+                        onClick={() =>
+                          setSmtpForm((current) => ({
+                            ...current,
+                            editingPassword: true,
+                          }))
+                        }
+                        size="xs"
+                        type="button"
+                        variant="outline"
+                      >
+                        Change password
+                      </Button>
+                      {settings.smtp.passwordSource === "app" ? (
+                        <Button
+                          onClick={() =>
+                            setSmtpForm((current) => ({
+                              ...current,
+                              clearPassword: true,
+                              editingPassword: false,
+                              password: "",
+                            }))
+                          }
+                          size="xs"
+                          type="button"
+                          variant="destructive"
+                        >
+                          Remove
+                        </Button>
+                      ) : null}
+                    </>
+                  )}
+                </div>
+              ) : null}
             </div>
             <div className="stack-xs">
               <Label className="field-label" htmlFor="smtp-from">
@@ -6249,8 +6360,8 @@ const SettingsPage = () => {
           </div>
 
           <p className="smtp-onboarding-step-meta">
-            Leave username and password blank only if your SMTP server accepts mail without auth.
-            Amazon should see the sender address from this form.
+            Leave the password blank to keep the existing credential. Environment credentials are
+            managed outside this form.
           </p>
 
           <div className="inline-actions">

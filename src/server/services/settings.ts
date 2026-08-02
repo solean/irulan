@@ -1,9 +1,21 @@
 import { eq } from "drizzle-orm";
 
-import { SettingsPayload, SmtpSettings } from "../../shared/types";
+import type {
+  SettingsPayload,
+  SmtpSettings,
+  UpdateSmtpSettingsPayload,
+} from "../../shared/types";
 import { appConfig } from "../config";
 import { db, persistDatabase } from "../db/client";
 import { settings } from "../db/schema";
+import { AppError } from "../errors";
+import {
+  encryptSmtpPassword,
+  getSmtpPasswordSource,
+  hasStoredSmtpPassword,
+  resolveSmtpPassword,
+  SMTP_PASSWORD_KEY,
+} from "./smtp-credentials";
 
 const DEFAULT_KINDLE_KEY = "default_kindle_email";
 const SMTP_SETTING_KEYS = {
@@ -11,23 +23,11 @@ const SMTP_SETTING_KEYS = {
   port: "smtp_port",
   secure: "smtp_secure",
   user: "smtp_user",
-  pass: "smtp_pass",
   from: "smtp_from",
 } as const;
 
 const readSetting = (key: string) =>
   db.select().from(settings).where(eq(settings.key, key)).get() ?? null;
-
-const writeSetting = (key: string, value: string) => {
-  db.insert(settings)
-    .values({ key, value })
-    .onConflictDoUpdate({
-      target: settings.key,
-      set: { value },
-    })
-    .run();
-  persistDatabase();
-};
 
 const normalizeText = (value: string | null | undefined) => value?.trim() ?? "";
 
@@ -63,32 +63,37 @@ export const saveDefaultKindleEmail = (email: string | null) => {
   persistDatabase();
 };
 
-const getEnvironmentSmtpSettings = (): SmtpSettings => ({
-  host: appConfig.smtp.host ?? "",
-  port: appConfig.smtp.port,
-  secure: appConfig.smtp.secure,
-  user: appConfig.smtp.user ?? "",
-  pass: appConfig.smtp.pass ?? "",
-  from: appConfig.smtp.from ?? "",
-  configured: Boolean(appConfig.smtp.host && appConfig.smtp.from),
-  source: "environment",
-});
+const getEnvironmentSmtpSettings = (): SmtpSettings => {
+  const passwordSource = getSmtpPasswordSource(appConfig.smtp.pass);
+  return {
+    host: appConfig.smtp.host ?? "",
+    port: appConfig.smtp.port,
+    secure: appConfig.smtp.secure,
+    user: appConfig.smtp.user ?? "",
+    from: appConfig.smtp.from ?? "",
+    hasPassword: passwordSource !== "none",
+    passwordSource,
+    configured: Boolean(appConfig.smtp.host && appConfig.smtp.from),
+    source: "environment",
+  };
+};
 
 const getStoredSmtpSettings = (): SmtpSettings => {
   const host = normalizeText(readSetting(SMTP_SETTING_KEYS.host)?.value ?? null);
   const port = parseStoredPort(readSetting(SMTP_SETTING_KEYS.port)?.value ?? null);
   const secure = parseStoredSecure(readSetting(SMTP_SETTING_KEYS.secure)?.value ?? null, port);
   const user = normalizeText(readSetting(SMTP_SETTING_KEYS.user)?.value ?? null);
-  const pass = readSetting(SMTP_SETTING_KEYS.pass)?.value ?? "";
   const from = normalizeText(readSetting(SMTP_SETTING_KEYS.from)?.value ?? null);
+  const passwordSource = getSmtpPasswordSource(appConfig.smtp.pass);
 
   return {
     host,
     port,
     secure,
     user,
-    pass,
     from,
+    hasPassword: passwordSource !== "none",
+    passwordSource,
     configured: Boolean(host && from),
     source: "app",
   };
@@ -97,13 +102,46 @@ const getStoredSmtpSettings = (): SmtpSettings => {
 export const getSmtpSettings = (): SmtpSettings =>
   hasStoredSmtpSettings() ? getStoredSmtpSettings() : getEnvironmentSmtpSettings();
 
-export const saveSmtpSettings = (smtp: Omit<SmtpSettings, "configured" | "source">) => {
-  writeSetting(SMTP_SETTING_KEYS.host, normalizeText(smtp.host));
-  writeSetting(SMTP_SETTING_KEYS.port, String(smtp.port));
-  writeSetting(SMTP_SETTING_KEYS.secure, smtp.secure ? "true" : "false");
-  writeSetting(SMTP_SETTING_KEYS.user, normalizeText(smtp.user));
-  writeSetting(SMTP_SETTING_KEYS.pass, smtp.pass);
-  writeSetting(SMTP_SETTING_KEYS.from, normalizeText(smtp.from));
+export const getSmtpPassword = () => resolveSmtpPassword(appConfig.smtp.pass);
+
+export const saveSmtpSettings = (smtp: UpdateSmtpSettingsPayload) => {
+  if (smtp.clearPassword && !hasStoredSmtpPassword()) {
+    throw new AppError(400, "There is no saved app password to clear.");
+  }
+
+  const encryptedPassword = smtp.password ? encryptSmtpPassword(smtp.password) : null;
+  const values = [
+    [SMTP_SETTING_KEYS.host, normalizeText(smtp.host)],
+    [SMTP_SETTING_KEYS.port, String(smtp.port)],
+    [SMTP_SETTING_KEYS.secure, smtp.secure ? "true" : "false"],
+    [SMTP_SETTING_KEYS.user, normalizeText(smtp.user)],
+    [SMTP_SETTING_KEYS.from, normalizeText(smtp.from)],
+  ] as const;
+
+  db.transaction((tx) => {
+    if (smtp.clearPassword) {
+      tx.delete(settings).where(eq(settings.key, SMTP_PASSWORD_KEY)).run();
+    } else if (encryptedPassword) {
+      tx.insert(settings)
+        .values({ key: SMTP_PASSWORD_KEY, value: encryptedPassword })
+        .onConflictDoUpdate({
+          target: settings.key,
+          set: { value: encryptedPassword },
+        })
+        .run();
+    }
+
+    for (const [key, value] of values) {
+      tx.insert(settings)
+        .values({ key, value })
+        .onConflictDoUpdate({
+          target: settings.key,
+          set: { value },
+        })
+        .run();
+    }
+  });
+  persistDatabase();
 };
 
 export const getSettingsPayload = (): SettingsPayload => ({

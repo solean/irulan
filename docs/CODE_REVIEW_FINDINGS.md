@@ -15,7 +15,7 @@ roughly ordered by consequence within each section.
 
 🟢 fixed  ·  🟡 open  ·  ⚪ no action needed
 
-**13 of 26 resolved** — 12 fixed, 1 that turned out not to need fixing. 13 open.
+**14 of 26 resolved** — 13 fixed, 1 that turned out not to need fixing. 12 open.
 
 | # | Finding | Status |
 |---|---|---|
@@ -36,7 +36,7 @@ roughly ordered by consequence within each section.
 | 15 | No pagination or virtualization | 🟢 Fixed |
 | 16 | Reader extracts the full zip to disk | 🟡 Open |
 | 17 | Imports buffer in memory, no size cap | 🟡 Open |
-| 18 | SMTP password round-trips to the browser | 🟡 Open |
+| 18 | SMTP password round-trips to the browser | 🟢 Fixed |
 | 19 | No CSP; dead Google Fonts preconnect | 🟢 Fixed |
 | 20 | Database recovery is silent to the user | 🟡 Open |
 | 21 | No cross-process locking | 🟡 Open |
@@ -288,16 +288,21 @@ Not covered by a test: that clicking a link in a real book still reaches the bro
 policy decisions are unit tested and the app was confirmed to boot, but the end-to-end
 click path needs a human.
 
-### 🟡 18. SMTP password round-trips to the browser
+### 🟢 18. SMTP password round-tripped to the browser — fixed
 
-`getSettingsPayload` (`src/server/services/settings.ts:109`) returns `smtp.pass` in
-plaintext (`:82`), and the Settings form sends it back on save. Stored plaintext in the
-`settings` table too.
+The settings response no longer includes the SMTP password. It exposes only
+`hasPassword` and `passwordSource`, and the renderer keeps the password input empty. Blank
+password updates preserve the current credential; replacement and clearing are explicit.
 
-For a loopback single-user app this is a defensible tradeoff, but the standard pattern is
-cheap: return `hasPassword: boolean`, and treat an empty `pass` on save as "keep existing."
-That also removes the credential from renderer memory and from anything that later logs a
-settings response.
+App-saved passwords are encrypted through Electron's OS-backed `safeStorage` integration
+and legacy plaintext `smtp_pass` rows migrate before the server accepts requests.
+Standalone Node/Bun continues to use `SMTP_PASS`, including when an inaccessible encrypted
+app credential exists; an environment password also lets startup remove a legacy plaintext
+row safely. SMTP fields and credential changes persist atomically.
+
+Regression tests cover response redaction, save/preserve/replace/clear, both legacy
+migration paths, environment fallback, recovery from an unreadable credential, refusal to
+persist plaintext, and rollback after a failed save.
 
 ### 🟢 19. No CSP; dead Google Fonts preconnect — fixed
 

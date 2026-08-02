@@ -10,7 +10,7 @@ import { deliveries } from "../db/schema";
 import { AppError } from "../errors";
 import { getBookRecord } from "./books";
 import { getBookshelfRecord } from "./bookshelves";
-import { getDefaultKindleEmail, getSmtpSettings } from "./settings";
+import { getDefaultKindleEmail, getSmtpPassword, getSmtpSettings } from "./settings";
 
 const emailSchema = z.string().trim().email();
 
@@ -41,7 +41,7 @@ const requireTransport = () => {
     auth: smtp.user
       ? {
           user: smtp.user,
-          pass: smtp.pass ?? "",
+          pass: getSmtpPassword() ?? "",
         }
       : undefined,
   });

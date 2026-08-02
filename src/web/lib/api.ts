@@ -11,6 +11,7 @@ import type {
   SmtpSettings,
   SettingsPayload,
   UpdateBookMetadataPayload,
+  UpdateSmtpSettingsPayload,
 } from "../../shared/types";
 
 const request = async <T>(input: string, init?: RequestInit): Promise<T> => {
@@ -195,7 +196,7 @@ export const api = {
     });
   },
 
-  async saveSmtpSettings(smtp: Omit<SmtpSettings, "configured" | "source">) {
+  async saveSmtpSettings(smtp: UpdateSmtpSettingsPayload) {
     return request<SettingsPayload>("/api/settings/smtp", {
       method: "PUT",
       headers: {

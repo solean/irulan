@@ -2,7 +2,7 @@ const path = require("node:path");
 const { access } = require("node:fs/promises");
 const { readFileSync, writeFileSync } = require("node:fs");
 
-const { app, BrowserWindow, ipcMain, nativeTheme, shell } = require("electron");
+const { app, BrowserWindow, ipcMain, nativeTheme, safeStorage, shell } = require("electron");
 
 const { isExternallyOpenable, isSameOrigin } = require("./url-policy.cjs");
 
@@ -91,6 +91,7 @@ const configureServerEnvironment = () => {
   process.env.EBOOK_STORAGE_DIR = storageDir;
   process.env.NODE_ENV = "production";
   process.env.PORT = "0";
+  globalThis.irulanSafeStorage = safeStorage;
 };
 
 const startLocalServer = async () => {

@@ -93,15 +93,28 @@ export type DeliveryRecord = {
   sentAt: string | null;
 };
 
+export type SmtpPasswordSource = "app" | "environment" | "none";
+
 export type SmtpSettings = {
   host: string;
   port: number;
   secure: boolean;
   user: string;
-  pass: string;
   from: string;
+  hasPassword: boolean;
+  passwordSource: SmtpPasswordSource;
   configured: boolean;
   source: "app" | "environment";
+};
+
+export type UpdateSmtpSettingsPayload = {
+  host: string;
+  port: number;
+  secure: boolean;
+  user: string;
+  password?: string;
+  clearPassword?: boolean;
+  from: string;
 };
 
 export type SettingsPayload = {

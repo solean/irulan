@@ -6,20 +6,27 @@ import {
   saveDefaultKindleEmail,
   saveSmtpSettings,
 } from "../services/settings";
+import type { UpdateSmtpSettingsPayload } from "../../shared/types";
 import { sendTestEmail } from "../services/delivery";
 
 const kindleSettingsSchema = z.object({
   defaultKindleEmail: z.string().trim().email().or(z.literal("")).nullable(),
 });
 
-const smtpSettingsSchema = z.object({
-  host: z.string().trim(),
-  port: z.number().int().min(1).max(65535),
-  secure: z.boolean(),
-  user: z.string(),
-  pass: z.string(),
-  from: z.string().trim().email().or(z.literal("")),
-});
+const smtpSettingsSchema = z
+  .object({
+    host: z.string().trim(),
+    port: z.number().int().min(1).max(65535),
+    secure: z.boolean(),
+    user: z.string(),
+    password: z.string().optional(),
+    clearPassword: z.boolean().optional().default(false),
+    from: z.string().trim().email().or(z.literal("")),
+  })
+  .refine((payload) => !(payload.password && payload.clearPassword), {
+    message: "Set a password or clear it, not both.",
+  })
+  .transform((payload): UpdateSmtpSettingsPayload => payload);
 
 const testEmailSchema = z.object({
   recipientEmail: z.string().trim().email(),

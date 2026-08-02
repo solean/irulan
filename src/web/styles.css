@@ -3551,6 +3551,22 @@ input::placeholder {
   gap: 12px;
 }
 
+.smtp-password-state {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 26px;
+  padding-left: 2px;
+  color: var(--text-tertiary);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.smtp-password-state-pending {
+  color: var(--error);
+}
+
 .settings-bookshelf-list {
   display: grid;
   gap: 12px;

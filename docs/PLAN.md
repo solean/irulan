@@ -50,17 +50,18 @@ Covered by `src/server/db/persistence.test.ts`.
 Still open: migrating from SQL.js to native SQLite with transactions and WAL, so
 a save no longer rewrites the whole database file.
 
-#### Secure SMTP credentials
+#### Secure SMTP credentials — done
 
-The SMTP password is currently stored as a normal setting and returned to the renderer by the settings API.
+Electron encrypts app-managed SMTP passwords with its OS-backed `safeStorage`; SQLite
+stores only the encrypted value. The settings API never returns the password. It reports
+`hasPassword` and `passwordSource`, while the renderer keeps the password input empty and
+uses explicit replace and clear actions.
 
-Change this so that:
-
-- Electron stores the password in macOS Keychain
-- the settings API never returns the password
-- the renderer receives only a flag such as `hasPassword`
-- clearing or replacing a saved password is explicit
-- environment-based SMTP configuration remains supported
+Blank password updates preserve the current credential. All SMTP fields and password
+changes are committed and persisted together. Legacy plaintext `smtp_pass` rows migrate
+to encrypted storage in Electron; standalone mode discards the obsolete row when
+`SMTP_PASS` supplies its replacement. Environment-based SMTP remains supported when
+Electron secure storage is unavailable.
 
 ### P0: Reading Position and EPUB Correctness
 
