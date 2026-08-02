@@ -6042,15 +6042,40 @@ const SettingsPage = () => {
               address to your approved personal document sender list before you test delivery.
             </p>
           </div>
-          <div className="smtp-onboarding-callout stack-xs">
-            <p className="smtp-onboarding-eyebrow">What most SMTP providers expect</p>
-            <p className="smtp-onboarding-copy">
-              Port <code>587</code> usually goes with <code>SMTP_SECURE=false</code>. Port{" "}
-              <code>465</code> usually goes with <code>SMTP_SECURE=true</code>. Many providers
-              require an app password instead of your normal mailbox password.
-            </p>
-          </div>
         </div>
+
+        <section aria-labelledby="amazon-kindle-email-guide" className="smtp-amazon-guide stack-sm">
+          <div className="section-heading">
+            <h3 id="amazon-kindle-email-guide">Amazon Kindle email setup</h3>
+            <a
+              href="https://www.amazon.com/sendtokindle/email"
+              rel="noreferrer"
+              target="_blank"
+            >
+              Open Amazon&apos;s guide
+            </a>
+          </div>
+          <ol className="smtp-amazon-guide-list">
+            <li>
+              Find your Kindle email address in{" "}
+              <strong>Manage Your Content and Devices &gt; Preferences &gt; Personal Document
+              Settings</strong>
+              .
+            </li>
+            <li>
+              Add the sender address shown above to Amazon&apos;s{" "}
+              <strong>Approved Personal Document E-mail List</strong>.
+            </li>
+            <li>
+              Send to Kindle by attaching the EPUB to that Kindle email address. No subject line is
+              required.
+            </li>
+          </ol>
+          <p className="smtp-onboarding-step-meta">
+            Amazon lists EPUB as a supported Send to Kindle file type. Amazon can reject a message
+            even after your SMTP server accepts it.
+          </p>
+        </section>
 
         <ol className="smtp-onboarding-steps">
           <li className="smtp-onboarding-step">
