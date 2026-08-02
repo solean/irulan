@@ -3667,6 +3667,12 @@ input::placeholder {
   grid-column: 1 / -1;
 }
 
+.settings-form-grid [data-slot="select-trigger"] {
+  min-height: 32px;
+  height: 32px;
+  margin-top: 10px;
+}
+
 .smtp-onboarding-callout {
   padding: 14px 16px;
   border: 1px solid color-mix(in srgb, var(--accent-hover) 20%, var(--border-default));
