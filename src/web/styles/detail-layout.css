@@ -1,0 +1,34 @@
+/* Shared detail and reading layouts. */
+/* ─── Detail layout ─── */
+
+.detail-layout {
+  display: grid;
+  grid-template-columns: minmax(180px, 280px) minmax(0, 1fr);
+  gap: 24px;
+  align-items: start;
+  max-width: 1200px;
+  margin-left: auto;
+  margin-right: auto;
+  width: 100%;
+}
+
+.detail-cover-link {
+  display: block;
+  width: fit-content;
+  border-radius: var(--radius-sm);
+}
+
+.detail-cover-link .book-cover {
+  transition:
+    transform 160ms ease,
+    border-color 120ms ease,
+    box-shadow 160ms ease;
+}
+
+.detail-cover-link:hover .book-cover,
+.detail-cover-link:focus-visible .book-cover {
+  border-color: var(--border-hover);
+  box-shadow: 0 14px 32px rgba(0, 0, 0, 0.18);
+  transform: translateY(-2px);
+}
+

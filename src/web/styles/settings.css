@@ -1,0 +1,250 @@
+/* Settings and bookshelf management. */
+/* ─── Settings ─── */
+
+.settings-form-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+}
+
+.smtp-password-state {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 26px;
+  padding-left: 2px;
+  color: var(--text-tertiary);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.smtp-password-state-pending {
+  color: var(--error);
+}
+
+.smtp-amazon-guide {
+  padding: 14px 16px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  background: var(--bg-base);
+}
+
+.smtp-amazon-guide h3 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.smtp-amazon-guide a {
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.smtp-amazon-guide a:hover {
+  color: var(--accent-hover);
+}
+
+.smtp-amazon-guide-list {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding-left: 20px;
+  color: var(--text-secondary);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.smtp-amazon-guide-list strong {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.settings-bookshelf-list {
+  display: grid;
+  gap: 12px;
+}
+
+.settings-bookshelf-row,
+.settings-bookshelf-create {
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  background: var(--bg-base);
+}
+
+.settings-bookshelf-create {
+  border-style: dashed;
+  background: color-mix(in srgb, var(--bg-base) 74%, var(--bg-surface));
+}
+
+.settings-bookshelf-fields {
+  display: grid;
+  grid-template-columns: minmax(180px, 0.8fr) minmax(220px, 1fr);
+  gap: 12px;
+  align-items: start;
+}
+
+.settings-bookshelf-meta {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  color: var(--text-tertiary);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.bookshelves-page-note {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+.bookshelves-page-note a {
+  color: var(--accent);
+  font-weight: 500;
+}
+
+.bookshelves-page-note a:hover {
+  color: var(--accent-hover);
+}
+
+.smtp-onboarding-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.smtp-onboarding-grid > .smtp-onboarding-callout:only-child {
+  grid-column: 1 / -1;
+}
+
+.settings-form-grid [data-slot="select-trigger"] {
+  min-height: 32px;
+  height: 32px;
+  margin-top: 10px;
+}
+
+.smtp-onboarding-callout {
+  padding: 14px 16px;
+  border: 1px solid color-mix(in srgb, var(--accent-hover) 20%, var(--border-default));
+  border-radius: var(--radius-md);
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--accent-soft) 85%, transparent),
+      transparent 140%
+    ),
+    var(--bg-elevated);
+}
+
+.smtp-onboarding-eyebrow {
+  margin: 0;
+  font-family: var(--font-serif);
+  font-size: var(--fs-sm);
+  font-weight: 500;
+  letter-spacing: var(--tracking-wide);
+  font-variant-caps: all-small-caps;
+  color: color-mix(in srgb, var(--accent-hover) 84%, var(--text-primary));
+}
+
+.smtp-onboarding-copy,
+.smtp-onboarding-step-copy,
+.smtp-onboarding-step-meta {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.smtp-onboarding-copy,
+.smtp-onboarding-step-copy {
+  color: var(--text-secondary);
+}
+
+.smtp-onboarding-step-meta {
+  color: var(--text-tertiary);
+}
+
+.smtp-onboarding-steps {
+  display: grid;
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.smtp-onboarding-step {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 14px;
+  align-items: start;
+  padding: 16px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-default);
+  background: var(--bg-base);
+}
+
+.smtp-onboarding-step-number {
+  display: inline-grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent-soft) 92%, transparent);
+  color: color-mix(in srgb, var(--accent-hover) 84%, var(--text-primary));
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.smtp-onboarding-step-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.smtp-onboarding-step-title {
+  margin: 0;
+  color: var(--text-primary);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.smtp-onboarding-note {
+  margin: 0;
+  padding: 14px 16px;
+  border-radius: var(--radius-md);
+  border: 1px solid color-mix(in srgb, var(--accent-hover) 18%, var(--border-default));
+  background: color-mix(in srgb, var(--accent-soft) 58%, transparent);
+  color: var(--text-secondary);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.env-snippet {
+  margin: 0;
+  padding: 14px 16px;
+  overflow-x: auto;
+  border-radius: var(--radius-md);
+  background: var(--bg-base);
+  border: 1px solid var(--border-default);
+  color: var(--text-secondary);
+  font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
+  font-size: 12px;
+  line-height: 1.7;
+}
+
+code {
+  padding: 1px 5px;
+  border-radius: var(--radius-xs);
+  background: var(--bg-elevated);
+  font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
+  font-size: 12px;
+}
+

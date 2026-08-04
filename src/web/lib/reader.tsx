@@ -525,3 +525,33 @@ export const renderReaderDocument = ({
     onInternalLinkClick,
     section,
   }, "reader", "block");
+export const parseReaderMarkup = (markup: string): Document => {
+  let document = new DOMParser().parseFromString(markup, "application/xhtml+xml");
+  if (document.querySelector("parsererror")) {
+    document = new DOMParser().parseFromString(markup, "text/html");
+  }
+  return document;
+};
+
+export const resolveReaderSectionLabels = (
+  sections: BookReaderSection[],
+  bookTitle: string,
+): string[] => {
+  const fullTitle = bookTitle.trim().toLocaleLowerCase();
+  // Lead segment before a subtitle separator, e.g. "The Coldest Winter: America…"
+  // → "the coldest winter". Many EPUBs label every spine item with this.
+  const titleLead = bookTitle.split(/[:—–-]/)[0]?.trim().toLocaleLowerCase() ?? fullTitle;
+
+  return sections.map((section, index) => {
+    const raw = section.label?.trim() ?? "";
+    const normalized = raw.toLocaleLowerCase();
+    const previousNormalized =
+      index > 0 ? sections[index - 1].label?.trim().toLocaleLowerCase() ?? "" : "";
+    const isGeneric =
+      !raw ||
+      normalized === fullTitle ||
+      normalized === titleLead ||
+      normalized === previousNormalized;
+    return isGeneric ? `Section ${index + 1}` : raw;
+  });
+};

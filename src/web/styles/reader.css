@@ -1,0 +1,895 @@
+/* Reader surfaces and controls. */
+.reader-shell {
+  display: grid;
+  grid-template-columns: minmax(260px, 320px) minmax(0, 1fr);
+  gap: 24px;
+  align-items: start;
+  max-width: 1400px;
+  margin-left: auto;
+  margin-right: auto;
+  width: 100%;
+}
+
+.reader-sidebar,
+.reader-content {
+  min-width: 0;
+}
+
+.detail-danger-zone {
+  padding-top: 16px;
+  border-top: 1px solid var(--border-default);
+}
+
+.detail-danger-copy {
+  margin: 0;
+  max-width: 48ch;
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+.reader-sidebar {
+  position: sticky;
+  top: calc(var(--header-height) + 24px);
+}
+
+.reader-progress {
+  width: fit-content;
+}
+
+.reader-toc-eyebrow {
+  margin-top: 2px;
+}
+
+.reader-toc {
+  display: grid;
+  gap: 4px;
+  max-height: min(52vh, 520px);
+  overflow: auto;
+  padding-right: 2px;
+}
+
+.reader-toc-item {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 10px;
+  align-items: start;
+  width: 100%;
+  min-height: 44px;
+  height: auto;
+  padding: 10px 12px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--text-secondary);
+  text-align: left;
+  white-space: normal;
+  cursor: pointer;
+  transition: background-color 120ms ease, border-color 120ms ease, color 120ms ease;
+}
+
+.reader-toc-item:hover {
+  background: var(--bg-hover);
+  border-color: var(--border-hover);
+  color: var(--text-primary);
+}
+
+.reader-toc-item.active {
+  background: var(--accent-soft);
+  border-color: color-mix(in srgb, var(--accent) 24%, var(--border-default));
+  color: var(--text-primary);
+}
+
+.reader-toc-index {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-tertiary);
+  font-variant-numeric: tabular-nums;
+}
+
+.reader-toc-label {
+  min-width: 0;
+  font-size: 13px;
+  line-height: 1.4;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.reader-content {
+  display: grid;
+  gap: 18px;
+}
+
+.reader-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.reader-toolbar-nav,
+.reader-toolbar-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.reader-toolbar-status {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+  justify-items: center;
+}
+
+.reader-current-label {
+  min-width: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+  text-wrap: balance;
+}
+
+.reader-page-status {
+  font-size: 12px;
+  color: var(--text-tertiary);
+  font-variant-numeric: tabular-nums;
+}
+
+.reader-type-scale {
+  min-height: 28px;
+  padding-inline: 8px;
+}
+
+.reader-canvas {
+  --reader-paper: #faf6ef;
+  --reader-paper-edge: rgba(58, 44, 28, 0.09);
+  --reader-ink: #241d17;
+  --reader-muted: #7a6858;
+  --reader-link: #235ea4;
+  --reader-mark: #f4e6a1;
+  --reader-ground: #ece4d6;
+  --reader-paper-shadow: rgba(58, 44, 28, 0.16);
+  position: relative;
+  padding: clamp(24px, 5vw, 72px) clamp(16px, 3vw, 44px);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--reader-paper-edge);
+  background: var(--reader-ground);
+}
+
+.reader-canvas[data-reader-tone="sepia"] {
+  --reader-paper: #efe2c7;
+  --reader-paper-edge: rgba(109, 80, 32, 0.12);
+  --reader-ink: #312316;
+  --reader-muted: #8f7555;
+  --reader-link: #7b4b1d;
+  --reader-mark: #e8cf80;
+  --reader-ground: #ddcaa3;
+  --reader-paper-shadow: rgba(86, 60, 18, 0.16);
+}
+
+.reader-canvas[data-reader-tone="night"] {
+  --reader-paper: #191c20;
+  --reader-paper-edge: rgba(255, 255, 255, 0.08);
+  --reader-ink: #edf1f5;
+  --reader-muted: #9aa4b0;
+  --reader-link: #89bfff;
+  --reader-mark: rgba(239, 208, 100, 0.18);
+  --reader-ground: #0e1013;
+  --reader-paper-shadow: rgba(0, 0, 0, 0.5);
+}
+
+.reader-paper {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: clamp(28px, 5vw, 60px);
+  border-radius: 16px;
+  border: 1px solid var(--reader-paper-edge);
+  background: var(--reader-paper);
+  color: var(--reader-ink);
+  box-shadow:
+    0 10px 30px var(--reader-paper-shadow),
+    0 1px 3px color-mix(in srgb, var(--reader-paper-shadow) 60%, transparent);
+}
+
+.reader-loading {
+  min-height: 50vh;
+}
+
+.reader-page-window {
+  --reader-page-gap: clamp(32px, 4vw, 56px);
+  position: relative;
+  overflow: hidden;
+  height: min(72vh, 920px);
+  outline: none;
+  transition: opacity 160ms ease;
+  /* Horizontal gestures drive page turns; keep vertical for scrolling and
+     stop horizontal overscroll from triggering history navigation. */
+  touch-action: pan-y;
+  overscroll-behavior-x: contain;
+}
+
+/* Images must not start a native drag, or they'd swallow the page gesture. */
+.reader-page-window img {
+  -webkit-user-drag: none;
+}
+
+.reader-page-window-dragging {
+  cursor: grabbing;
+}
+
+.reader-page-window-dragging,
+.reader-page-window-dragging * {
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* Dim the held chapter only if the next one takes a moment to fetch — the
+   delay means quick swaps never flash the cue. */
+.reader-page-window-loading {
+  opacity: 0.55;
+  transition: opacity 200ms ease 160ms;
+}
+
+/* The reading viewport is focusable only so it can capture arrow-key page
+   turns — it's a region, not a control, and the page-turn affordances are
+   already visible. A focus ring around the whole text block reads as an
+   error, so suppress it. */
+.reader-page-window:focus,
+.reader-page-window:focus-visible {
+  outline: none;
+  box-shadow: none;
+}
+
+/* ─── Immersive reader (popped-out window) ─── */
+
+.reader-immersive {
+  --reader-immersive-bar-height: 48px;
+  --reader-immersive-panel-top: 52px;
+  --reader-paper: #faf6ef;
+  --reader-ink: #241d17;
+  --reader-muted: #7a6858;
+  --reader-edge-ink: rgba(36, 29, 23, 0.5);
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  /* The whole window is the page tone — no framing ground, so the reading
+     surface runs edge to edge. */
+  background: var(--reader-paper);
+}
+
+.reader-immersive[data-reader-tone="sepia"] {
+  --reader-paper: #efe2c7;
+  --reader-ink: #312316;
+  --reader-muted: #8f7555;
+  --reader-edge-ink: rgba(49, 35, 22, 0.5);
+}
+
+.reader-immersive[data-reader-tone="night"] {
+  --reader-paper: #191c20;
+  --reader-ink: #edf1f5;
+  --reader-muted: #9aa4b0;
+  --reader-edge-ink: rgba(237, 241, 245, 0.5);
+}
+
+.reader-immersive-bar {
+  position: relative;
+  z-index: 6;
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  height: var(--reader-immersive-bar-height);
+  padding: 0 14px;
+}
+
+.electron-shell .reader-immersive {
+  /* trafficLightPosition.y is the top inset of the native macOS buttons. The
+     rendered dots center around 29px from the top, so center this row there. */
+  --reader-immersive-bar-height: 58px;
+  --reader-immersive-panel-top: 58px;
+}
+
+.electron-shell .reader-immersive-bar {
+  -webkit-app-region: drag;
+  padding-left: 92px;
+}
+
+.reader-immersive-bar-group {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: 0 0 auto;
+}
+
+.reader-immersive-bar-trail {
+  margin-left: auto;
+}
+
+.reader-immersive-control {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 30px;
+  height: 30px;
+  padding: 0 8px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: color-mix(in srgb, var(--reader-ink) 75%, transparent);
+  cursor: pointer;
+  -webkit-app-region: no-drag;
+  transition: background-color 120ms ease, color 120ms ease, border-color 120ms ease;
+}
+
+.reader-immersive-control:hover,
+.reader-immersive-control.active {
+  background: color-mix(in srgb, var(--reader-ink) 10%, transparent);
+  color: var(--reader-ink);
+}
+
+.reader-immersive-control svg {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.reader-immersive-control-aa {
+  font-family: var(--font-serif);
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+.reader-immersive-title {
+  flex: 1 1 auto;
+  min-width: 0;
+  text-align: center;
+  font-family: var(--font-serif);
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--reader-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  -webkit-app-region: drag;
+}
+
+.reader-immersive-stage {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+
+.reader-canvas-immersive {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  padding: 0;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+}
+
+/* Full-bleed page: no floating card, no border/shadow/radius — the reading
+   margins come from the page's own padding, in the page tone. */
+.reader-canvas-immersive .reader-paper {
+  max-width: none;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  padding: clamp(20px, 3.2vh, 44px) clamp(28px, 6vw, 96px);
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+  background: transparent;
+}
+
+.reader-canvas-immersive .reader-page-window {
+  flex: 1;
+  height: auto;
+}
+
+.reader-canvas-immersive .reader-loading {
+  min-height: 0;
+  flex: 1;
+}
+
+/* In the popped-out reader, a page whose only content is a single image —
+   the cover, most notably — should grow to fill the page rather than sitting
+   small at the image's (often low-res) natural size. Stretch the lone figure
+   to the full page height and let the portrait image scale to match; width
+   never binds, so the aspect ratio is preserved. */
+.reader-canvas-immersive .reader-body-paginated > .reader-group:only-child:has(> .reader-figure:only-child > .reader-image) {
+  height: 100%;
+}
+
+.reader-canvas-immersive
+  .reader-body-paginated
+  > .reader-group:only-child
+  > .reader-figure:only-child {
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.reader-canvas-immersive
+  .reader-body-paginated
+  > .reader-group:only-child
+  > .reader-figure:only-child
+  > .reader-image {
+  height: 100%;
+  width: auto;
+  max-width: 100%;
+  max-height: 100%;
+}
+
+/* Edge page-turn affordances — quiet until you reach for them. */
+.reader-edge {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  z-index: 4;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: clamp(48px, 9vw, 120px);
+  border: none;
+  background: transparent;
+  color: var(--reader-edge-ink);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 140ms ease, color 140ms ease;
+}
+
+.reader-edge-prev {
+  left: 0;
+  justify-content: flex-start;
+  padding-left: 10px;
+}
+
+.reader-edge-next {
+  right: 0;
+  justify-content: flex-end;
+  padding-right: 10px;
+}
+
+.reader-immersive-stage:hover .reader-edge,
+.reader-edge:focus-visible {
+  opacity: 1;
+}
+
+/* The edge hit area spans the full window height, so the browser's default
+   focus ring reads as a stray box down the side. Suppress it; keyboard focus
+   is already signalled by the chevron fading in and inking up. */
+.reader-edge:focus,
+.reader-edge:focus-visible {
+  outline: none;
+}
+
+.reader-edge:hover,
+.reader-edge:focus-visible {
+  color: var(--reader-ink);
+}
+
+.reader-edge:disabled {
+  opacity: 0;
+  cursor: default;
+  pointer-events: none;
+}
+
+.reader-edge svg {
+  width: 26px;
+  height: 26px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.reader-immersive-footer {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 34px;
+}
+
+.reader-immersive-page {
+  font-size: 12px;
+  color: var(--reader-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.reader-immersive-error {
+  position: absolute;
+  left: 50%;
+  bottom: 44px;
+  transform: translateX(-50%);
+  z-index: 6;
+}
+
+/* Popovers */
+.reader-immersive-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 8;
+  border: none;
+  background: transparent;
+  cursor: default;
+}
+
+.reader-immersive-panel {
+  position: absolute;
+  top: var(--reader-immersive-panel-top);
+  z-index: 9;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  background: var(--bg-overlay);
+  box-shadow:
+    0 24px 60px rgba(0, 0, 0, 0.34),
+    0 4px 14px rgba(0, 0, 0, 0.2);
+  animation: reader-section-fade 140ms ease;
+}
+
+.reader-immersive-panel-contents {
+  left: 14px;
+  width: min(320px, calc(100vw - 28px));
+  max-height: calc(100vh - 80px);
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  overflow: hidden;
+}
+
+.reader-immersive-panel-contents .reader-toc {
+  max-height: none;
+  overflow: auto;
+}
+
+.reader-immersive-panel-head {
+  flex: 0 0 auto;
+}
+
+.reader-immersive-panel-title {
+  margin: 0;
+  font-family: var(--font-serif);
+  font-size: 16px;
+  font-weight: 500;
+  line-height: 1.25;
+  color: var(--text-primary);
+}
+
+.reader-immersive-panel-appearance {
+  right: 14px;
+  width: min(280px, calc(100vw - 28px));
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.reader-immersive-field {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.reader-immersive-field-label {
+  font-family: var(--font-serif);
+  font-size: var(--fs-sm);
+  font-weight: 500;
+  font-variant-caps: all-small-caps;
+  letter-spacing: 0.06em;
+  color: var(--text-tertiary);
+}
+
+.reader-immersive-field .view-toggle {
+  width: 100%;
+}
+
+.reader-immersive-field .view-toggle-button {
+  flex: 1;
+  justify-content: center;
+}
+
+/* Font picker: a fixed, comfortable width in the docked toolbar; full-width
+   inside the immersive appearance panel. */
+.reader-font-trigger {
+  min-height: 36px;
+  width: 9.5rem;
+  justify-content: space-between;
+  background: var(--bg-surface);
+}
+
+.reader-immersive-field .reader-font-trigger {
+  width: 100%;
+}
+
+.reader-body {
+  color: var(--reader-ink);
+  font-family: var(
+    --reader-font-family,
+    "Iowan Old Style",
+    "Palatino Linotype",
+    "Book Antiqua",
+    Georgia,
+    serif
+  );
+  font-size: calc(1.06rem * var(--reader-font-scale, 1));
+  line-height: var(--reader-line-height, 1.5);
+  letter-spacing: 0.01em;
+  text-rendering: optimizeLegibility;
+  font-kerning: normal;
+}
+
+.reader-body-paginated {
+  height: 100%;
+  margin: 0;
+  width: 100%;
+  column-width: var(--reader-page-width, 40rem);
+  column-gap: var(--reader-page-gap);
+  column-fill: auto;
+  transition: transform 180ms ease;
+  will-change: transform;
+  /* Keyed by section href, so this runs once per chapter change (a gentle
+     cross-fade) and never replays on in-section page turns. */
+  animation: reader-section-fade 180ms ease;
+}
+
+@keyframes reader-section-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.reader-body ::selection {
+  background: color-mix(in srgb, var(--reader-mark) 75%, transparent);
+}
+
+.reader-body :is(h1, h2, h3, h4, h5, h6, [id]) {
+  scroll-margin-top: 88px;
+}
+
+/* Intrinsic vertical rhythm. EPUBs frequently nest paragraphs inside
+   <div>/<section> wrappers, so a direct-child sibling combinator
+   (`> * + *`) silently drops the spacing. Descendant `:is()` rules reach
+   blocks at any depth and keep paragraph spacing consistent. */
+.reader-body :is(p, blockquote, figure, pre, .reader-table-wrap) {
+  margin: 0 0 1.15em;
+}
+
+.reader-body :is(ul, ol) {
+  margin: 0 0 1.15em;
+  padding-left: 1.35em;
+}
+
+.reader-body > :first-child,
+.reader-group > :first-child,
+.reader-blockquote > :first-child,
+.reader-figure > :first-child,
+.reader-list-item > :first-child {
+  margin-top: 0;
+}
+
+/* Scoped under .reader-body so these win over the global `.page h2`
+   rule (the reader renders inside a `.page` wrapper). */
+.reader-body .reader-heading {
+  margin: 1.7em 0 0.55em;
+  color: var(--reader-ink);
+  font-family: var(
+    --reader-font-family,
+    "Iowan Old Style",
+    "Palatino Linotype",
+    "Book Antiqua",
+    Georgia,
+    serif
+  );
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  line-height: 1.18;
+  text-wrap: balance;
+  break-after: avoid;
+}
+
+/* EPUBs often wrap heading text in an anchor (for TOC targets). Those
+   anchors otherwise inherit the body link color and make headings look
+   like hyperlinks — force them back to the ink color. */
+.reader-body .reader-heading :is(a, .reader-link) {
+  color: inherit;
+  text-decoration: none;
+}
+
+.reader-body .reader-heading-h1,
+.reader-body .reader-heading-h2 {
+  font-size: clamp(1.9rem, 2.7vw, 2.6rem);
+}
+
+.reader-body .reader-heading-h3 {
+  font-size: clamp(1.45rem, 2.2vw, 1.8rem);
+}
+
+.reader-body .reader-heading-h4,
+.reader-body .reader-heading-h5,
+.reader-body .reader-heading-h6 {
+  font-size: clamp(1.1rem, 1.7vw, 1.3rem);
+}
+
+.reader-paragraph {
+  color: var(--reader-ink);
+  overflow-wrap: anywhere;
+  text-wrap: pretty;
+}
+
+.reader-blockquote {
+  margin: 0;
+  padding: 18px 22px;
+  border-left: 3px solid color-mix(in srgb, var(--reader-link) 30%, transparent);
+  border-radius: 18px;
+  background: color-mix(in srgb, var(--reader-paper-edge) 35%, transparent);
+  color: color-mix(in srgb, var(--reader-ink) 85%, var(--reader-muted));
+  break-inside: avoid;
+}
+
+.reader-figure {
+  margin: 0;
+  display: grid;
+  gap: 10px;
+  break-inside: avoid;
+}
+
+.reader-image {
+  width: auto;
+  max-width: 100%;
+  max-height: min(60vh, 680px);
+  margin: 0 auto;
+  border-radius: 18px;
+  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.16);
+}
+
+.reader-inline-image {
+  display: inline-block;
+  max-width: 100%;
+  vertical-align: middle;
+}
+
+.reader-figcaption {
+  color: var(--reader-muted);
+  font-size: 0.92em;
+  line-height: 1.6;
+  text-align: center;
+}
+
+.reader-divider {
+  height: 1px;
+  margin: 2.2em auto;
+  border: 0;
+  width: min(120px, 32%);
+  background: color-mix(in srgb, var(--reader-paper-edge) 75%, transparent);
+}
+
+.reader-list {
+  margin: 0;
+  padding-left: 1.35em;
+}
+
+.reader-list-item + .reader-list-item {
+  margin-top: 0.5em;
+}
+
+.reader-list-item > .reader-group > * + * {
+  margin-top: 0.5em;
+}
+
+.reader-pre {
+  margin: 0;
+  overflow-x: auto;
+  padding: 18px 20px;
+  border-radius: 18px;
+  background: color-mix(in srgb, var(--reader-paper-edge) 35%, transparent);
+  color: var(--reader-ink);
+  font-family: "SF Mono", "Fira Code", "Cascadia Code", monospace;
+  font-size: 0.9em;
+  line-height: 1.65;
+  break-inside: avoid;
+}
+
+.reader-inline-code {
+  padding: 0.12em 0.45em;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--reader-paper-edge) 40%, transparent);
+  font-family: "SF Mono", "Fira Code", "Cascadia Code", monospace;
+  font-size: 0.88em;
+}
+
+.reader-table-wrap {
+  overflow-x: auto;
+  border-radius: 18px;
+  border: 1px solid color-mix(in srgb, var(--reader-paper-edge) 75%, transparent);
+  background: color-mix(in srgb, var(--reader-paper-edge) 20%, transparent);
+  break-inside: avoid;
+}
+
+.reader-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.95em;
+}
+
+.reader-table th,
+.reader-table td {
+  padding: 10px 12px;
+  border-bottom: 1px solid color-mix(in srgb, var(--reader-paper-edge) 75%, transparent);
+  text-align: left;
+  vertical-align: top;
+}
+
+.reader-table th {
+  color: var(--reader-muted);
+  font-weight: 600;
+}
+
+.reader-link {
+  color: var(--reader-link);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.16em;
+}
+
+.reader-link:hover {
+  color: color-mix(in srgb, var(--reader-link) 80%, var(--reader-ink));
+}
+
+.reader-mark {
+  padding: 0 0.14em;
+  border-radius: 0.2em;
+  background: var(--reader-mark);
+}
+
+.detail-author {
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+.eyebrow {
+  margin: 0;
+  font-family: var(--font-serif);
+  font-size: var(--fs-sm);
+  font-weight: 500;
+  letter-spacing: var(--tracking-wide);
+  font-variant-caps: all-small-caps;
+  color: var(--text-tertiary);
+}
+
+.lede {
+  margin: 0;
+  max-width: 60ch;
+  color: var(--text-secondary);
+  line-height: 1.6;
+  font-size: 13px;
+}
+
+.page h2 {
+  margin: 0;
+  font-family: var(--font-serif);
+  font-optical-sizing: auto;
+  font-size: var(--fs-xl);
+  font-weight: 500;
+  line-height: var(--lh-snug);
+  letter-spacing: var(--tracking-snug);
+  color: var(--text-primary);
+}
+

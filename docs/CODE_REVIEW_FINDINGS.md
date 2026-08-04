@@ -15,7 +15,7 @@ roughly ordered by consequence within each section.
 
 🟢 fixed  ·  🟡 open  ·  ⚪ no action needed
 
-**14 of 26 resolved** — 13 fixed, 1 that turned out not to need fixing. 12 open.
+**17 of 26 resolved** — 16 fixed, 1 that turned out not to need fixing. 9 open.
 
 | # | Finding | Status |
 |---|---|---|
@@ -40,7 +40,7 @@ roughly ordered by consequence within each section.
 | 19 | No CSP; dead Google Fonts preconnect | 🟢 Fixed |
 | 20 | Database recovery is silent to the user | 🟡 Open |
 | 21 | No cross-process locking | 🟡 Open |
-| 22 | `App.tsx` is 6,648 lines | 🟡 Open |
+| 22 | `App.tsx` is 6,648 lines | 🟢 Fixed |
 | 23 | `routeError` duplicated 3×; `GET /` handlers unguarded | 🟢 Fixed — `da165f3` |
 | 24 | Two sources of schema truth | 🟡 Open |
 | 25 | Thin test coverage, no linter | 🟡 Open |
@@ -322,18 +322,26 @@ are self-hosted through `@fontsource-variable`.
 
 ## Structure and maintainability
 
-### 🟡 22. `App.tsx` is 6,648 lines
+### 🟢 22. `App.tsx` was 6,648 lines — fixed
 
-It holds 5 page components (`ReaderPage` alone is ~1,350 lines), ~30 inline SVG icon
-components, 83 `useState`s, 53 `useEffect`s, and all the formatting and storage helpers.
-Everything typechecks and the comments explaining the reader-pagination invariants are
-genuinely good — but this file is the main tax on future work.
+`src/web/App.tsx` is now a 32-line provider and route composition module. The five route
+components live under `src/web/pages/`; application shell, bookshelf, book, modal, menu,
+skeleton, onboarding, icon, and reader-appearance components live under
+`src/web/components/`. Theme, toast, media-query, debounce, file-drop, and document-title
+behavior moved to focused hooks, while storage, formatting, navigation, import, status,
+and reader helpers live under `src/web/lib/`.
 
-Natural seams: `icons.tsx`; `lib/storage.ts` for the localStorage getters/setters;
-`lib/format.ts` for the `Intl` helpers; `hooks/` for `useTheme`, `useToast`,
-`useMediaQuery`, `useFileDropTarget`, `useDocumentTitle`; then one file per page.
+`ReaderPage.tsx` remains intentionally cohesive around pagination: section loading, DOM
+measurement, frozen offsets, gestures, keyboard navigation, progress persistence, and the
+comments documenting their invariants stay together. Its reusable appearance controls and
+pure markup helpers were extracted.
 
-`src/web/styles.css` at 5,236 lines wants the same treatment.
+`src/web/styles.css` is now a 23-line ordered import manifest. The original rules are split
+across ownership-based files under `src/web/styles/`, with cascade order and the final
+responsive override layer preserved.
+
+The refactor passed TypeScript checking, the production build, all 91 tests, and browser
+smoke checks covering the bookshelf, book detail, reader, settings, and bookshelves routes.
 
 ### 🟢 23. `routeError` duplicated 3×; `GET /` handlers unguarded — fixed in `da165f3`
 
@@ -396,9 +404,7 @@ same-origin — and it silently breaks if Vite falls back off `WEB_PORT`.
 
 1. **20** — surface database recovery to the user. Needs a UX decision first.
 2. **24 → 6/7** — settle the schema question, then spike and swap the SQLite driver.
-3. **18** — mask the SMTP password on read. Small, and needs a "leave blank to keep" flow.
-4. **22** — the `App.tsx` split, once nothing else is in flight over it.
-5. **15, 16, 17** — the scale items, once a library large enough to need them exists.
+3. **16, 17** — the remaining scale items, once a library large enough to need them exists.
 
 Ordering note: prefer consequence over cheapness. An earlier revision of this list put the
 cheap correctness batch ahead of finding 5 on the grounds that the driver swap would soon
