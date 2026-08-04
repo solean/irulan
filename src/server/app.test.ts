@@ -3,6 +3,8 @@ import os from "node:os";
 import path from "node:path";
 
 import { afterAll, beforeEach, describe, expect, test } from "bun:test";
+import JSZip from "jszip";
+
 
 const testDirectory = mkdtempSync(path.join(os.tmpdir(), "irulan-app-tests-"));
 const publicDirectory = path.join(testDirectory, "public");
@@ -53,6 +55,33 @@ const json = (payload: unknown): RequestInit => ({
   headers: { "Content-Type": "application/json" },
   body: JSON.stringify(payload),
 });
+const buildImportEpub = async () => {
+  const zip = new JSZip();
+  zip.file("mimetype", "application/epub+zip");
+  zip.file(
+    "META-INF/container.xml",
+    `<?xml version="1.0"?>
+<container xmlns="urn:oasis:names:tc:opendocument:xmlns:container">
+  <rootfiles>
+    <rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/>
+  </rootfiles>
+</container>`,
+  );
+  zip.file(
+    "OEBPS/content.opf",
+    `<?xml version="1.0"?>
+<package xmlns="http://www.idpf.org/2007/opf">
+  <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
+    <dc:title>Concurrent Book</dc:title>
+    <dc:creator>Test Author</dc:creator>
+  </metadata>
+  <manifest/>
+  <spine/>
+</package>`,
+  );
+  return zip.generateAsync({ type: "arraybuffer" });
+};
+
 
 type TestGlobal = typeof globalThis & {
   irulanSafeStorage?: {
@@ -476,5 +505,45 @@ describe("malformed asset paths (finding 11)", () => {
 
     expect(response.status).toBe(404);
     expect(response.body).not.toContain("root:");
+  });
+});
+
+describe("bounded streaming book imports (finding 17)", () => {
+  test("rejects an oversized request before parsing multipart data", async () => {
+    const response = await request("/api/books/import", {
+      method: "POST",
+      headers: {
+        "Content-Length": String(Number.MAX_SAFE_INTEGER),
+        "Content-Type": "multipart/form-data; boundary=oversized",
+      },
+      body: "--oversized--",
+    });
+
+    expect(response.status).toBe(413);
+    expect(response.contentType).toContain("application/json");
+    expect(response.json()).toEqual({ error: "The import request is too large." });
+  });
+
+  test("returns a duplicate result when identical imports overlap", async () => {
+    const epub = await buildImportEpub();
+    const importRequest = () => {
+      const form = new FormData();
+      form.append("files", new File([epub], "same.epub", { type: "application/epub+zip" }));
+      return request("/api/books/import?bookshelfId=shelf-1", {
+        method: "POST",
+        body: form,
+      });
+    };
+
+    const responses = await Promise.all([importRequest(), importRequest()]);
+    expect(responses.map((response) => response.status)).toEqual([200, 200]);
+
+    const statuses = responses
+      .flatMap((response) => response.json()?.results as Array<{ status: string }>)
+      .map((result) => result.status)
+      .sort();
+    expect(statuses).toEqual(["duplicate", "imported"]);
+    expect(client.db.select().from(schema.books).all()).toHaveLength(1);
+    expect(client.db.select().from(schema.bookShelves).all()).toHaveLength(1);
   });
 });

@@ -1,7 +1,9 @@
 import { createHash, randomUUID } from "node:crypto";
-import { createReadStream } from "node:fs";
-import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
+import { createWriteStream } from "node:fs";
+import { mkdir, rename, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { Transform, type Readable } from "node:stream";
+import { pipeline } from "node:stream/promises";
 
 import { and, asc, count, desc, eq, or, sql, type SQL } from "drizzle-orm";
 import type { SQLiteColumn } from "drizzle-orm/sqlite-core";
@@ -41,17 +43,61 @@ type PreparedBookReader = Awaited<ReturnType<typeof prepareEpubReader>>;
 
 const preparedReaderRequests = new Map<string, Promise<PreparedBookReader>>();
 
+export const MAX_EPUB_FILE_BYTES = 200 * 1024 * 1024;
+
+export type StagedBookFile = {
+  bookId: string;
+  fileHash: string;
+  filePath: string;
+  fileSizeBytes: number;
+  sourceFilename: string;
+};
+
 const fallbackTitle = (filename: string) =>
   path.basename(filename, path.extname(filename)).replace(/[_-]+/g, " ").trim();
 
-const hashStoredFile = async (filePath: string) => {
+export const discardStagedBookFile = async (file: StagedBookFile) => {
+  await rm(bookDirectory(file.bookId), { recursive: true, force: true });
+};
+
+export const stageBookFile = async (
+  source: Readable & { truncated?: boolean },
+  sourceFilename: string,
+): Promise<StagedBookFile> => {
+  const bookId = randomUUID();
+  const targetDir = bookDirectory(bookId);
+  const filePath = path.join(targetDir, "original.epub");
   const hash = createHash("sha256");
+  let fileSizeBytes = 0;
 
-  for await (const chunk of createReadStream(filePath)) {
-    hash.update(chunk);
+  await mkdir(targetDir, { recursive: true });
+
+  try {
+    const meter = new Transform({
+      transform(chunk: Buffer, _encoding, callback) {
+        fileSizeBytes += chunk.length;
+        hash.update(chunk);
+        callback(null, chunk);
+      },
+    });
+
+    await pipeline(source, meter, createWriteStream(filePath, { flags: "wx" }));
+    if (source.truncated || fileSizeBytes > MAX_EPUB_FILE_BYTES) {
+      throw new AppError(413, `EPUB files must be ${MAX_EPUB_FILE_BYTES / (1024 * 1024)} MB or smaller.`);
+    }
+
+    return {
+      bookId,
+      fileHash: hash.digest("hex"),
+      filePath,
+      fileSizeBytes,
+      sourceFilename,
+    };
+  } catch (error) {
+    await rm(targetDir, { recursive: true, force: true });
+    if (error instanceof AppError) throw error;
+    throw new AppError(500, "The EPUB upload could not be saved.");
   }
-
-  return hash.digest("hex");
 };
 
 const resolveImportBookshelves = (bookshelfIds?: string | string[] | null) => {
@@ -399,45 +445,43 @@ export const deleteBook = async (bookId: string): Promise<DeleteBookResult> => {
 };
 
 export const importBookFile = async (
-  file: File,
+  file: StagedBookFile,
   bookshelfIds?: string | string[] | null,
 ): Promise<ImportResult> => {
   const targetBookshelves = resolveImportBookshelves(bookshelfIds);
   const targetBookshelfNames = targetBookshelves.map((bookshelf) => bookshelf.name);
+  const { bookId, fileHash, filePath, fileSizeBytes, sourceFilename } = file;
+  const targetDir = bookDirectory(bookId);
 
-  if (!file.name.toLowerCase().endsWith(".epub")) {
+  if (!sourceFilename.toLowerCase().endsWith(".epub")) {
+    await discardStagedBookFile(file);
     return {
       status: "failed",
-      message: `${file.name} is not an EPUB file.`,
+      message: `${sourceFilename} is not an EPUB file.`,
     };
   }
 
-  const bookId = randomUUID();
-  const targetDir = bookDirectory(bookId);
-  const sourceFilename = file.name;
-  const filePath = path.join(targetDir, "original.epub");
+  const duplicateResult = async (existing: BookRecord): Promise<ImportResult> => {
+    for (const bookshelf of targetBookshelves) {
+      addBookToBookshelf(existing.id, bookshelf.id);
+    }
+    await discardStagedBookFile(file);
+    return {
+      status: "duplicate",
+      message: `${sourceFilename} is already in your library and is now on ${formatBookshelfList(targetBookshelfNames)}.`,
+      book: serializeBook(existing),
+    };
+  };
+
   let coverPath: string | null = null;
 
-  await mkdir(targetDir, { recursive: true });
-
   try {
-    await writeFile(filePath, Buffer.from(await file.arrayBuffer()));
-
-    const fileHash = await hashStoredFile(filePath);
     const existing = db.select().from(books).where(eq(books.fileHash, fileHash)).get();
     if (existing) {
-      for (const bookshelf of targetBookshelves) {
-        addBookToBookshelf(existing.id, bookshelf.id);
-      }
-      await rm(targetDir, { recursive: true, force: true });
-      return {
-        status: "duplicate",
-        message: `${file.name} is already in your library and is now on ${formatBookshelfList(targetBookshelfNames)}.`,
-        book: serializeBook(existing),
-      };
+      return await duplicateResult(existing);
     }
 
-    const metadata = await extractEpubMetadata(await readFile(filePath));
+    const metadata = await extractEpubMetadata(filePath);
     const title = metadata.title ?? (fallbackTitle(sourceFilename) || "Untitled Book");
     const author = metadata.author ?? "Unknown Author";
 
@@ -457,19 +501,25 @@ export const importBookFile = async (
         coverPath,
         fileHash,
         sourceFilename,
-        fileSizeBytes: file.size,
+        fileSizeBytes,
         importedAt,
       })
+      .onConflictDoNothing({ target: books.fileHash })
       .run();
+
+    const created = db.select().from(books).where(eq(books.id, bookId)).get();
+    if (!created) {
+      const duplicate = db.select().from(books).where(eq(books.fileHash, fileHash)).get();
+      if (duplicate) {
+        return await duplicateResult(duplicate);
+      }
+      throw new AppError(500, "The book could not be recorded.");
+    }
+
     for (const bookshelf of targetBookshelves) {
       addBookToBookshelf(bookId, bookshelf.id);
     }
     persistDatabase();
-
-    const created = db.select().from(books).where(eq(books.id, bookId)).get();
-    if (!created) {
-      throw new AppError(500, "The book was imported but could not be reloaded.");
-    }
 
     return {
       status: "imported",

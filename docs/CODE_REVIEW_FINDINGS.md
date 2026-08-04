@@ -35,7 +35,7 @@ roughly ordered by consequence within each section.
 | 14 | `parseNumber` treats empty env var as 0 | 🟢 Fixed — `b9fb5f3` |
 | 15 | No pagination or virtualization | 🟢 Fixed |
 | 16 | Reader extracts the full zip to disk | 🟡 Open |
-| 17 | Imports buffer in memory, no size cap | 🟡 Open |
+| 17 | Imports buffer in memory, no size cap | 🟢 Fixed |
 | 18 | SMTP password round-trips to the browser | 🟢 Fixed |
 | 19 | No CSP; dead Google Fonts preconnect | 🟢 Fixed |
 | 20 | Database recovery is silent to the user | 🟡 Open |
@@ -236,17 +236,17 @@ names the escape character explicitly.
 duplicated inline parsing for `PORT` never did; port 0 stays legal because the Electron
 shell sets it deliberately to get a free port.
 
-### 🟡 17. Imports buffer in memory, twice, with no size cap
+### 🟢 17. Imports buffered in memory with no size cap — fixed
 
-`src/server/services/books.ts:277` holds the whole EPUB via `await file.arrayBuffer()`,
-then `:293` reads it back in full to parse metadata, and `hashStoredFile` streams it a
-third time. There is no max upload size on the route, so a large drop can OOM the server.
+The import route now parses multipart uploads as streams, enforces a 200 MB per-file cap,
+a 1 GB request cap, and a 20-file limit, and hashes each EPUB while writing it to its final
+storage path. Metadata parsing uses file-backed ZIP access and reads only bounded container,
+package, and cover entries instead of loading the complete archive into memory.
 
-Stream to disk once, then hash and parse from the file.
-
-Related: two concurrent imports of the same file can both pass the `fileHash` check at
-`:280`; the loser hits the UNIQUE constraint and surfaces as a generic 500 rather than the
-"duplicate" result.
+The hash lookup remains as a fast duplicate check, but the unique `file_hash` constraint is
+now the final arbiter. A concurrent losing insert resolves the winning row, applies the
+requested bookshelf assignments, removes its staged directory, and returns the normal
+`duplicate` result.
 
 ---
 

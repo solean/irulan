@@ -3,6 +3,7 @@ import path from "node:path";
 
 import { XMLParser } from "fast-xml-parser";
 import JSZip from "jszip";
+import { openPromise, type Entry, type ZipFile } from "yauzl";
 
 import type { BookReaderSection } from "../../shared/types";
 import { AppError } from "../errors";
@@ -51,6 +52,10 @@ type ParsedEpub = {
 };
 
 const MANIFEST_FILENAME = "manifest.json";
+const MAX_EPUB_ENTRIES = 10_000;
+const MAX_EPUB_XML_BYTES = 5 * 1024 * 1024;
+const MAX_EPUB_COVER_BYTES = 50 * 1024 * 1024;
+
 
 const parser = new XMLParser({
   ignoreAttributes: false,
@@ -119,6 +124,21 @@ const extensionFromManifest = (item: ManifestItem) => {
       return null;
   }
 };
+const selectCoverItem = (manifestItems: ManifestItem[], metaItems: MetaItem[]) => {
+  const coverId = metaItems.find((item) => item["@_name"] === "cover")?.["@_content"] ?? null;
+
+  return (
+    manifestItems.find((item) => item["@_properties"]?.includes("cover-image")) ??
+    manifestItems.find((item) => item["@_id"] === coverId) ??
+    manifestItems.find(
+      (item) =>
+        item["@_media-type"]?.startsWith("image/") &&
+        item["@_href"]?.toLowerCase().includes("cover"),
+    ) ??
+    null
+  );
+};
+
 
 const resolveRelativeZipPath = (basePath: string, href: string) =>
   path.posix.normalize(path.posix.join(path.posix.dirname(basePath), href));
@@ -139,6 +159,37 @@ const prettifySectionLabel = (value: string) =>
     .replace(/\s+/g, " ")
     .trim()
     .replace(/^\w/, (character) => character.toUpperCase());
+
+const parsePackage = (opfXml: string, opfPath: string): Omit<ParsedEpub, "zip" | "opfPath"> => {
+  const opf = parser.parse(opfXml);
+  const metadata = opf.package?.metadata ?? {};
+  const manifestItems = asArray<ManifestItem>(opf.package?.manifest?.item);
+  const metaItems = asArray<MetaItem>(metadata.meta);
+  const spineItems = asArray<SpineItemRef>(opf.package?.spine?.itemref);
+  const manifestById = new Map(
+    manifestItems
+      .filter((item): item is ManifestItem & { "@_id": string } => typeof item["@_id"] === "string")
+      .map((item) => [item["@_id"], item]),
+  );
+  const navItem =
+    manifestItems.find((item) => item["@_properties"]?.split(/\s+/).includes("nav")) ?? null;
+  const ncxId = asText(opf.package?.spine?.["@_toc"]);
+  const ncxItem =
+    (ncxId ? manifestById.get(ncxId) : null) ??
+    manifestItems.find((item) => item["@_media-type"] === "application/x-dtbncx+xml") ??
+    null;
+
+  return {
+    title: asText(metadata.title),
+    author: asText(asArray(metadata.creator)[0]),
+    manifestItems,
+    manifestById,
+    metaItems,
+    spineItems,
+    navPath: navItem?.["@_href"] ? resolveRelativeZipPath(opfPath, navItem["@_href"]) : null,
+    ncxPath: ncxItem?.["@_href"] ? resolveRelativeZipPath(opfPath, ncxItem["@_href"]) : null,
+  };
+};
 
 const parseEpub = async (fileBytes: Uint8Array): Promise<ParsedEpub> => {
   let zip: JSZip;
@@ -167,36 +218,10 @@ const parseEpub = async (fileBytes: Uint8Array): Promise<ParsedEpub> => {
     throw new AppError(400, "The EPUB package file is missing.");
   }
 
-  const opf = parser.parse(opfXml);
-  const metadata = opf.package?.metadata ?? {};
-  const manifestItems = asArray<ManifestItem>(opf.package?.manifest?.item);
-  const metaItems = asArray<MetaItem>(metadata.meta);
-  const spineItems = asArray<SpineItemRef>(opf.package?.spine?.itemref);
-  const manifestById = new Map(
-    manifestItems
-      .filter((item): item is ManifestItem & { "@_id": string } => typeof item["@_id"] === "string")
-      .map((item) => [item["@_id"], item]),
-  );
-
-  const navItem =
-    manifestItems.find((item) => item["@_properties"]?.split(/\s+/).includes("nav")) ?? null;
-  const ncxId = asText(opf.package?.spine?.["@_toc"]);
-  const ncxItem =
-    (ncxId ? manifestById.get(ncxId) : null) ??
-    manifestItems.find((item) => item["@_media-type"] === "application/x-dtbncx+xml") ??
-    null;
-
   return {
     zip,
     opfPath,
-    title: asText(metadata.title),
-    author: asText(asArray(metadata.creator)[0]),
-    manifestItems,
-    manifestById,
-    metaItems,
-    spineItems,
-    navPath: navItem?.["@_href"] ? resolveRelativeZipPath(opfPath, navItem["@_href"]) : null,
-    ncxPath: ncxItem?.["@_href"] ? resolveRelativeZipPath(opfPath, ncxItem["@_href"]) : null,
+    ...parsePackage(opfXml, opfPath),
   };
 };
 
@@ -396,51 +421,126 @@ const readCachedReaderManifest = async (readerDir: string): Promise<ReaderManife
   return null;
 };
 
-export const extractEpubMetadata = async (
-  fileBytes: Uint8Array,
-): Promise<ExtractedEpub> => {
-  const parsed = await parseEpub(fileBytes);
+const indexZipEntries = async (zip: ZipFile) => {
+  const entries = new Map<string, Entry>();
+  let entryCount = 0;
 
-  const coverId =
-    parsed.metaItems.find((item) => item["@_name"] === "cover")?.["@_content"] ?? null;
+  for await (const entry of zip.eachEntry()) {
+    entryCount += 1;
+    if (entryCount > MAX_EPUB_ENTRIES) {
+      throw new AppError(400, `The EPUB contains more than ${MAX_EPUB_ENTRIES} entries.`);
+    }
 
-  const coverItem =
-    parsed.manifestItems.find((item) => item["@_properties"]?.includes("cover-image")) ??
-    parsed.manifestItems.find((item) => item["@_id"] === coverId) ??
-    parsed.manifestItems.find(
-      (item) =>
-        item["@_media-type"]?.startsWith("image/") &&
-        item["@_href"]?.toLowerCase().includes("cover"),
-    ) ??
-    null;
+    const entryPath = normalizeZipPath(entry.fileName);
+    if (!entries.has(entryPath)) {
+      entries.set(entryPath, entry);
+    }
+  }
 
-  if (!coverItem?.["@_href"]) {
+  return entries;
+};
+
+const readZipEntry = async (
+  zip: ZipFile,
+  entry: Entry,
+  maxBytes: number,
+  description: string,
+) => {
+  if (entry.uncompressedSize > maxBytes) {
+    throw new AppError(400, `The EPUB ${description} is too large.`);
+  }
+
+  const stream = await zip.openReadStreamPromise(entry);
+  const chunks: Buffer[] = [];
+  let byteLength = 0;
+
+  for await (const chunk of stream) {
+    const bytes = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+    byteLength += bytes.length;
+    if (byteLength > maxBytes) {
+      stream.destroy();
+      throw new AppError(400, `The EPUB ${description} is too large.`);
+    }
+    chunks.push(bytes);
+  }
+
+  return Buffer.concat(chunks, byteLength);
+};
+
+export const extractEpubMetadata = async (filePath: string): Promise<ExtractedEpub> => {
+  let zip: ZipFile;
+
+  try {
+    zip = await openPromise(filePath, {
+      autoClose: false,
+      lazyEntries: true,
+      validateEntrySizes: true,
+    });
+  } catch {
+    throw new AppError(400, "This file is not a valid EPUB archive.");
+  }
+
+  try {
+    const entries = await indexZipEntries(zip);
+    const containerEntry = entries.get("META-INF/container.xml");
+    if (!containerEntry) {
+      throw new AppError(400, "The EPUB is missing META-INF/container.xml.");
+    }
+
+    const containerXml = (
+      await readZipEntry(zip, containerEntry, MAX_EPUB_XML_BYTES, "container document")
+    ).toString("utf8");
+    const container = parser.parse(containerXml);
+    const rootFile = asArray(container.container?.rootfiles?.rootfile)[0];
+    const opfPath = rootFile?.["@_full-path"];
+    if (!opfPath || typeof opfPath !== "string") {
+      throw new AppError(400, "The EPUB package file could not be located.");
+    }
+
+    const opfEntry = entries.get(normalizeZipPath(opfPath));
+    if (!opfEntry) {
+      throw new AppError(400, "The EPUB package file is missing.");
+    }
+
+    const opfXml = (
+      await readZipEntry(zip, opfEntry, MAX_EPUB_XML_BYTES, "package document")
+    ).toString("utf8");
+    const parsed = parsePackage(opfXml, opfPath);
+    const coverItem = selectCoverItem(parsed.manifestItems, parsed.metaItems);
+    if (!coverItem?.["@_href"]) {
+      return {
+        title: parsed.title,
+        author: parsed.author,
+        coverBuffer: null,
+        coverExtension: null,
+      };
+    }
+
+    const coverZipPath = normalizeZipPath(
+      resolveRelativeZipPath(opfPath, coverItem["@_href"]),
+    );
+    const coverEntry = entries.get(coverZipPath);
+    if (!coverEntry) {
+      return {
+        title: parsed.title,
+        author: parsed.author,
+        coverBuffer: null,
+        coverExtension: null,
+      };
+    }
+
     return {
       title: parsed.title,
       author: parsed.author,
-      coverBuffer: null,
-      coverExtension: null,
+      coverBuffer: await readZipEntry(zip, coverEntry, MAX_EPUB_COVER_BYTES, "cover image"),
+      coverExtension: extensionFromManifest(coverItem),
     };
+  } catch (error) {
+    if (error instanceof AppError) throw error;
+    throw new AppError(400, "This file is not a valid EPUB archive.");
+  } finally {
+    zip.close();
   }
-
-  const coverZipPath = resolveRelativeZipPath(parsed.opfPath, coverItem["@_href"]);
-  const coverFile = parsed.zip.file(coverZipPath);
-
-  if (!coverFile) {
-    return {
-      title: parsed.title,
-      author: parsed.author,
-      coverBuffer: null,
-      coverExtension: null,
-    };
-  }
-
-  return {
-    title: parsed.title,
-    author: parsed.author,
-    coverBuffer: await coverFile.async("uint8array"),
-    coverExtension: extensionFromManifest(coverItem),
-  };
 };
 
 export const prepareEpubReader = async (
