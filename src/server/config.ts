@@ -10,8 +10,7 @@ const resolveFromRoot = (value: string | undefined, fallback: string) =>
  * Read a numeric setting from the environment.
  *
  * A blank value means "not set". `Number("")` is 0, not NaN, so a bare `PORT=`
- * in .env used to bind a random port and `WEB_PORT=` produced a localhost:0
- * CORS origin instead of falling back.
+ * in .env used to bind a random port instead of falling back.
  *
  * Exported for tests: this module reads the environment once at import, so the
  * parsing rules cannot be exercised through `appConfig`.
@@ -41,7 +40,6 @@ export const parsePort = (value: string | undefined, fallback: number, label: st
 };
 
 const port = parsePort(env.PORT, 8787, "PORT");
-const webPort = parsePort(env.WEB_PORT, 5173, "WEB_PORT");
 const smtpPort = parsePort(env.SMTP_PORT, 587, "SMTP_PORT");
 const serverIdleTimeout = parseNumber(
   env.SERVER_IDLE_TIMEOUT_SECONDS,
@@ -61,9 +59,7 @@ export const appConfig = {
   isProduction: (env.NODE_ENV ?? "development") === "production",
   rootDir,
   port,
-  webPort,
   serverIdleTimeout,
-  webOrigins: [`http://localhost:${webPort}`, `http://127.0.0.1:${webPort}`],
   dataDir: resolveFromRoot(env.EBOOK_DATA_DIR, "./data"),
   storageDir: resolveFromRoot(env.EBOOK_STORAGE_DIR, "./storage"),
   publicDir: path.resolve(env.IRULAN_PUBLIC_DIR ?? path.join(rootDir, "dist/client")),

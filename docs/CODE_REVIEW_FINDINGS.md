@@ -15,7 +15,7 @@ roughly ordered by consequence within each section.
 
 🟢 fixed  ·  🟡 open  ·  ⚪ no action needed
 
-**18 of 27 resolved** — 17 fixed, 1 that turned out not to need fixing. 9 open.
+**19 of 27 resolved** — 18 fixed, 1 that turned out not to need fixing. 8 open.
 
 | # | Finding | Status |
 |---|---|---|
@@ -44,7 +44,7 @@ roughly ordered by consequence within each section.
 | 23 | `routeError` duplicated 3×; `GET /` handlers unguarded | 🟢 Fixed — `da165f3` |
 | 24 | Two sources of schema truth | 🟡 Open |
 | 25 | Thin test coverage, no linter | 🟡 Open |
-| 26 | `.trash` never swept; dead code | 🟡 Open |
+| 26 | `.trash` never swept; dead code | 🟢 Fixed |
 | 27 | Test suite ran against the real library | 🟢 Fixed |
 
 ---
@@ -235,7 +235,8 @@ names the escape character explicitly.
 `Number("")` is `0`, not `NaN`, so a bare `PORT=` bound a random port and `WEB_PORT=` gave a
 `localhost:0` CORS origin. Blank now means "not set". Ports are range-checked too, which the
 duplicated inline parsing for `PORT` never did; port 0 stays legal because the Electron
-shell sets it deliberately to get a free port.
+shell sets it deliberately to get a free port. (Finding 26 later removed CORS entirely, so
+the server no longer reads `WEB_PORT` at all; Vite validates it.)
 
 ### 🟢 17. Imports buffered in memory with no size cap — fixed
 
@@ -373,9 +374,9 @@ the DDL as authoritative. Worth settling before the driver swap in finding 5.
 
 ### 🟡 25. Thin test coverage, no linter
 
-`bun test` covers the database persistence and rollback paths, `deleteBook`, `listBooks`,
-EPUB extraction, and the API surface in `src/server/app.test.ts`. No ESLint or Biome config
-anywhere.
+`bun test` now covers the database persistence and rollback paths, `deleteBook`, `listBooks`,
+EPUB extraction, the trash sweep, and the API surface in `src/server/app.test.ts`. Still no
+ESLint or Biome config anywhere.
 
 Highest-value untested targets, all pure and easy:
 
@@ -387,18 +388,27 @@ Highest-value untested targets, all pure and easy:
 These are the parts most exposed to real-world EPUB variety and most likely to regress
 silently.
 
-### 🟡 26. `.trash` never swept; dead code
+### 🟢 26. `.trash` never swept; dead code
 
-`deleteBook` `rm`s the trash directory on success, but a failed cleanup
-(`src/server/services/books.ts:242`) just logs and leaves it. No startup sweep, so orphans
-accumulate invisibly.
+`deleteBook` still moves a book's files to `.trash` before deleting its rows and removes them
+afterwards, but a stranded directory is no longer permanent: `sweepTrash`
+(`src/server/lib/storage.ts`) empties the trash directory and runs from `startServer` before
+the server accepts requests, which is the one moment no delete can be mid-flight waiting to
+restore its files. Failures are logged per entry and never block boot, and a non-empty sweep
+logs what it removed. The trash path also moved out of `deleteBook` into `trashDirectory()`
+beside the other storage paths. Covered by `src/server/lib/storage.test.ts`.
 
-`addBookToResolvedBookshelf` (`src/server/services/bookshelves.ts:254`) is dead code.
+`addBookToResolvedBookshelf` is gone.
 
-`appConfig.webOrigins` is effectively vestigial in dev, since Vite proxies `/api`
-same-origin — and it silently breaks if Vite falls back off `WEB_PORT`.
+`appConfig.webOrigins` and the CORS middleware are gone, along with the now-unused
+`appConfig.webPort`. Every client is same-origin — Vite proxies `/api` in dev, and the server
+serves the built client in production and under Electron — so the allowance only ever
+described an origin nothing used, guessed at a port Vite may not have. `WEB_PORT` remains a
+Vite-only setting.
 
-`docs/IMPLEMENTATION_PLAN.md` is stale relative to the code.
+`docs/IMPLEMENTATION_PLAN.md` is now labelled historical, with the two sections that kept
+rotting against the code (the column-by-column data model and the endpoint list) replaced by
+pointers to `src/server/db/schema.ts` and `src/server/routes/`.
 
 ### 🟢 27. The test suite ran against the developer's real library
 

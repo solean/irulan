@@ -99,6 +99,9 @@ Local app data is stored under:
 - `storage/books/<book-id>/original.epub`
 - `storage/books/<book-id>/cover.*`
 - `storage/books/<book-id>/reader/`
+- `storage/.trash/` — where a deleted book's files wait until its rows are gone, so a
+  failed delete can put them back. Emptied on every start, so anything a crash left
+  behind is cleaned up rather than accumulating.
 
 You can override the storage locations with:
 

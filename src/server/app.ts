@@ -1,7 +1,6 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 
-import { cors } from "hono/cors";
 import { Hono } from "hono";
 
 import { contentSecurityPolicy } from "../security/csp";
@@ -71,15 +70,10 @@ const resolvePublicPath = (requestPath: string) => {
   return filePath;
 };
 
-app.use(
-  "/api/*",
-  cors({
-    origin: appConfig.webOrigins,
-    allowHeaders: ["Content-Type"],
-    allowMethods: ["GET", "POST", "PUT", "PATCH", "DELETE"],
-  }),
-);
-
+// No CORS middleware: every client is same-origin. In dev the Vite server
+// proxies /api to this process, and in production and the Electron shell this
+// process serves the client itself. A cross-origin allowance would only have
+// been a guess at Vite's port, wrong the moment Vite fell back off WEB_PORT.
 app.get("/api/health", (c) =>
   c.json({
     ok: true,

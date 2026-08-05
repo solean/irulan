@@ -251,12 +251,6 @@ export const addBookToBookshelf = (bookId: string, bookshelfId: string) => {
   persistDatabase();
 };
 
-export const addBookToResolvedBookshelf = (bookId: string, bookshelfId?: string | null) => {
-  const bookshelf = resolveBookshelfRecord(bookshelfId);
-  addBookToBookshelf(bookId, bookshelf.id);
-  return bookshelf;
-};
-
 export const removeBookFromBookshelf = (bookId: string, bookshelfId: string) => {
   getBookshelfRecord(bookshelfId);
   db.delete(bookShelves)

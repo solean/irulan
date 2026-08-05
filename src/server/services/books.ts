@@ -24,11 +24,10 @@ import {
   type SortDirection,
   type UpdateBookMetadataPayload,
 } from "../../shared/types";
-import { appConfig } from "../config";
 import { db, persistDatabase } from "../db/client";
 import { books, bookShelves, deliveries } from "../db/schema";
 import { AppError } from "../errors";
-import { bookDirectory, readerDirectory } from "../lib/storage";
+import { bookDirectory, readerDirectory, trashDirectory } from "../lib/storage";
 import { extractEpubMetadata, prepareEpubReader, resolveEpubReaderAssetPath } from "./epub";
 import {
   addBookToBookshelf,
@@ -395,7 +394,7 @@ export const getBookReaderAssetPath = async (bookId: string, assetPath: string) 
 export const deleteBook = async (bookId: string): Promise<DeleteBookResult> => {
   const book = getBookRecord(bookId);
   const sourceDir = bookDirectory(book.id);
-  const trashRoot = path.join(appConfig.storageDir, ".trash");
+  const trashRoot = trashDirectory();
   const trashDir = path.join(trashRoot, `${book.id}-${Date.now()}`);
   let movedToTrash = false;
 
@@ -432,6 +431,7 @@ export const deleteBook = async (bookId: string): Promise<DeleteBookResult> => {
   }
 
   if (movedToTrash) {
+    // A failure here only strands the directory; the startup trash sweep removes it.
     await rm(trashDir, { recursive: true, force: true }).catch((cleanupError) => {
       console.error("Book record deleted but filesystem cleanup failed.", cleanupError);
     });

@@ -1,5 +1,23 @@
 # Irulan: Implementation Plan
 
+## Status: historical
+
+This is the pre-build blueprint for v1, kept for the reasoning behind the stack and the
+desktop strategy. It is not a description of the app as it stands and is not maintained
+against the code.
+
+Every milestone below shipped, and the app then grew past this plan. Several things listed
+here as v1 non-goals now exist: bookshelves, in-browser reading, and metadata editing. The
+`.env`-only SMTP decision was replaced by settings stored in SQLite with the password
+encrypted by the Electron shell, and the "desktop wrapper later" path was taken.
+
+For current state read, in this order:
+
+- `docs/PLAN.md` — what is done and what is planned next
+- `README.md` — how to run it and what lives on disk
+- `src/server/db/schema.ts` and `src/server/routes/` — the schema and API as they actually are
+- `docs/CODE_REVIEW_FINDINGS.md` — known problems
+
 ## Goal
 
 Build a small, local-first alternative to Calibre focused on three jobs:
@@ -200,35 +218,12 @@ Important limitation:
 
 ## Data Model
 
-Keep the schema intentionally flat.
+Keep the schema intentionally flat: a `books` row per imported file, a `deliveries` row per
+send attempt, and a key/value `settings` table, so no join is needed to render a bookshelf.
 
-### `books`
-
-- `id`
-- `title`
-- `author`
-- `file_path`
-- `cover_path`
-- `file_hash`
-- `source_filename`
-- `file_size_bytes`
-- `imported_at`
-
-### `deliveries`
-
-- `id`
-- `book_id`
-- `recipient_email`
-- `status`
-- `smtp_message_id`
-- `error_message`
-- `created_at`
-- `sent_at`
-
-### `settings`
-
-- `key`
-- `value`
+The shipped schema has since grown bookshelves, a `book_shelves` join table, read status, and
+ratings. Column lists are not repeated here because they drift; `src/server/db/schema.ts` is
+the definition.
 
 ## Settings Strategy
 
@@ -256,16 +251,11 @@ This avoids building secret-management UI in the MVP.
 
 ## API Plan
 
-Initial endpoints:
+A small JSON API under `/api`, grouped by resource: books (import, list, detail, send,
+delivery history) and settings (read, update, test send).
 
-- `POST /api/books/import`
-- `GET /api/books`
-- `GET /api/books/:id`
-- `POST /api/books/:id/send`
-- `GET /api/books/:id/deliveries`
-- `GET /api/settings`
-- `PUT /api/settings`
-- `POST /api/settings/test-email`
+The shipped routes are defined in `src/server/routes/`, which is the list to read rather
+than this one.
 
 ### Response Principles
 
