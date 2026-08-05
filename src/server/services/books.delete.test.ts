@@ -1,22 +1,17 @@
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import os from "node:os";
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
 import { afterAll, beforeEach, describe, expect, test } from "bun:test";
 import { sql } from "drizzle-orm";
 import initSqlJs from "sql.js";
 
-const testDirectory = mkdtempSync(path.join(os.tmpdir(), "irulan-delete-book-tests-"));
-process.env.EBOOK_DATA_DIR = path.join(testDirectory, "data");
-process.env.EBOOK_STORAGE_DIR = path.join(testDirectory, "storage");
-
-// Dynamic: `appConfig` snapshots the environment at module evaluation, so these modules
-// must not be hoisted above the storage overrides set immediately above.
-const { appConfig } = await import("../config");
-const client = await import("../db/client");
-const schema = await import("../db/schema");
-const { deleteBook } = await import("./books");
-const { bookDirectory } = await import("../lib/storage");
+// Storage is redirected to a temp directory by `src/test/setup.ts`, preloaded for the
+// whole run, so these imports are plain static ones and `appConfig` is already safe.
+import { appConfig } from "../config";
+import * as client from "../db/client";
+import * as schema from "../db/schema";
+import { deleteBook } from "./books";
+import { bookDirectory } from "../lib/storage";
 
 const SQL = await initSqlJs({
   locateFile: (file) => path.join(process.cwd(), "node_modules/sql.js/dist", file),
@@ -117,13 +112,13 @@ beforeEach(() => {
 
   client.persistDatabase();
 
-  rmSync(path.join(testDirectory, "storage"), { force: true, recursive: true });
+  rmSync(appConfig.storageDir, { force: true, recursive: true });
   mkdirSync(bookDirectory(BOOK_ID), { recursive: true });
   writeFileSync(path.join(bookDirectory(BOOK_ID), "book.epub"), "epub bytes");
 });
 
 afterAll(() => {
-  rmSync(testDirectory, { force: true, recursive: true });
+  rmSync(appConfig.storageDir, { force: true, recursive: true });
 });
 
 describe("deleteBook", () => {

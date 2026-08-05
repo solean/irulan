@@ -15,7 +15,7 @@ roughly ordered by consequence within each section.
 
 🟢 fixed  ·  🟡 open  ·  ⚪ no action needed
 
-**17 of 26 resolved** — 16 fixed, 1 that turned out not to need fixing. 9 open.
+**18 of 27 resolved** — 17 fixed, 1 that turned out not to need fixing. 9 open.
 
 | # | Finding | Status |
 |---|---|---|
@@ -45,6 +45,7 @@ roughly ordered by consequence within each section.
 | 24 | Two sources of schema truth | 🟡 Open |
 | 25 | Thin test coverage, no linter | 🟡 Open |
 | 26 | `.trash` never swept; dead code | 🟡 Open |
+| 27 | Test suite ran against the real library | 🟢 Fixed |
 
 ---
 
@@ -372,8 +373,9 @@ the DDL as authoritative. Worth settling before the driver swap in finding 5.
 
 ### 🟡 25. Thin test coverage, no linter
 
-`bun test` is wired up with two files: `src/server/db/persistence.test.ts` and
-`src/server/services/books.delete.test.ts`. No ESLint or Biome config anywhere.
+`bun test` covers the database persistence and rollback paths, `deleteBook`, `listBooks`,
+EPUB extraction, and the API surface in `src/server/app.test.ts`. No ESLint or Biome config
+anywhere.
 
 Highest-value untested targets, all pure and easy:
 
@@ -397,6 +399,33 @@ accumulate invisibly.
 same-origin — and it silently breaks if Vite falls back off `WEB_PORT`.
 
 `docs/IMPLEMENTATION_PLAN.md` is stale relative to the code.
+
+### 🟢 27. The test suite ran against the developer's real library
+
+Found the hard way on 2026-08-05: a full `bun test` run deleted every `books` and
+`bookshelves` row in the live library and replaced the shelves with its own fixtures.
+
+`appConfig` snapshots the environment once, at first import, and every file in a `bun test`
+run shares one module registry — so whichever file imported the config first decided where
+all of them read and wrote. Each test file set `EBOOK_DATA_DIR`/`EBOOK_STORAGE_DIR` before a
+dynamic import and assumed it had won that race. `src/server/config.test.ts` imported the
+config statically with no overrides at all, and Bun loads `.env` for test runs, so when that
+import landed first every other file inherited the developer's real `EBOOK_*` paths.
+`books.delete.test.ts` and `app.test.ts` truncate tables in `beforeEach` and call
+`persistDatabase()`, which wrote the emptied catalog straight to the real `app.db` — and
+because each save rotates the previous file to `app.db.bak`, the backup was overwritten too.
+
+The EPUBs themselves were never at risk; only the catalog was lost. It was rebuilt from the
+files on disk, keeping each book's directory id so extracted reader content and covers stayed
+addressable. Per-book read status, ratings, delivery history, and the original shelf layout
+were not recoverable.
+
+`src/test/setup.ts`, preloaded via `bunfig.toml`, now settles the race instead of racing:
+it points `EBOOK_DATA_DIR`, `EBOOK_STORAGE_DIR`, and `IRULAN_PUBLIC_DIR` at a per-run temp
+directory, imports the config itself so the safe paths are cached before any test file loads,
+and then asserts every resolved path sits inside that temp root — a suite pointed at a real
+library refuses to run rather than writing to it. Test files no longer set those variables or
+dynamically import to dodge hoisting; they read `appConfig` and get a temp directory.
 
 ---
 

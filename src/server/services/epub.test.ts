@@ -5,13 +5,11 @@ import path from "node:path";
 import { afterAll, describe, expect, test } from "bun:test";
 import JSZip from "jszip";
 
-const testDirectory = mkdtempSync(path.join(os.tmpdir(), "irulan-epub-tests-"));
-process.env.EBOOK_DATA_DIR = path.join(testDirectory, "data");
-process.env.EBOOK_STORAGE_DIR = path.join(testDirectory, "storage");
+import { prepareEpubReader, resolveEpubReaderAssetPath } from "./epub";
 
-// Dynamic: `appConfig` snapshots the environment at module evaluation, so these modules
-// must not be hoisted above the storage overrides set immediately above.
-const { prepareEpubReader, resolveEpubReaderAssetPath } = await import("./epub");
+// This file builds its own fixture directories; `src/test/setup.ts`, preloaded for the
+// whole run, keeps the app's own storage root in a temp directory.
+const testDirectory = mkdtempSync(path.join(os.tmpdir(), "irulan-epub-tests-"));
 
 const CONTAINER_XML = `<?xml version="1.0" encoding="UTF-8"?>
 <container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container">

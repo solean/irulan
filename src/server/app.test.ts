@@ -1,33 +1,25 @@
-import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import os from "node:os";
+import { chmodSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
 import { afterAll, beforeEach, describe, expect, test } from "bun:test";
 import JSZip from "jszip";
 
-
-const testDirectory = mkdtempSync(path.join(os.tmpdir(), "irulan-app-tests-"));
-const publicDirectory = path.join(testDirectory, "public");
-process.env.EBOOK_DATA_DIR = path.join(testDirectory, "data");
-process.env.EBOOK_STORAGE_DIR = path.join(testDirectory, "storage");
-process.env.IRULAN_PUBLIC_DIR = publicDirectory;
-delete process.env.SMTP_PASS;
-
-// Dynamic: `appConfig` snapshots the environment at module evaluation, so these modules
-// must not be hoisted above the overrides set immediately above.
-const client = await import("./db/client");
-const schema = await import("./db/schema");
-const { app } = await import("./app");
-const smtpCredentials = await import("./services/smtp-credentials");
-const smtpSettings = await import("./services/settings");
+// Storage, the public directory, and `SMTP_PASS` are all set up by `src/test/setup.ts`,
+// preloaded for the whole run, so these imports are plain static ones.
+import { appConfig } from "./config";
+import * as client from "./db/client";
+import * as schema from "./db/schema";
+import { app } from "./app";
+import * as smtpCredentials from "./services/smtp-credentials";
+import * as smtpSettings from "./services/settings";
 
 await client.initializeDatabase();
 client.ensureSchema();
 
 // A stand-in for the built client, so the SPA catch-all has something to serve.
-mkdirSync(publicDirectory, { recursive: true });
+mkdirSync(appConfig.publicDir, { recursive: true });
 writeFileSync(
-  path.join(publicDirectory, "index.html"),
+  path.join(appConfig.publicDir, "index.html"),
   "<!doctype html><html><body>spa</body></html>",
 );
 
@@ -119,7 +111,8 @@ beforeEach(() => {
 });
 
 afterAll(() => {
-  rmSync(testDirectory, { force: true, recursive: true });
+  rmSync(appConfig.publicDir, { force: true, recursive: true });
+  rmSync(appConfig.storageDir, { force: true, recursive: true });
 });
 
 describe("thrown errors become JSON (finding 23)", () => {
@@ -381,7 +374,7 @@ describe("SMTP password handling (finding 18)", () => {
     installFakeSafeStorage();
     await request("/api/settings/smtp", json({ ...smtpPayload, password: "kept-secret" }));
 
-    chmodSync(path.join(testDirectory, "data"), 0o500);
+    chmodSync(appConfig.dataDir, 0o500);
     try {
       expect(() =>
         smtpSettings.saveSmtpSettings({
@@ -391,7 +384,7 @@ describe("SMTP password handling (finding 18)", () => {
         }),
       ).toThrow("Could not persist the database safely");
     } finally {
-      chmodSync(path.join(testDirectory, "data"), 0o700);
+      chmodSync(appConfig.dataDir, 0o700);
     }
 
     expect(smtpSettings.getSmtpSettings().host).toBe("smtp.example.com");

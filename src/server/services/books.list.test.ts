@@ -1,23 +1,16 @@
-import { mkdtempSync, rmSync } from "node:fs";
-import os from "node:os";
-import path from "node:path";
+import { rmSync } from "node:fs";
 
 import { afterAll, beforeEach, describe, expect, test } from "bun:test";
 
 import { eq } from "drizzle-orm";
 
-const testDirectory = mkdtempSync(path.join(os.tmpdir(), "irulan-list-books-tests-"));
-process.env.EBOOK_DATA_DIR = path.join(testDirectory, "data");
-process.env.EBOOK_STORAGE_DIR = path.join(testDirectory, "storage");
-
-// Dynamic: `appConfig` snapshots the environment at module evaluation, so these modules
-// must not be hoisted above the storage overrides set immediately above.
-const client = await import("../db/client");
-const schema = await import("../db/schema");
-const { listBooks } = await import("./books");
-const { listBookshelves, listBookshelvesForBook, listBookshelvesForBooks } = await import(
-  "./bookshelves"
-);
+// Storage is redirected to a temp directory by `src/test/setup.ts`, preloaded for the
+// whole run, so these imports are plain static ones and `appConfig` is already safe.
+import { appConfig } from "../config";
+import * as client from "../db/client";
+import * as schema from "../db/schema";
+import { listBooks } from "./books";
+import { listBookshelves, listBookshelvesForBook, listBookshelvesForBooks } from "./bookshelves";
 
 await client.initializeDatabase();
 client.ensureSchema();
@@ -84,7 +77,7 @@ beforeEach(() => {
 });
 
 afterAll(() => {
-  rmSync(testDirectory, { force: true, recursive: true });
+  rmSync(appConfig.storageDir, { force: true, recursive: true });
 });
 
 describe("listBooks shelf memberships", () => {

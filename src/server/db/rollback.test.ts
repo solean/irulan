@@ -1,22 +1,17 @@
-import { chmodSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
-import os from "node:os";
+import { chmodSync, readFileSync, rmSync } from "node:fs";
 import path from "node:path";
 
 import { afterAll, beforeEach, describe, expect, test } from "bun:test";
 import initSqlJs from "sql.js";
 
-const testDirectory = mkdtempSync(path.join(os.tmpdir(), "irulan-rollback-tests-"));
-process.env.EBOOK_DATA_DIR = path.join(testDirectory, "data");
-process.env.EBOOK_STORAGE_DIR = path.join(testDirectory, "storage");
-
-// Dynamic: `appConfig` snapshots the environment at module evaluation, so these modules
-// must not be hoisted above the storage overrides set immediately above.
-const { appConfig } = await import("../config");
-const client = await import("./client");
-const schema = await import("./schema");
+// Storage is redirected to a temp directory by `src/test/setup.ts`, preloaded for the
+// whole run, so these imports are plain static ones and `appConfig` is already safe.
+import { appConfig } from "../config";
+import * as client from "./client";
+import * as schema from "./schema";
 // Imported for its own `db` binding: this module resolved `db` at import time, so it
 // proves the rollback reaches code that captured the handle before the swap.
-const { listBookshelves } = await import("../services/bookshelves");
+import { listBookshelves } from "../services/bookshelves";
 
 const SQL = await initSqlJs({
   locateFile: (file) => path.join(process.cwd(), "node_modules/sql.js/dist", file),
@@ -75,7 +70,6 @@ beforeEach(() => {
 
 afterAll(() => {
   chmodSync(dataDirectory(), 0o700);
-  rmSync(testDirectory, { force: true, recursive: true });
 });
 
 describe("persistDatabase rollback", () => {
