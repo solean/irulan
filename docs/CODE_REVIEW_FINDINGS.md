@@ -15,7 +15,7 @@ roughly ordered by consequence within each section.
 
 🟢 fixed  ·  🟡 open  ·  ⚪ no action needed
 
-**19 of 27 resolved** — 18 fixed, 1 that turned out not to need fixing. 8 open.
+**21 of 27 resolved** — 20 fixed, 1 that turned out not to need fixing. 6 open.
 
 | # | Finding | Status |
 |---|---|---|
@@ -38,7 +38,7 @@ roughly ordered by consequence within each section.
 | 17 | Imports buffer in memory, no size cap | 🟢 Fixed |
 | 18 | SMTP password round-trips to the browser | 🟢 Fixed |
 | 19 | No CSP; dead Google Fonts preconnect | 🟢 Fixed |
-| 20 | Database recovery is silent to the user | 🟡 Open |
+| 20 | Database recovery is silent to the user | 🟢 Fixed |
 | 21 | No cross-process locking | 🟡 Open |
 | 22 | `App.tsx` is 6,648 lines | 🟢 Fixed |
 | 23 | `routeError` duplicated 3×; `GET /` handlers unguarded | 🟢 Fixed — `da165f3` |
@@ -125,19 +125,50 @@ see finding 24.
 Because that spike has not happened, finding 5 was fixed in place rather than waiting for
 the swap to delete it.
 
-### 🟡 20. Recovery is silent to the user
+### 🟢 20. Recovery is silent to the user — fixed
 
-`openDatabaseWithRecovery` returns `recoveredFromBackup: true` and
-`src/server/db/client.ts:85` turns it into a `console.warn`. If the primary is corrupt at
-startup you are rolled back to an older state, losing whatever the last save held, and the
-UI says nothing. Needs a product decision on how to surface it (toast, settings banner, or
-a field on an API response).
+`openDatabaseWithRecovery` returned a bare `recoveredFromBackup: true` that
+`src/server/db/client.ts:85` turned into a `console.warn`. If the primary was corrupt at
+startup you were rolled back to an older state, losing whatever the last save held, and
+the UI said nothing.
+
+The boolean was replaced with a `DatabaseRecovery` record (`src/shared/types.ts`) carrying
+the backup file's mtime — how far back you were rolled to is the only part a user can act
+on — and a `reason` distinguishing the two branches that used to look identical:
+
+| branch | cause | surfaced as |
+|---|---|---|
+| `primary-corrupt` (`persistence.ts:183`) | the primary exists and will not open | persistent banner |
+| `primary-missing` (`persistence.ts:205`) | crash between `rotateBackup` and the rename | `console.warn` only |
+
+A missing primary costs about one save cycle and is the expected outcome of force-quitting
+mid-write. Showing the same data-loss banner for both would make it routine, and a banner
+people dismiss reflexively stops working for the case that matters. The policy is one
+`Set` in `services/settings.ts` (`USER_VISIBLE_RECOVERY_REASONS`) if that judgement turns
+out to be wrong.
+
+Two call sites dropped the flag, not one. The original finding named
+`initializeDatabase`; `reloadFromDisk` also discarded its return value inside the
+`persistDatabase` rollback guard, where the on-disk library falls back to the backup while
+the caller only ever learns that a save failed. Both now go through `noteRecovery`.
+
+The notice is stored in the `settings` table rather than a client-side dismissal flag, and
+is acknowledged by `recoveredAt` rather than a boolean. A plain "dismissed" flag would
+swallow the *next* recovery — the same silent-data-loss bug this finding is about,
+reintroduced by its own fix. `settings.recovery.test.ts` pins that.
+
+`GET /api/settings` carries it, so nothing new is fetched on boot; the banner is mounted in
+`Shell` rather than on `BookshelfPage`, because someone who deep-links to a book has to see
+it too.
 
 ### 🟡 21. No cross-process locking
 
 Running `bun run dev` and the packaged Electron app against the same data directory means
 two processes doing whole-file writes with no coordination. Last writer wins and silently
 discards the other's work.
+
+This also makes spurious recoveries more likely: two processes racing on the same
+whole-file write can leave a torn primary, which is what finding 20 now surfaces.
 
 ### Known and deliberate
 

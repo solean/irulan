@@ -142,7 +142,8 @@ describe("database persistence", () => {
 
     const opened = openDatabaseWithRecovery(SQL, databasePath);
     try {
-      expect(opened.recoveredFromBackup).toBe(true);
+      expect(opened.recovery?.reason).toBe("primary-corrupt");
+      expect(opened.recovery?.backupModifiedAt).toBeString();
       const result = opened.database.exec("SELECT name FROM entries ORDER BY name;");
       expect((result[0]?.values ?? []).map((row) => row[0])).toEqual(["recoverable"]);
     } finally {
@@ -152,6 +153,30 @@ describe("database persistence", () => {
     expect(readEntries(databasePath)).toEqual(["recoverable"]);
     expect(readEntries(backupPath())).toEqual(["recoverable"]);
     expect(existsSync(temporaryPath())).toBe(false);
+  });
+
+  test("reports a missing primary separately from a corrupt one", () => {
+    const database = createDatabase();
+
+    addEntry(database, "recoverable");
+    persistDatabaseAtomically(SQL, database, databasePath);
+    addEntry(database, "latest");
+    persistDatabaseAtomically(SQL, database, databasePath);
+    database.close();
+
+    // A crash between rotateBackup and the rename leaves the backup alone.
+    rmSync(databasePath);
+
+    const opened = openDatabaseWithRecovery(SQL, databasePath);
+    try {
+      // The reason decides whether the user is shown a data-loss notice, so
+      // the two recovery branches must stay distinguishable.
+      expect(opened.recovery?.reason).toBe("primary-missing");
+    } finally {
+      opened.database.close();
+    }
+
+    expect(readEntries(databasePath)).toEqual(["recoverable"]);
   });
 
   test("discards stale temporary files without replacing a valid primary", () => {
@@ -165,7 +190,7 @@ describe("database persistence", () => {
 
     const opened = openDatabaseWithRecovery(SQL, databasePath);
     try {
-      expect(opened.recoveredFromBackup).toBe(false);
+      expect(opened.recovery).toBeNull();
       const result = opened.database.exec("SELECT name FROM entries;");
       expect(result[0]?.values[0]?.[0]).toBe("committed");
     } finally {

@@ -1,12 +1,18 @@
 import { eq } from "drizzle-orm";
 
 import type {
+  DatabaseRecovery,
   SettingsPayload,
   SmtpSettings,
   UpdateSmtpSettingsPayload,
 } from "../../shared/types";
 import { appConfig } from "../config";
-import { db, persistDatabase } from "../db/client";
+import {
+  db,
+  getPendingDatabaseRecovery,
+  persistDatabase,
+  setPendingDatabaseRecovery,
+} from "../db/client";
 import { settings } from "../db/schema";
 import { AppError } from "../errors";
 import {
@@ -18,6 +24,18 @@ import {
 } from "./smtp-credentials";
 
 const DEFAULT_KINDLE_KEY = "default_kindle_email";
+const DATABASE_RECOVERY_KEY = "database_recovery";
+
+/**
+ * A missing primary is almost always a crash between `rotateBackup` and the
+ * rename in `persistDatabaseAtomically` — one save cycle of loss, common enough
+ * that a persistent notice would train people to dismiss the one that matters.
+ * It stays a `console.warn`. See docs/CODE_REVIEW_FINDINGS.md finding 20.
+ */
+const USER_VISIBLE_RECOVERY_REASONS: ReadonlySet<DatabaseRecovery["reason"]> = new Set([
+  "primary-corrupt",
+]);
+
 const SMTP_SETTING_KEYS = {
   host: "smtp_host",
   port: "smtp_port",
@@ -144,7 +162,79 @@ export const saveSmtpSettings = (smtp: UpdateSmtpSettingsPayload) => {
   persistDatabase();
 };
 
+const parseRecoveryRecord = (value: string): DatabaseRecovery | null => {
+  try {
+    const parsed = JSON.parse(value) as DatabaseRecovery;
+    return USER_VISIBLE_RECOVERY_REASONS.has(parsed.reason) ? parsed : null;
+  } catch {
+    // A hand-edited or truncated row must not take the whole settings payload
+    // down with it; losing the notice is the lesser failure.
+    return null;
+  }
+};
+
+/**
+ * Store a recovery so the notice survives a restart.
+ *
+ * Called once at startup, after `ensureSchema` has created the table. Best
+ * effort: a library that just came back from its backup is worth more than the
+ * notice about it, so a failed write leaves the record parked in memory for
+ * `getDatabaseRecovery` to read through to, rather than aborting the boot.
+ */
+export const recordDatabaseRecovery = (recovery: DatabaseRecovery | null) => {
+  if (!recovery || !USER_VISIBLE_RECOVERY_REASONS.has(recovery.reason)) {
+    return;
+  }
+
+  const value = JSON.stringify(recovery);
+
+  try {
+    db.insert(settings)
+      .values({ key: DATABASE_RECOVERY_KEY, value })
+      .onConflictDoUpdate({ target: settings.key, set: { value } })
+      .run();
+    persistDatabase();
+    setPendingDatabaseRecovery(null);
+  } catch (error) {
+    console.error("The database recovery notice could not be stored.", error);
+  }
+};
+
+/**
+ * Prefers the stored record, falling back to one still parked in memory — the
+ * `persistDatabase` rollback path recovers from backup at a moment when writing
+ * anything to disk is exactly what is failing.
+ */
+export const getDatabaseRecovery = (): DatabaseRecovery | null => {
+  const stored = readSetting(DATABASE_RECOVERY_KEY);
+  if (stored) {
+    return parseRecoveryRecord(stored.value);
+  }
+
+  const pending = getPendingDatabaseRecovery();
+  return pending && USER_VISIBLE_RECOVERY_REASONS.has(pending.reason) ? pending : null;
+};
+
+/**
+ * Acknowledge one specific recovery.
+ *
+ * Keyed on `recoveredAt` rather than a plain "dismissed" flag: a later recovery
+ * writes a new record with a new timestamp, so it surfaces again instead of
+ * being swallowed by an acknowledgement from months ago.
+ */
+export const acknowledgeDatabaseRecovery = (recoveredAt: string) => {
+  const current = getDatabaseRecovery();
+  if (!current || current.recoveredAt !== recoveredAt) {
+    return;
+  }
+
+  setPendingDatabaseRecovery(null);
+  db.delete(settings).where(eq(settings.key, DATABASE_RECOVERY_KEY)).run();
+  persistDatabase();
+};
+
 export const getSettingsPayload = (): SettingsPayload => ({
   defaultKindleEmail: getDefaultKindleEmail(),
   smtp: getSmtpSettings(),
+  databaseRecovery: getDatabaseRecovery(),
 });

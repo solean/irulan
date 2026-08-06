@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { z } from "zod";
 
 import {
+  acknowledgeDatabaseRecovery,
   getSettingsPayload,
   saveDefaultKindleEmail,
   saveSmtpSettings,
@@ -32,6 +33,10 @@ const testEmailSchema = z.object({
   recipientEmail: z.string().trim().email(),
 });
 
+const acknowledgeRecoverySchema = z.object({
+  recoveredAt: z.string().min(1),
+});
+
 export const settingsRoutes = new Hono();
 
 settingsRoutes.get("/", (c) => c.json(getSettingsPayload()));
@@ -51,4 +56,10 @@ settingsRoutes.post("/test-email", async (c) => {
   const payload = testEmailSchema.parse(await c.req.json());
   await sendTestEmail(payload.recipientEmail);
   return c.json({ ok: true });
+});
+
+settingsRoutes.post("/database-recovery/acknowledge", async (c) => {
+  const payload = acknowledgeRecoverySchema.parse(await c.req.json());
+  acknowledgeDatabaseRecovery(payload.recoveredAt);
+  return c.json(getSettingsPayload());
 });

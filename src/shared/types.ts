@@ -117,9 +117,24 @@ export type UpdateSmtpSettingsPayload = {
   from: string;
 };
 
+/**
+ * Recorded when the library had to be restored from its `.bak` copy at startup.
+ *
+ * `backupModifiedAt` is the backup file's mtime — the point in time the restored
+ * data is current as of, which is the only thing that tells someone how much
+ * work they lost.
+ */
+export type DatabaseRecovery = {
+  reason: "primary-corrupt" | "primary-missing";
+  backupModifiedAt: string | null;
+  recoveredAt: string;
+};
+
 export type SettingsPayload = {
   defaultKindleEmail: string | null;
   smtp: SmtpSettings;
+  /** Set only while an unacknowledged, user-visible recovery is on record. */
+  databaseRecovery: DatabaseRecovery | null;
 };
 
 export type ImportResult =

@@ -3,6 +3,7 @@ import path from "node:path";
 import { drizzle, type SQLJsDatabase } from "drizzle-orm/sql-js";
 import initSqlJs, { type Database, type SqlJsStatic } from "sql.js";
 
+import type { DatabaseRecovery } from "../../shared/types";
 import { appConfig } from "../config";
 import { openDatabaseWithRecovery, persistDatabaseAtomically } from "./persistence";
 import * as schema from "./schema";
@@ -11,6 +12,33 @@ let sqlite: Database | null = null;
 let sqlModule: SqlJsStatic | null = null;
 
 export let db: SQLJsDatabase<typeof schema>;
+
+/**
+ * Recovery happens before `ensureSchema` has run, so the `settings` table that
+ * holds the notice may not exist yet — and on the `persistDatabase` rollback
+ * path the disk is failing, so nothing can be written at all. Park the record
+ * here; `services/settings` moves it to storage when it can and reads through
+ * to it when it cannot.
+ */
+let pendingRecovery: DatabaseRecovery | null = null;
+
+export const getPendingDatabaseRecovery = () => pendingRecovery;
+
+export const setPendingDatabaseRecovery = (recovery: DatabaseRecovery | null) => {
+  pendingRecovery = recovery;
+};
+
+const noteRecovery = (recovery: DatabaseRecovery | null) => {
+  if (!recovery) {
+    return;
+  }
+
+  setPendingDatabaseRecovery(recovery);
+  console.warn(
+    `Recovered Irulan database from ${appConfig.dbPath}.bak (${recovery.reason}), ` +
+      `current as of ${recovery.backupModifiedAt ?? "an unknown time"}.`,
+  );
+};
 
 const requireSqlite = () => {
   if (!sqlite) {
@@ -44,7 +72,9 @@ const reloadFromDisk = () => {
   db = drizzle(sqlite, { schema });
   previous?.close();
 
-  return opened.recoveredFromBackup;
+  noteRecovery(opened.recovery);
+
+  return opened.recovery;
 };
 
 export const persistDatabase = () => {
@@ -81,9 +111,7 @@ export const initializeDatabase = async () => {
   const opened = openDatabaseWithRecovery(SQL, appConfig.dbPath);
   sqlModule = SQL;
   sqlite = opened.database;
-  if (opened.recoveredFromBackup) {
-    console.warn(`Recovered Irulan database from ${appConfig.dbPath}.bak`);
-  }
+  noteRecovery(opened.recovery);
   sqlite.run("PRAGMA foreign_keys = ON;");
   db = drizzle(sqlite, { schema });
 };

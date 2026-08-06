@@ -9,15 +9,38 @@ import {
   readSync,
   renameSync,
   rmSync,
+  statSync,
   writeFileSync,
 } from "node:fs";
 import path from "node:path";
 
 import type { Database, SqlJsStatic } from "sql.js";
 
+import type { DatabaseRecovery } from "../../shared/types";
+
 export type OpenDatabaseResult = {
   database: Database;
-  recoveredFromBackup: boolean;
+  recovery: DatabaseRecovery | null;
+};
+
+/**
+ * Both call sites build this from inside a `try` whose `catch` reports "the
+ * backup cannot be opened", so a throw here would discard a database that was
+ * in fact recovered successfully. `backupModifiedAt` is therefore best effort:
+ * without it the notice just loses its "current as of" line.
+ */
+const recoveryRecord = (
+  reason: DatabaseRecovery["reason"],
+  backupPath: string,
+): DatabaseRecovery => {
+  let backupModifiedAt: string | null = null;
+  try {
+    backupModifiedAt = new Date(statSync(backupPath).mtimeMs).toISOString();
+  } catch {
+    /* the backup was readable a moment ago; its mtime is a nicety */
+  }
+
+  return { reason, backupModifiedAt, recoveredAt: new Date().toISOString() };
 };
 
 const errorMessage = (error: unknown) =>
@@ -147,7 +170,7 @@ export const openDatabaseWithRecovery = (
     try {
       return {
         database: openValidatedDatabase(SQL, readFileSync(databasePath), "Primary database"),
-        recoveredFromBackup: false,
+        recovery: null,
       };
     } catch (primaryError) {
       if (!existsSync(backupPath)) {
@@ -168,7 +191,7 @@ export const openDatabaseWithRecovery = (
           throw recoveryError;
         }
 
-        return { database, recoveredFromBackup: true };
+        return { database, recovery: recoveryRecord("primary-corrupt", backupPath) };
       } catch (backupError) {
         throw new Error(
           `Neither the primary database nor its backup can be opened. Primary: ${errorMessage(primaryError)} Backup: ${errorMessage(backupError)}`,
@@ -190,7 +213,7 @@ export const openDatabaseWithRecovery = (
         throw recoveryError;
       }
 
-      return { database, recoveredFromBackup: true };
+      return { database, recovery: recoveryRecord("primary-missing", backupPath) };
     } catch (backupError) {
       throw new Error(`The database backup cannot be opened: ${errorMessage(backupError)}`, {
         cause: backupError,
@@ -200,7 +223,7 @@ export const openDatabaseWithRecovery = (
 
   return {
     database: new SQL.Database(),
-    recoveredFromBackup: false,
+    recovery: null,
   };
 };
 

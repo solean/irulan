@@ -19,6 +19,8 @@ import { cn } from "@/lib/utils";
 
 import { useTheme } from "../hooks/use-theme";
 import { BookIcon } from "../components/icons";
+import { DatabaseRecoveryNotice } from "../components/database-recovery-notice";
+
 const getFocusableMenuItems = (container: HTMLElement | null) =>
   Array.from(
     container?.querySelectorAll<HTMLElement>(
@@ -239,6 +241,7 @@ export const Shell = () => {
         </header>
         <main className="content" id="content">
           <h1 className="sr-only">{pageTitle}</h1>
+          <DatabaseRecoveryNotice />
           <Outlet />
         </main>
       </div>

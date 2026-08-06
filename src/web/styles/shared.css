@@ -291,6 +291,46 @@
   margin-top: 12px;
 }
 
+/* ─── Database recovery notice ─── */
+
+/* Two classes deliberately: `.panel` is declared further down this file and
+   would otherwise win the cascade and flatten the alert back to a plain card. */
+.panel.recovery-notice {
+  margin-bottom: 16px;
+  border-color: var(--error-border);
+  background: var(--error-soft);
+}
+
+.recovery-notice-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.recovery-notice-title {
+  margin: 0;
+  font-family: var(--font-serif);
+  font-optical-sizing: auto;
+  font-size: var(--fs-lg);
+  font-weight: 500;
+  line-height: var(--lh-tight);
+  letter-spacing: var(--tracking-snug);
+  color: var(--text-primary);
+}
+
+.recovery-notice-copy {
+  margin: 0;
+  max-width: 68ch;
+  color: var(--text-secondary);
+  font-size: 13px;
+  line-height: var(--lh-relaxed);
+}
+
+.recovery-notice-dismiss {
+  flex: none;
+}
+
 /* ─── Onboarding checklist ─── */
 
 .onboarding-header {
