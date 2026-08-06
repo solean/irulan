@@ -98,7 +98,9 @@ Local app data is stored under:
 - `data/app.db.bak`
 - `storage/books/<book-id>/original.epub`
 - `storage/books/<book-id>/cover.*`
-- `storage/books/<book-id>/reader/`
+- `storage/books/<book-id>/reader/manifest.json` — the reader's section list. Section and
+  asset bytes are read out of `original.epub` on request, so nothing is unpacked to disk.
+  Content extracted by older builds is removed on the next start.
 - `storage/.trash/` — where a deleted book's files wait until its rows are gone, so a
   failed delete can put them back. Emptied on every start, so anything a crash left
   behind is cleaned up rather than accumulating.
@@ -126,5 +128,5 @@ missing or unreadable, Irulan restores `data/app.db.bak`, logs
 back to the state before the last successful save. If neither file is valid,
 startup fails loudly instead of silently creating an empty library.
 
-Only the SQLite catalog is covered. Imported EPUBs, covers, and extracted
-reader content under `storage/` are not yet backed up — see `docs/PLAN.md`.
+Only the SQLite catalog is covered. Imported EPUBs and covers under `storage/`
+are not yet backed up — see `docs/PLAN.md`.

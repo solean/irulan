@@ -1,4 +1,4 @@
-import { access, readFile } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import { Readable, Transform } from "node:stream";
 import { pipeline } from "node:stream/promises";
 
@@ -19,11 +19,11 @@ import {
   discardStagedBookFile,
   getBook,
   getBookReader,
-  getBookReaderAssetPath,
   getBookRecord,
   importBookFile,
   listBooks,
   MAX_EPUB_FILE_BYTES,
+  readBookReaderAsset,
   stageBookFile,
   type StagedBookFile,
   updateBookMetadata,
@@ -235,16 +235,11 @@ booksRoutes.get("/:id/read", async (c) =>
 booksRoutes.get("/:id/read/*", async (c) => {
   const bookId = c.req.param("id");
   const assetPath = getReaderAssetRequestPath(c.req.path, bookId);
-  const filePath = await getBookReaderAssetPath(bookId, assetPath);
+  const bytes = await readBookReaderAsset(bookId, assetPath);
 
-  if (!(await access(filePath).then(() => true).catch(() => false))) {
-    throw new AppError(404, "Reader asset not found.");
-  }
-
-  const bytes = await readFile(filePath);
   return new Response(bytes, {
     headers: {
-      "Content-Type": readerAssetContentType(filePath),
+      "Content-Type": readerAssetContentType(assetPath),
       "Cache-Control": "public, max-age=3600",
     },
   });

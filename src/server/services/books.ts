@@ -28,7 +28,7 @@ import { db, persistDatabase } from "../db/client";
 import { books, bookShelves, deliveries } from "../db/schema";
 import { AppError } from "../errors";
 import { bookDirectory, readerDirectory, trashDirectory } from "../lib/storage";
-import { extractEpubMetadata, prepareEpubReader, resolveEpubReaderAssetPath } from "./epub";
+import { extractEpubMetadata, prepareEpubReader, readEpubReaderAsset } from "./epub";
 import {
   addBookToBookshelf,
   listBookshelvesForBook,
@@ -386,9 +386,15 @@ export const getBookReader = async (bookId: string): Promise<BookReader> => {
   };
 };
 
-export const getBookReaderAssetPath = async (bookId: string, assetPath: string) => {
-  await getPreparedBookReader(bookId);
-  return resolveEpubReaderAssetPath(readerDirectory(bookId), assetPath);
+export const readBookReaderAsset = async (bookId: string, assetPath: string) => {
+  const book = getBookRecord(bookId);
+  const bytes = await readEpubReaderAsset(book.filePath, assetPath);
+
+  if (!bytes) {
+    throw new AppError(404, "Reader asset not found.");
+  }
+
+  return bytes;
 };
 
 export const deleteBook = async (bookId: string): Promise<DeleteBookResult> => {

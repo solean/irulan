@@ -3,9 +3,10 @@ import type { AddressInfo } from "node:net";
 
 import { app } from "./app";
 import { appConfig } from "./config";
-import { ensureSchema, initializeDatabase } from "./db/client";
+import { ensureSchema, getPendingDatabaseRecovery, initializeDatabase } from "./db/client";
+import { recordDatabaseRecovery } from "./services/settings";
 import { migrateLegacySmtpPassword } from "./services/smtp-credentials";
-import { ensureStorageLayout, sweepTrash } from "./lib/storage";
+import { ensureStorageLayout, sweepExtractedReaderContent, sweepTrash } from "./lib/storage";
 
 export type StartedServer = {
   hostname: string;
@@ -17,9 +18,11 @@ export type StartedServer = {
 export const startServer = async (options: { port?: number; hostname?: string } = {}) => {
   await ensureStorageLayout();
   await sweepTrash();
+  await sweepExtractedReaderContent();
   await initializeDatabase();
   ensureSchema();
   migrateLegacySmtpPassword();
+  recordDatabaseRecovery(getPendingDatabaseRecovery());
   const hostname = options.hostname ?? "127.0.0.1";
   const requestedPort = options.port ?? appConfig.port;
 

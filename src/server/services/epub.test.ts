@@ -1,11 +1,11 @@
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
 import { afterAll, describe, expect, test } from "bun:test";
 import JSZip from "jszip";
 
-import { prepareEpubReader, resolveEpubReaderAssetPath } from "./epub";
+import { extractEpubMetadata, prepareEpubReader, readEpubReaderAsset } from "./epub";
 
 // This file builds its own fixture directories; `src/test/setup.ts`, preloaded for the
 // whole run, keeps the app's own storage root in a temp directory.
@@ -89,7 +89,7 @@ afterAll(() => {
 });
 
 describe("prepareEpubReader", () => {
-  test("extracts a well-formed EPUB into readable sections", async () => {
+  test("builds a manifest without unpacking the archive", async () => {
     const { epubPath, readerDirectory } = makeCase("plain");
     writeFileSync(epubPath, await buildEpubBytes());
 
@@ -99,69 +99,84 @@ describe("prepareEpubReader", () => {
     expect(manifest.author).toBe("Test Author");
     expect(manifest.sections).toHaveLength(1);
     expect(manifest.sections[0]?.href).toBe("OEBPS/chapter1.xhtml");
-    expect(existsSync(path.join(readerDirectory, "content", "OEBPS", "chapter1.xhtml"))).toBe(true);
+
+    // The whole point of serving from the zip: the reader directory holds the
+    // manifest and nothing else, so a book costs its EPUB and a few hundred bytes.
+    expect(readdirSync(readerDirectory)).toEqual(["manifest.json"]);
   });
 
-  test("stays readable when the archive carries a traversing entry name", async () => {
+  /**
+   * yauzl refuses to enumerate an archive whose central directory carries a
+   * ".." segment, so the file is rejected whole rather than per entry. That is
+   * uniform now: importing the same file parses its metadata through the same
+   * reader and fails the same way, so no such book can reach the library.
+   */
+  test("rejects an archive that carries a traversing entry name", async () => {
     const { caseDirectory, epubPath, readerDirectory } = makeCase("traversal");
     await writeEpubWithTraversingEntry(epubPath);
 
-    // The book must open. Aborting the extraction here would report a readable
-    // EPUB as invalid, and the reader directory has already been cleared by then.
-    const manifest = await prepareEpubReader(epubPath, readerDirectory, "book-traversal");
-    expect(manifest.sections).toHaveLength(1);
+    await expect(extractEpubMetadata(epubPath)).rejects.toThrow(
+      "This file is not a valid EPUB archive.",
+    );
+    await expect(
+      prepareEpubReader(epubPath, readerDirectory, "book-traversal"),
+    ).rejects.toThrow("This file is not a valid EPUB archive.");
 
     // Nothing may be written outside the reader directory, by any route.
     expect(existsSync(path.join(caseDirectory, "evil.txt"))).toBe(false);
     expect(existsSync(path.join(testDirectory, "evil.txt"))).toBe(false);
-    expect(existsSync(path.join(readerDirectory, "..", "evil.txt"))).toBe(false);
-  });
-
-  test("serves a section from the extracted content", async () => {
-    const { epubPath, readerDirectory } = makeCase("serve");
-    writeFileSync(epubPath, await buildEpubBytes());
-    await prepareEpubReader(epubPath, readerDirectory, "book-serve");
-
-    const assetPath = resolveEpubReaderAssetPath(readerDirectory, "OEBPS/chapter1.xhtml");
-
-    expect(existsSync(assetPath)).toBe(true);
-    expect(assetPath.startsWith(path.join(readerDirectory, "content"))).toBe(true);
   });
 });
 
-describe("resolveEpubReaderAssetPath", () => {
+describe("readEpubReaderAsset", () => {
   // This is the guard that actually faces untrusted input: the asset path comes
   // from the request URL, which nothing has sanitized on the way in.
-  const readerDirectory = path.join(testDirectory, "asset-guard", "reader");
+  const epubPath = path.join(testDirectory, "asset-guard.epub");
 
-  test("rejects paths that climb out of the reader directory", () => {
+  test("returns the entry bytes for an ordinary path", async () => {
+    writeFileSync(epubPath, await buildEpubBytes());
+
+    const bytes = await readEpubReaderAsset(epubPath, "OEBPS/chapter1.xhtml");
+
+    expect(bytes?.toString("utf8")).toBe(CHAPTER);
+  });
+
+  test("treats an absolute-looking path as archive-relative", async () => {
+    writeFileSync(epubPath, await buildEpubBytes());
+
+    const bytes = await readEpubReaderAsset(epubPath, "/OEBPS/chapter1.xhtml");
+
+    expect(bytes?.toString("utf8")).toBe(CHAPTER);
+  });
+
+  test("returns null for an entry the archive does not hold", async () => {
+    writeFileSync(epubPath, await buildEpubBytes());
+
+    expect(await readEpubReaderAsset(epubPath, "OEBPS/missing.xhtml")).toBeNull();
+  });
+
+  test("rejects paths that climb out of the archive root", async () => {
+    writeFileSync(epubPath, await buildEpubBytes());
+
     for (const assetPath of [
       "../../../etc/passwd",
       "../secrets.txt",
       "OEBPS/../../../etc/passwd",
       "..",
+      "",
     ]) {
-      expect(() => resolveEpubReaderAssetPath(readerDirectory, assetPath)).toThrow(
+      await expect(readEpubReaderAsset(epubPath, assetPath)).rejects.toThrow(
         "Invalid reader asset path.",
       );
     }
   });
 
-  test("rejects an empty path", () => {
-    expect(() => resolveEpubReaderAssetPath(readerDirectory, "")).toThrow(
-      "Invalid reader asset path.",
+  test("rejects an archive it cannot safely enumerate", async () => {
+    const traversingPath = path.join(testDirectory, "asset-traversal.epub");
+    await writeEpubWithTraversingEntry(traversingPath);
+
+    await expect(readEpubReaderAsset(traversingPath, "evil.txt")).rejects.toThrow(
+      "This file is not a valid EPUB archive.",
     );
-  });
-
-  test("keeps an absolute-looking path inside the reader directory", () => {
-    const resolved = resolveEpubReaderAssetPath(readerDirectory, "/OEBPS/chapter1.xhtml");
-
-    expect(resolved).toBe(path.join(readerDirectory, "content", "OEBPS", "chapter1.xhtml"));
-  });
-
-  test("allows ordinary nested asset paths", () => {
-    const resolved = resolveEpubReaderAssetPath(readerDirectory, "OEBPS/images/cover.jpg");
-
-    expect(resolved).toBe(path.join(readerDirectory, "content", "OEBPS", "images", "cover.jpg"));
   });
 });

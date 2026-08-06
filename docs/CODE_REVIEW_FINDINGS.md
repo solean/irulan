@@ -15,7 +15,7 @@ roughly ordered by consequence within each section.
 
 🟢 fixed  ·  🟡 open  ·  ⚪ no action needed
 
-**21 of 27 resolved** — 20 fixed, 1 that turned out not to need fixing. 6 open.
+**22 of 27 resolved** — 21 fixed, 1 that turned out not to need fixing. 5 open.
 
 | # | Finding | Status |
 |---|---|---|
@@ -34,7 +34,7 @@ roughly ordered by consequence within each section.
 | 13 | LIKE wildcards unescaped in search | 🟢 Fixed — `c768acf` |
 | 14 | `parseNumber` treats empty env var as 0 | 🟢 Fixed — `b9fb5f3` |
 | 15 | No pagination or virtualization | 🟢 Fixed |
-| 16 | Reader extracts the full zip to disk | 🟡 Open |
+| 16 | Reader extracts the full zip to disk | 🟢 Fixed |
 | 17 | Imports buffer in memory, no size cap | 🟢 Fixed |
 | 18 | SMTP password round-trips to the browser | 🟢 Fixed |
 | 19 | No CSP; dead Google Fonts preconnect | 🟢 Fixed |
@@ -239,8 +239,17 @@ is silently load-bearing until it changes. Only the *path* is treated that way; 
 that fails for any other reason (a full disk above all) still surfaces, rather than caching
 a half-extracted book behind a manifest that claims it is complete.
 
+**Superseded by finding 16.** There is no extraction loop any more, so a traversing entry
+name is not a write hazard of any kind — it is simply unreachable, since the entry index
+and the request path normalize the same way and no request survives the guard with a
+leading `"../"`. What changed in exchange: yauzl refuses to enumerate an archive carrying a
+`..` segment at all (`validateFileName`), so such a file is now rejected whole rather than
+per entry. That is not a regression in reach — import has parsed metadata through yauzl
+since finding 17, so no such book could enter the library — and it is now uniform: import
+and read fail the same file the same way. `epub.test.ts` pins both halves.
+
 **What the tests did find**, in the same guard, on the path that genuinely faces untrusted
-input — `resolveEpubReaderAssetPath` takes its argument straight from the request URL:
+input — the asset path comes straight from the request URL:
 
 - `".."` has no trailing slash, so it slipped past a `startsWith("../")` check and resolved
   to the directory above the extracted content.
@@ -249,7 +258,8 @@ input — `resolveEpubReaderAssetPath` takes its argument straight from the requ
 
 Neither could reach a file outside the reader directory — any deeper traversal *does*
 normalize to a leading `"../"` and was caught — so the effect was a 500 where a 400
-belonged. Both are rejected now.
+belonged. Both are rejected now, by `ensureSafeRelativePath` on the way into
+`readEpubReaderAsset`.
 
 Worth carrying forward: a check for path traversal that runs *after* normalization has to
 handle the bare `".."` and `"."` forms explicitly, not just prefixed ones.
@@ -292,11 +302,38 @@ and applies shelf, search, status, and stable sorting in SQLite before `LIMIT`/`
 The response includes global totals and status counts, while the web client keeps only the
 current page and renders accessible Previous/Next controls for both grid and list views.
 
-### 🟡 16. Reader prep extracts the full zip to disk
+### 🟢 16. Reader prep extracted the full zip to disk — fixed
 
-`src/server/services/epub.ts:472` writes *every* entry, including fonts and unused assets,
-permanently doubling (uncompressed) storage per book. Serving assets on demand from the
-zip, or extracting only spine-reachable files, would avoid it.
+`prepareEpubReader` wrote *every* archive entry under `<book>/reader/content/` — fonts,
+unused images, the lot — permanently doubling a book's uncompressed footprint. Measured on
+a 19 MB EPUB in the developer's library: 40 MB on disk, 21 MB of it extracted content.
+
+Nothing is unpacked now. Reader prep writes only `manifest.json`, and
+`readEpubReaderAsset` opens the EPUB, seeks to the requested entry and streams it back.
+The same 19 MB book now occupies 19 MB, and all 53 sections plus every image still serve
+200s straight from the archive.
+
+The zip is opened per asset request rather than kept warm behind a handle cache. Reading a
+central directory is one seek and a small buffered read, so the cost is far below the HTTP
+round trip it rides on — 50 fetches of a 76 KB section took 1.19 s wall *including* 50
+`curl` process spawns. A handle cache would need an eviction policy and a file-descriptor
+budget to buy back time nobody can perceive.
+
+Three things worth carrying forward:
+
+- **The reader path moved to yauzl**, which the import path already used since finding 17,
+  so `parseEpub` and the container/package preamble of `extractEpubMetadata` collapsed into
+  one `openEpub`. JSZip is no longer a runtime dependency at all — only test fixtures build
+  archives with it, so it moved to `devDependencies`. This also ends the reader's whole-file
+  `readFile` of the EPUB.
+- **Directory entries are dropped from the entry index.** They carry a trailing slash and no
+  content, so without that filter a request for `OEBPS/` would have resolved to a zero-byte
+  200.
+- **Existing libraries need the space back.** A lazy sweep on next open would leave a book
+  nobody re-reads holding its stale copy forever, so `sweepExtractedReaderContent`
+  (`src/server/lib/storage.ts`) runs from `startServer` beside `sweepTrash`, before the
+  server accepts requests. It removes only `reader/content/`, never the manifest or the
+  EPUB, logs per-book failures without blocking boot, and is a no-op on the next start.
 
 ---
 
@@ -406,14 +443,14 @@ the DDL as authoritative. Worth settling before the driver swap in finding 5.
 ### 🟡 25. Thin test coverage, no linter
 
 `bun test` now covers the database persistence and rollback paths, `deleteBook`, `listBooks`,
-EPUB extraction, the trash sweep, and the API surface in `src/server/app.test.ts`. Still no
-ESLint or Biome config anywhere.
+reader manifest building and zip-backed asset reads, both storage sweeps, and the API
+surface in `src/server/app.test.ts`. Still no ESLint or Biome config anywhere.
 
 Highest-value untested targets, all pure and easy:
 
-- `src/server/services/epub.ts` — metadata extraction, TOC label resolution, and
-  `ensureSafeRelativePath` including the traversal cases
-- `resolveEpubReaderAssetPath`
+- `src/server/services/epub.ts` — metadata extraction and TOC label resolution.
+  `ensureSafeRelativePath` is covered through `readEpubReaderAsset`, including the
+  traversal cases
 - `getReaderLinkTarget` in `src/web/lib/reader.tsx`
 
 These are the parts most exposed to real-world EPUB variety and most likely to regress
@@ -458,8 +495,25 @@ because each save rotates the previous file to `app.db.bak`, the backup was over
 
 The EPUBs themselves were never at risk; only the catalog was lost. It was rebuilt from the
 files on disk, keeping each book's directory id so extracted reader content and covers stayed
-addressable. Per-book read status, ratings, delivery history, and the original shelf layout
-were not recoverable.
+addressable. Per-book read status and ratings were not recovered.
+
+**"Not recoverable" was wrong about the rest.** The wipe was a row delete, not a rewrite, so
+the deleted cells survived as freeblock slack in `app.db` — and identically in `app.db.bak`,
+since the rotation copied the same pages. Carving page 11 (the `bookshelves` page) and pages
+5/13/14 recovered, byte-for-byte:
+
+- the second bookshelf (`b792ce35-…`), its Kindle address, and its `sort_order`
+- both of its `book_shelves` memberships
+- both of its `deliveries` rows in full — ids, SMTP message ids, `created_at` and `sent_at`
+
+All of it was restored on 2026-08-05; `pragma integrity_check` and `foreign_key_check` are
+clean and the shelf renders normally. Only two values could not be read, because later
+writes landed on top of them: the shelf's `created_at`, and the `added_at` of one
+membership. Both were set to timestamps bounded by surviving evidence and are accurate to
+within seconds.
+
+The lesson for the next incident: a freshly wiped SQLite file is not empty. Copy it before
+the app can rotate or vacuum it, then carve, before concluding anything is gone.
 
 `src/test/setup.ts`, preloaded via `bunfig.toml`, now settles the race instead of racing:
 it points `EBOOK_DATA_DIR`, `EBOOK_STORAGE_DIR`, and `IRULAN_PUBLIC_DIR` at a per-run temp
@@ -472,9 +526,9 @@ dynamically import to dodge hoisting; they read `appConfig` and get a temp direc
 
 ## Suggested order
 
-1. **20** — surface database recovery to the user. Needs a UX decision first.
-2. **24 → 6/7** — settle the schema question, then spike and swap the SQLite driver.
-3. **16, 17** — the remaining scale items, once a library large enough to need them exists.
+1. **24 → 6/7** — settle the schema question, then spike and swap the SQLite driver.
+2. **21** — cross-process locking, if the dev server and the packaged app ever run together.
+3. **25** — a linter, and the two remaining pure targets above.
 
 Ordering note: prefer consequence over cheapness. An earlier revision of this list put the
 cheap correctness batch ahead of finding 5 on the grounds that the driver swap would soon

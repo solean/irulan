@@ -1,4 +1,4 @@
-import { mkdir, readdir, rm } from "node:fs/promises";
+import { mkdir, readdir, rm, stat } from "node:fs/promises";
 import path from "node:path";
 
 import { appConfig } from "../config";
@@ -62,6 +62,59 @@ export const sweepTrash = async () => {
   if (removed > 0) {
     console.log(
       `Swept ${removed} leftover book ${removed === 1 ? "directory" : "directories"} from the trash.`,
+    );
+  }
+
+  return removed;
+};
+
+/**
+ * Remove reader content unpacked by an older build.
+ *
+ * Reader prep used to extract every zip entry beside the manifest, doubling a
+ * book's uncompressed footprint for assets that are now read straight from the
+ * EPUB. Nothing looks in these directories any more.
+ *
+ * Sweeping at startup rather than the next time each book is opened is what
+ * makes the space come back at all: a library nobody re-reads would otherwise
+ * keep every stale copy forever. Like the trash sweep, this runs before the
+ * server accepts requests and never blocks boot.
+ */
+export const sweepExtractedReaderContent = async () => {
+  const root = path.join(appConfig.storageDir, "books");
+  let bookIds: string[];
+
+  try {
+    bookIds = await readdir(root);
+  } catch (error) {
+    if (!isMissing(error)) {
+      console.error("Could not read the books directory.", error);
+    }
+    return 0;
+  }
+
+  let removed = 0;
+
+  for (const bookId of bookIds) {
+    const extracted = path.join(readerDirectory(bookId), "content");
+
+    try {
+      await stat(extracted);
+    } catch {
+      continue;
+    }
+
+    try {
+      await rm(extracted, { recursive: true, force: true });
+      removed += 1;
+    } catch (error) {
+      console.error(`Could not remove extracted reader content for ${bookId}.`, error);
+    }
+  }
+
+  if (removed > 0) {
+    console.log(
+      `Removed extracted reader content for ${removed} ${removed === 1 ? "book" : "books"}.`,
     );
   }
 

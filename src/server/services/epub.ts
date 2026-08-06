@@ -2,7 +2,6 @@ import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 import { XMLParser } from "fast-xml-parser";
-import JSZip from "jszip";
 import { openPromise, type Entry, type ZipFile } from "yauzl";
 
 import type { BookReaderSection } from "../../shared/types";
@@ -39,7 +38,8 @@ type ReaderManifest = {
 };
 
 type ParsedEpub = {
-  zip: JSZip;
+  zip: ZipFile;
+  entries: Map<string, Entry>;
   opfPath: string;
   title: string | null;
   author: string | null;
@@ -55,6 +55,7 @@ const MANIFEST_FILENAME = "manifest.json";
 const MAX_EPUB_ENTRIES = 10_000;
 const MAX_EPUB_XML_BYTES = 5 * 1024 * 1024;
 const MAX_EPUB_COVER_BYTES = 50 * 1024 * 1024;
+const MAX_EPUB_READER_ASSET_BYTES = 50 * 1024 * 1024;
 
 
 const parser = new XMLParser({
@@ -160,7 +161,10 @@ const prettifySectionLabel = (value: string) =>
     .trim()
     .replace(/^\w/, (character) => character.toUpperCase());
 
-const parsePackage = (opfXml: string, opfPath: string): Omit<ParsedEpub, "zip" | "opfPath"> => {
+const parsePackage = (
+  opfXml: string,
+  opfPath: string,
+): Omit<ParsedEpub, "zip" | "entries" | "opfPath"> => {
   const opf = parser.parse(opfXml);
   const metadata = opf.package?.metadata ?? {};
   const manifestItems = asArray<ManifestItem>(opf.package?.manifest?.item);
@@ -191,44 +195,84 @@ const parsePackage = (opfXml: string, opfPath: string): Omit<ParsedEpub, "zip" |
   };
 };
 
-const parseEpub = async (fileBytes: Uint8Array): Promise<ParsedEpub> => {
-  let zip: JSZip;
+/**
+ * Open an EPUB and read only its container and package documents.
+ *
+ * The archive stays open because every later read seeks back into it, so the
+ * caller owns `zip.close()`. A failure in here closes it before throwing.
+ */
+const openEpub = async (filePath: string): Promise<ParsedEpub> => {
+  let zip: ZipFile;
 
   try {
-    zip = await JSZip.loadAsync(fileBytes);
+    zip = await openPromise(filePath, {
+      autoClose: false,
+      lazyEntries: true,
+      validateEntrySizes: true,
+    });
   } catch {
     throw new AppError(400, "This file is not a valid EPUB archive.");
   }
 
-  const containerXml = await zip.file("META-INF/container.xml")?.async("string");
-  if (!containerXml) {
-    throw new AppError(400, "The EPUB is missing META-INF/container.xml.");
+  try {
+    const entries = await indexZipEntries(zip);
+    const containerEntry = entries.get("META-INF/container.xml");
+    if (!containerEntry) {
+      throw new AppError(400, "The EPUB is missing META-INF/container.xml.");
+    }
+
+    const containerXml = (
+      await readZipEntry(zip, containerEntry, MAX_EPUB_XML_BYTES, "container document")
+    ).toString("utf8");
+    const container = parser.parse(containerXml);
+    const rootFile = asArray(container.container?.rootfiles?.rootfile)[0];
+    const opfPath = rootFile?.["@_full-path"];
+
+    if (!opfPath || typeof opfPath !== "string") {
+      throw new AppError(400, "The EPUB package file could not be located.");
+    }
+
+    const opfEntry = entries.get(normalizeZipPath(opfPath));
+    if (!opfEntry) {
+      throw new AppError(400, "The EPUB package file is missing.");
+    }
+
+    const opfXml = (
+      await readZipEntry(zip, opfEntry, MAX_EPUB_XML_BYTES, "package document")
+    ).toString("utf8");
+
+    return { zip, entries, opfPath, ...parsePackage(opfXml, opfPath) };
+  } catch (error) {
+    zip.close();
+    if (error instanceof AppError) throw error;
+    throw new AppError(400, "This file is not a valid EPUB archive.");
   }
+};
 
-  const container = parser.parse(containerXml);
-  const rootFile = asArray(container.container?.rootfiles?.rootfile)[0];
-  const opfPath = rootFile?.["@_full-path"];
+/**
+ * Text for one entry, or null when it is missing or over the size cap.
+ *
+ * Only documents whose absence is already tolerated are read this way — a
+ * navigation document, a section consulted for its title — so an oversized one
+ * degrades to the same fallback rather than failing the whole book.
+ */
+const readEntryText = async (parsed: ParsedEpub, zipPath: string) => {
+  const entry = parsed.entries.get(normalizeZipPath(zipPath));
+  if (!entry || entry.uncompressedSize > MAX_EPUB_XML_BYTES) return null;
 
-  if (!opfPath || typeof opfPath !== "string") {
-    throw new AppError(400, "The EPUB package file could not be located.");
+  try {
+    return (
+      await readZipEntry(parsed.zip, entry, MAX_EPUB_XML_BYTES, "document")
+    ).toString("utf8");
+  } catch {
+    return null;
   }
-
-  const opfXml = await zip.file(opfPath)?.async("string");
-  if (!opfXml) {
-    throw new AppError(400, "The EPUB package file is missing.");
-  }
-
-  return {
-    zip,
-    opfPath,
-    ...parsePackage(opfXml, opfPath),
-  };
 };
 
 const extractTocLabelsFromNav = async (parsed: ParsedEpub) => {
   if (!parsed.navPath) return new Map<string, string>();
 
-  const navXml = await parsed.zip.file(parsed.navPath)?.async("string");
+  const navXml = await readEntryText(parsed, parsed.navPath);
   if (!navXml) return new Map<string, string>();
 
   const navDocument = parser.parse(navXml);
@@ -267,7 +311,7 @@ const extractTocLabelsFromNav = async (parsed: ParsedEpub) => {
 const extractTocLabelsFromNcx = async (parsed: ParsedEpub) => {
   if (!parsed.ncxPath) return new Map<string, string>();
 
-  const ncxXml = await parsed.zip.file(parsed.ncxPath)?.async("string");
+  const ncxXml = await readEntryText(parsed, parsed.ncxPath);
   if (!ncxXml) return new Map<string, string>();
 
   const ncx = parser.parse(ncxXml);
@@ -301,7 +345,7 @@ const extractTocLabelsFromNcx = async (parsed: ParsedEpub) => {
 };
 
 const inferSectionLabel = async (parsed: ParsedEpub, sectionPath: string, fallbackIndex: number) => {
-  const sectionXml = await parsed.zip.file(sectionPath)?.async("string");
+  const sectionXml = await readEntryText(parsed, sectionPath);
   if (!sectionXml) {
     return prettifySectionLabel(sectionPath) || `Section ${fallbackIndex + 1}`;
   }
@@ -388,7 +432,6 @@ const ensureSafeRelativePath = (value: string) => {
 };
 
 const manifestPath = (readerDir: string) => path.join(readerDir, MANIFEST_FILENAME);
-const contentDirectory = (readerDir: string) => path.join(readerDir, "content");
 
 const readCachedReaderManifest = async (readerDir: string): Promise<ReaderManifest | null> => {
   try {
@@ -407,11 +450,6 @@ const readCachedReaderManifest = async (readerDir: string): Promise<ReaderManife
           typeof section?.url === "string",
       )
     ) {
-      const firstSection = parsed.sections[0];
-      if (firstSection) {
-        await readFile(path.join(contentDirectory(readerDir), normalizeZipPath(firstSection.href)));
-      }
-
       return parsed as ReaderManifest;
     }
   } catch {
@@ -430,6 +468,10 @@ const indexZipEntries = async (zip: ZipFile) => {
     if (entryCount > MAX_EPUB_ENTRIES) {
       throw new AppError(400, `The EPUB contains more than ${MAX_EPUB_ENTRIES} entries.`);
     }
+
+    // Directory entries carry a trailing slash and no content. Leaving them out
+    // keeps a request for "OEBPS/" from resolving to a zero-byte 200.
+    if (entry.fileName.endsWith("/")) continue;
 
     const entryPath = normalizeZipPath(entry.fileName);
     if (!entries.has(entryPath)) {
@@ -468,6 +510,103 @@ const readZipEntry = async (
 };
 
 export const extractEpubMetadata = async (filePath: string): Promise<ExtractedEpub> => {
+  const parsed = await openEpub(filePath);
+
+  try {
+    const coverItem = selectCoverItem(parsed.manifestItems, parsed.metaItems);
+    const coverHref = coverItem?.["@_href"];
+    if (!coverItem || !coverHref) {
+      return {
+        title: parsed.title,
+        author: parsed.author,
+        coverBuffer: null,
+        coverExtension: null,
+      };
+    }
+
+    const coverEntry = parsed.entries.get(
+      normalizeZipPath(resolveRelativeZipPath(parsed.opfPath, coverHref)),
+    );
+    if (!coverEntry) {
+      return {
+        title: parsed.title,
+        author: parsed.author,
+        coverBuffer: null,
+        coverExtension: null,
+      };
+    }
+
+    return {
+      title: parsed.title,
+      author: parsed.author,
+      coverBuffer: await readZipEntry(
+        parsed.zip,
+        coverEntry,
+        MAX_EPUB_COVER_BYTES,
+        "cover image",
+      ),
+      coverExtension: extensionFromManifest(coverItem),
+    };
+  } catch (error) {
+    if (error instanceof AppError) throw error;
+    throw new AppError(400, "This file is not a valid EPUB archive.");
+  } finally {
+    parsed.zip.close();
+  }
+};
+
+/**
+ * Build (or reuse) the reader manifest for a book.
+ *
+ * Only the manifest is written. Unpacking the archive used to double a book's
+ * uncompressed footprint on disk for assets the reader mostly never asks for;
+ * `sweepExtractedReaderContent` clears what older builds left behind.
+ */
+export const prepareEpubReader = async (
+  filePath: string,
+  readerDir: string,
+  bookId: string,
+): Promise<ReaderManifest> => {
+  const cached = await readCachedReaderManifest(readerDir);
+  if (cached) return cached;
+
+  const parsed = await openEpub(filePath);
+  let sections: BookReaderSection[];
+
+  try {
+    sections = await buildReaderSections(parsed, bookId);
+  } finally {
+    parsed.zip.close();
+  }
+
+  if (sections.length === 0) {
+    throw new AppError(400, "This EPUB does not expose readable spine sections.");
+  }
+
+  const manifest: ReaderManifest = {
+    title: parsed.title ?? "Untitled Book",
+    author: parsed.author ?? "Unknown Author",
+    sections,
+  };
+
+  await rm(readerDir, { recursive: true, force: true });
+  await mkdir(readerDir, { recursive: true });
+  await writeFile(manifestPath(readerDir), JSON.stringify(manifest, null, 2));
+
+  return manifest;
+};
+
+/**
+ * Bytes for one reader asset, read out of the EPUB, or null when the archive
+ * holds no such entry.
+ *
+ * Nothing lands on disk, so an archive entry whose name climbs out of the root
+ * is no longer a write hazard — it is simply unreachable. Entry names and the
+ * requested path normalize the same way, and `ensureSafeRelativePath` rejects
+ * every spelling that survives normalization with a leading "../".
+ */
+export const readEpubReaderAsset = async (filePath: string, assetPath: string) => {
+  const entryPath = ensureSafeRelativePath(assetPath);
   let zip: ZipFile;
 
   try {
@@ -481,60 +620,10 @@ export const extractEpubMetadata = async (filePath: string): Promise<ExtractedEp
   }
 
   try {
-    const entries = await indexZipEntries(zip);
-    const containerEntry = entries.get("META-INF/container.xml");
-    if (!containerEntry) {
-      throw new AppError(400, "The EPUB is missing META-INF/container.xml.");
-    }
+    const entry = (await indexZipEntries(zip)).get(entryPath);
+    if (!entry) return null;
 
-    const containerXml = (
-      await readZipEntry(zip, containerEntry, MAX_EPUB_XML_BYTES, "container document")
-    ).toString("utf8");
-    const container = parser.parse(containerXml);
-    const rootFile = asArray(container.container?.rootfiles?.rootfile)[0];
-    const opfPath = rootFile?.["@_full-path"];
-    if (!opfPath || typeof opfPath !== "string") {
-      throw new AppError(400, "The EPUB package file could not be located.");
-    }
-
-    const opfEntry = entries.get(normalizeZipPath(opfPath));
-    if (!opfEntry) {
-      throw new AppError(400, "The EPUB package file is missing.");
-    }
-
-    const opfXml = (
-      await readZipEntry(zip, opfEntry, MAX_EPUB_XML_BYTES, "package document")
-    ).toString("utf8");
-    const parsed = parsePackage(opfXml, opfPath);
-    const coverItem = selectCoverItem(parsed.manifestItems, parsed.metaItems);
-    if (!coverItem?.["@_href"]) {
-      return {
-        title: parsed.title,
-        author: parsed.author,
-        coverBuffer: null,
-        coverExtension: null,
-      };
-    }
-
-    const coverZipPath = normalizeZipPath(
-      resolveRelativeZipPath(opfPath, coverItem["@_href"]),
-    );
-    const coverEntry = entries.get(coverZipPath);
-    if (!coverEntry) {
-      return {
-        title: parsed.title,
-        author: parsed.author,
-        coverBuffer: null,
-        coverExtension: null,
-      };
-    }
-
-    return {
-      title: parsed.title,
-      author: parsed.author,
-      coverBuffer: await readZipEntry(zip, coverEntry, MAX_EPUB_COVER_BYTES, "cover image"),
-      coverExtension: extensionFromManifest(coverItem),
-    };
+    return await readZipEntry(zip, entry, MAX_EPUB_READER_ASSET_BYTES, "reader asset");
   } catch (error) {
     if (error instanceof AppError) throw error;
     throw new AppError(400, "This file is not a valid EPUB archive.");
@@ -542,58 +631,3 @@ export const extractEpubMetadata = async (filePath: string): Promise<ExtractedEp
     zip.close();
   }
 };
-
-export const prepareEpubReader = async (
-  filePath: string,
-  readerDir: string,
-  bookId: string,
-): Promise<ReaderManifest> => {
-  const cached = await readCachedReaderManifest(readerDir);
-  if (cached) return cached;
-
-  const fileBytes = await readFile(filePath);
-  const parsed = await parseEpub(fileBytes);
-  const sections = await buildReaderSections(parsed, bookId);
-
-  if (sections.length === 0) {
-    throw new AppError(400, "This EPUB does not expose readable spine sections.");
-  }
-
-  const manifest: ReaderManifest = {
-    title: parsed.title ?? "Untitled Book",
-    author: parsed.author ?? "Unknown Author",
-    sections,
-  };
-
-  const extractedContentDir = contentDirectory(readerDir);
-  await rm(readerDir, { recursive: true, force: true });
-  await mkdir(extractedContentDir, { recursive: true });
-
-  for (const entry of Object.values(parsed.zip.files)) {
-    if (entry.dir) continue;
-
-    // Drop an entry whose name would land outside the reader directory rather
-    // than failing the extraction. Throwing here aborted the whole book after
-    // the reader directory had already been cleared, so one odd name made an
-    // otherwise readable EPUB report itself as invalid.
-    //
-    // Only the path is treated this way. A write that fails for other reasons —
-    // a full disk above all — must still surface, or a half-extracted book gets
-    // cached behind a manifest that claims it is complete.
-    const relativePath = safeRelativePath(entry.name);
-    if (!relativePath) {
-      console.warn(`Skipped an unsafe entry in ${bookId}: ${entry.name}`);
-      continue;
-    }
-
-    const targetPath = path.join(extractedContentDir, relativePath);
-    await mkdir(path.dirname(targetPath), { recursive: true });
-    await writeFile(targetPath, await entry.async("uint8array"));
-  }
-
-  await writeFile(manifestPath(readerDir), JSON.stringify(manifest, null, 2));
-  return manifest;
-};
-
-export const resolveEpubReaderAssetPath = (readerDir: string, assetPath: string) =>
-  path.join(contentDirectory(readerDir), ensureSafeRelativePath(assetPath));
