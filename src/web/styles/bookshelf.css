@@ -731,19 +731,6 @@
   stroke: currentColor;
 }
 
-.rating-stars-filled .rating-star-frame.is-filled {
-  position: relative;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--accent);
-}
-
-.rating-stars-filled .rating-star-frame.is-filled svg {
-  fill: currentColor;
-  stroke: currentColor;
-}
-
 .rating-stars-compact .rating-star-frame,
 .rating-stars-compact .rating-star-frame svg {
   width: 12px;

@@ -62,23 +62,11 @@ export const RatingStars = ({
 }) => {
   const label = getRatingLabel(rating);
 
-  if (filledOnly) {
-    if (!rating) return null;
-    const wholeStars = Math.round(rating);
-    return (
-      <span
-        aria-label={label}
-        className={cn("rating-stars", "rating-stars-filled", compact && "rating-stars-compact")}
-        title={label}
-      >
-        {Array.from({ length: wholeStars }, (_, index) => (
-          <span aria-hidden="true" className="rating-star-frame is-filled" key={`rating-filled-${index}`}>
-            <StarIcon />
-          </span>
-        ))}
-      </span>
-    );
-  }
+  // filledOnly trims the empty trailing stars instead of always padding to 5.
+  // It must still round *up* so a half star keeps its own frame and renders at
+  // 50% fill — rounding to whole stars showed 3.5 as 4.
+  if (filledOnly && !rating) return null;
+  const starCount = filledOnly && rating ? Math.ceil(rating) : 5;
 
   return (
     <span
@@ -90,7 +78,7 @@ export const RatingStars = ({
       )}
       title={label}
     >
-      {Array.from({ length: 5 }, (_, index) => {
+      {Array.from({ length: starCount }, (_, index) => {
         const fill = getStarFill(rating, index);
         const previewFill = getStarFill(previewRating ?? null, index);
         return (
