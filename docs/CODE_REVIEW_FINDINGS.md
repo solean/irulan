@@ -15,7 +15,7 @@ roughly ordered by consequence within each section.
 
 🟢 fixed  ·  🟡 open  ·  ⚪ no action needed
 
-**22 of 27 resolved** — 21 fixed, 1 that turned out not to need fixing. 5 open.
+**23 of 27 resolved** — 22 fixed, 1 that turned out not to need fixing. 4 open.
 
 | # | Finding | Status |
 |---|---|---|
@@ -42,7 +42,7 @@ roughly ordered by consequence within each section.
 | 21 | No cross-process locking | 🟡 Open |
 | 22 | `App.tsx` is 6,648 lines | 🟢 Fixed |
 | 23 | `routeError` duplicated 3×; `GET /` handlers unguarded | 🟢 Fixed — `da165f3` |
-| 24 | Two sources of schema truth | 🟡 Open |
+| 24 | Two sources of schema truth | 🟢 Fixed |
 | 25 | Thin test coverage, no linter | 🟡 Open |
 | 26 | `.trash` never swept; dead code | 🟢 Fixed |
 | 27 | Test suite ran against the real library | 🟢 Fixed |
@@ -430,15 +430,20 @@ after   GET /api/books?bookshelfId=deleted-shelf -> 404 {"error":"Bookshelf not 
 That path is reachable from an ordinary bookmark, since the selected shelf lives in the URL.
 Handlers now throw and return directly, taking 105 lines out of the routing layer.
 
-### 🟡 24. Two sources of schema truth
+### 🟢 24. Two sources of schema truth — fixed
 
-`drizzle.config.ts` points `out` at `./drizzle`, but no migrations directory exists. The
-real schema is the raw DDL plus ad-hoc `hasColumn` ALTERs in `ensureSchema`
-(`src/server/db/client.ts`). It works, but the Drizzle schema and the DDL can drift
-silently — they already disagree cosmetically (`readStatus` ↔ `reading_status`).
+`src/server/db/schema.ts` now defines the current schema, and committed Drizzle migrations
+under `drizzle/` are the only path that changes an existing database. Startup runs the
+SQL.js migrator and persists the result; the Electron package explicitly includes the
+migration directory. The baseline is idempotent so databases created by the old raw-DDL
+bootstrap adopt the migration journal without losing their data, and a narrow compatibility
+step adds the three columns that historical releases could be missing.
 
-Either commit to `drizzle-kit generate` migrations or drop `drizzle.config.ts` and document
-the DDL as authoritative. Worth settling before the driver swap in finding 5.
+The cited `readStatus` ↔ `reading_status` difference was normal Drizzle property-to-column
+mapping, not drift. The review did expose two real omissions in `schema.ts`: the
+`deliveries` foreign keys and its bookshelf/date index. Both are now represented in the
+schema and baseline. Migration tests cover a fresh database, repeat startup, and adoption
+of the pre-migration schema.
 
 ### 🟡 25. Thin test coverage, no linter
 

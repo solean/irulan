@@ -53,8 +53,12 @@ export const deliveries = sqliteTable(
   "deliveries",
   {
     id: text("id").primaryKey(),
-    bookId: text("book_id").notNull(),
-    bookshelfId: text("bookshelf_id"),
+    bookId: text("book_id")
+      .notNull()
+      .references(() => books.id, { onDelete: "cascade" }),
+    bookshelfId: text("bookshelf_id").references(() => bookshelves.id, {
+      onDelete: "set null",
+    }),
     recipientEmail: text("recipient_email").notNull(),
     status: text("status").$type<"pending" | "sent" | "failed">().notNull(),
     smtpMessageId: text("smtp_message_id"),
@@ -62,7 +66,10 @@ export const deliveries = sqliteTable(
     createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
     sentAt: integer("sent_at", { mode: "timestamp_ms" }),
   },
-  (table) => [index("deliveries_book_id_created_at_idx").on(table.bookId, table.createdAt)],
+  (table) => [
+    index("deliveries_book_id_created_at_idx").on(table.bookId, table.createdAt),
+    index("deliveries_bookshelf_id_created_at_idx").on(table.bookshelfId, table.createdAt),
+  ],
 );
 
 export const settings = sqliteTable("settings", {
