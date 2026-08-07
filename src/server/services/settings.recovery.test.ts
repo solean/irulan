@@ -1,8 +1,8 @@
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, test } from "vitest";
 
 import type { DatabaseRecovery } from "../../shared/types";
-// Storage is redirected to a temp directory by `src/test/setup.ts`, preloaded for the
-// whole run, so these imports are plain static ones and `appConfig` is already safe.
+// Storage is redirected to a temp directory by `src/test/setup.ts`, which runs before
+// this file's imports, so these are plain static ones and `appConfig` is already safe.
 import * as client from "../db/client";
 import { settings } from "../db/schema";
 import {
@@ -25,7 +25,6 @@ const recovery = (overrides: Partial<DatabaseRecovery> = {}): DatabaseRecovery =
 afterEach(() => {
   client.setPendingDatabaseRecovery(null);
   client.db.delete(settings).run();
-  client.persistDatabase();
 });
 
 describe("database recovery notice", () => {
@@ -51,9 +50,9 @@ describe("database recovery notice", () => {
 
   test("survives a reload from disk", () => {
     recordDatabaseRecovery(recovery());
-    client.persistDatabase();
 
-    // Re-reading the stored bytes proves the notice is not merely in memory.
+    // Reading the record back through the settings table, not the in-memory pending
+    // slot, proves the notice was actually stored.
     expect(getDatabaseRecovery()).toEqual(recovery());
   });
 
@@ -76,8 +75,8 @@ describe("database recovery notice", () => {
   });
 
   test("surfaces a recovery that could not be stored", () => {
-    // The persistDatabase rollback path recovers from backup at the exact moment
-    // writing to disk is what is failing, so the record only exists in memory.
+    // Recovery from backup happens at the exact moment writing to disk is what is
+    // failing, so the record only exists in memory.
     client.setPendingDatabaseRecovery(recovery());
 
     expect(getDatabaseRecovery()).toEqual(recovery());

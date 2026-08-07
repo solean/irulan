@@ -11,10 +11,10 @@ This project intentionally does not do format conversion.
 
 ## Stack
 
-- Node.js
+- Node.js 24+ (Bun is the package manager; the server and tests run on Node)
 - Hono
 - React + Vite
-- SQLite + Drizzle
+- SQLite via better-sqlite3 + Drizzle
 - Electron for macOS desktop packaging
 
 ## Run It
@@ -41,7 +41,7 @@ Example:
 WEB_PORT=4173 bun run dev
 ```
 
-The Bun API server defaults `SERVER_IDLE_TIMEOUT_SECONDS` to `120` so EPUB uploads and import processing are not cut off by the runtime's default 10 second socket timeout.
+The API server defaults `SERVER_IDLE_TIMEOUT_SECONDS` to `120` so EPUB uploads and import processing are not cut off by the runtime's default 10 second socket timeout.
 
 ## Build
 
@@ -53,7 +53,7 @@ bun run start
 ## Test
 
 ```bash
-bun test
+bun run test
 bun run check
 ```
 

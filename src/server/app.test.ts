@@ -1,11 +1,12 @@
-import { chmodSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
-import { afterAll, beforeEach, describe, expect, test } from "bun:test";
+import { afterAll, beforeEach, describe, expect, test } from "vitest";
+import { sql } from "drizzle-orm";
 import JSZip from "jszip";
 
 // Storage, the public directory, and `SMTP_PASS` are all set up by `src/test/setup.ts`,
-// preloaded for the whole run, so these imports are plain static ones.
+// which runs before this file's imports, so these imports are plain static ones.
 import { appConfig } from "./config";
 import * as client from "./db/client";
 import * as schema from "./db/schema";
@@ -107,7 +108,6 @@ beforeEach(() => {
     .insert(schema.bookshelves)
     .values({ id: "shelf-1", name: "Shelf", kindleEmail: null, sortOrder: 0, createdAt: new Date() })
     .run();
-  client.persistDatabase();
 });
 
 afterAll(() => {
@@ -370,11 +370,21 @@ describe("SMTP password handling (finding 18)", () => {
     });
   });
 
-  test("a failed persist rolls back the password and ordinary settings together", async () => {
+  test("rolls back the password and ordinary settings together when either write fails", async () => {
     installFakeSafeStorage();
     await request("/api/settings/smtp", json({ ...smtpPayload, password: "kept-secret" }));
 
-    chmodSync(appConfig.dataDir, 0o500);
+    // saveSmtpSettings writes the password row before the ordinary ones, so aborting
+    // the host write is the case that matters: without one transaction around both, a
+    // password would outlive the settings it was entered alongside.
+    client.db.run(
+      sql.raw(`
+        CREATE TRIGGER block_smtp_host_writes BEFORE INSERT ON settings
+        WHEN NEW.key = 'smtp_host'
+        BEGIN SELECT RAISE(ABORT, 'smtp host write blocked'); END;
+      `),
+    );
+
     try {
       expect(() =>
         smtpSettings.saveSmtpSettings({
@@ -382,9 +392,9 @@ describe("SMTP password handling (finding 18)", () => {
           host: "smtp.unsaved.example.com",
           password: "lost-secret",
         }),
-      ).toThrow("Could not persist the database safely");
+      ).toThrow("smtp host write blocked");
     } finally {
-      chmodSync(appConfig.dataDir, 0o700);
+      client.db.run(sql.raw("DROP TRIGGER IF EXISTS block_smtp_host_writes;"));
     }
 
     expect(smtpSettings.getSmtpSettings().host).toBe("smtp.example.com");

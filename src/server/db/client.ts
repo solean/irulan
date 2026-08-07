@@ -1,25 +1,22 @@
 import path from "node:path";
 
-import { drizzle, type SQLJsDatabase } from "drizzle-orm/sql-js";
-import initSqlJs, { type Database, type SqlJsStatic } from "sql.js";
+import type Database from "better-sqlite3";
+import { drizzle, type BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
 
 import type { DatabaseRecovery } from "../../shared/types";
 import { appConfig } from "../config";
-import { openDatabaseWithRecovery, persistDatabaseAtomically } from "./persistence";
+import { openDatabaseWithRecovery, refreshDatabaseBackup } from "./recovery";
 import { migrateDatabaseSchema } from "./migrations";
 import * as schema from "./schema";
 
-let sqlite: Database | null = null;
-let sqlModule: SqlJsStatic | null = null;
+let sqlite: Database.Database | null = null;
 
-export let db: SQLJsDatabase<typeof schema>;
+export let db: BetterSQLite3Database<typeof schema>;
 
 /**
  * Recovery happens before `ensureSchema` has run, so the `settings` table that
- * holds the notice may not exist yet — and on the `persistDatabase` rollback
- * path the disk is failing, so nothing can be written at all. Park the record
- * here; `services/settings` moves it to storage when it can and reads through
- * to it when it cannot.
+ * stores the user-visible notice may not exist yet. Hold the record here and let
+ * `recordDatabaseRecovery` store it once the schema is in place.
  */
 let pendingRecovery: DatabaseRecovery | null = null;
 
@@ -34,70 +31,19 @@ const noteRecovery = (recovery: DatabaseRecovery | null) => {
     return;
   }
 
-  setPendingDatabaseRecovery(recovery);
   console.warn(
-    `Recovered Irulan database from ${appConfig.dbPath}.bak (${recovery.reason}), ` +
-      `current as of ${recovery.backupModifiedAt ?? "an unknown time"}.`,
+    `The database was recovered from its backup (${recovery.reason}). ` +
+      `Changes made after ${recovery.backupModifiedAt ?? "the backup was written"} are gone.`,
   );
+  pendingRecovery = recovery;
 };
 
 const requireSqlite = () => {
   if (!sqlite) {
-    throw new Error("Database has not been initialized.");
+    throw new Error("The database has not been initialized.");
   }
 
   return sqlite;
-};
-
-const requireSqlModule = () => {
-  if (!sqlModule) {
-    throw new Error("Database has not been initialized.");
-  }
-
-  return sqlModule;
-};
-
-/**
- * Point the in-memory database at what is currently stored.
- *
- * `db` is a live export binding, so every service that imported it picks up the
- * replacement on its next query rather than holding the old handle.
- */
-const reloadFromDisk = () => {
-  const previous = sqlite;
-  const opened = openDatabaseWithRecovery(requireSqlModule(), appConfig.dbPath);
-
-  // Only give up the working handle once the replacement is open.
-  sqlite = opened.database;
-  sqlite.run("PRAGMA foreign_keys = ON;");
-  db = drizzle(sqlite, { schema });
-  previous?.close();
-
-  noteRecovery(opened.recovery);
-
-  return opened.recovery;
-};
-
-export const persistDatabase = () => {
-  try {
-    persistDatabaseAtomically(requireSqlModule(), requireSqlite(), appConfig.dbPath);
-  } catch (error) {
-    // The caller already applied its change in memory, but it never reached
-    // disk. Left alone, the API would report that change as saved and it would
-    // disappear on the next restart, so roll memory back to what is stored and
-    // let the failure surface.
-    try {
-      reloadFromDisk();
-    } catch (reloadError) {
-      console.error(
-        "The database could not be saved, and the in-memory copy could not be rolled " +
-          "back to match what is stored. It now holds changes that are not on disk.",
-        reloadError,
-      );
-    }
-
-    throw error;
-  }
 };
 
 export const initializeDatabase = async () => {
@@ -105,19 +51,25 @@ export const initializeDatabase = async () => {
     return;
   }
 
-  const SQL = await initSqlJs({
-    locateFile: (file) => path.join(appConfig.rootDir, "node_modules/sql.js/dist", file),
-  });
-
-  const opened = openDatabaseWithRecovery(SQL, appConfig.dbPath);
-  sqlModule = SQL;
+  const opened = openDatabaseWithRecovery(appConfig.dbPath);
   sqlite = opened.database;
   noteRecovery(opened.recovery);
-  sqlite.run("PRAGMA foreign_keys = ON;");
   db = drizzle(sqlite, { schema });
 };
 
 export const ensureSchema = () => {
   migrateDatabaseSchema(requireSqlite(), path.join(appConfig.rootDir, "drizzle"));
-  persistDatabase();
+};
+
+export const backupDatabase = () => refreshDatabaseBackup(requireSqlite(), appConfig.dbPath);
+
+/**
+ * WAL leaves a `-wal` sidecar that only a clean close folds back into the
+ * database file. Nothing is lost without it — the next open replays the log —
+ * but a library copied out from under a killed process is easier to reason about
+ * when the primary file is complete.
+ */
+export const closeDatabase = () => {
+  sqlite?.close();
+  sqlite = null;
 };

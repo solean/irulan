@@ -7,12 +7,7 @@ import type {
   UpdateSmtpSettingsPayload,
 } from "../../shared/types";
 import { appConfig } from "../config";
-import {
-  db,
-  getPendingDatabaseRecovery,
-  persistDatabase,
-  setPendingDatabaseRecovery,
-} from "../db/client";
+import { db, getPendingDatabaseRecovery, setPendingDatabaseRecovery } from "../db/client";
 import { settings } from "../db/schema";
 import { AppError } from "../errors";
 import {
@@ -27,10 +22,10 @@ const DEFAULT_KINDLE_KEY = "default_kindle_email";
 const DATABASE_RECOVERY_KEY = "database_recovery";
 
 /**
- * A missing primary is almost always a crash between `rotateBackup` and the
- * rename in `persistDatabaseAtomically` — one save cycle of loss, common enough
- * that a persistent notice would train people to dismiss the one that matters.
- * It stays a `console.warn`. See docs/CODE_REVIEW_FINDINGS.md finding 20.
+ * A missing primary is recovered from the `.bak` file at startup and announced
+ * with a `console.warn`; only a corrupt primary earns a notice the user has to
+ * acknowledge. Surfacing every recovery would train people to dismiss the one
+ * that matters.
  */
 const USER_VISIBLE_RECOVERY_REASONS: ReadonlySet<DatabaseRecovery["reason"]> = new Set([
   "primary-corrupt",
@@ -78,7 +73,6 @@ export const saveDefaultKindleEmail = (email: string | null) => {
       set: { value: nextValue },
     })
     .run();
-  persistDatabase();
 };
 
 const getEnvironmentSmtpSettings = (): SmtpSettings => {
@@ -159,7 +153,6 @@ export const saveSmtpSettings = (smtp: UpdateSmtpSettingsPayload) => {
         .run();
     }
   });
-  persistDatabase();
 };
 
 const parseRecoveryRecord = (value: string): DatabaseRecovery | null => {
@@ -193,7 +186,6 @@ export const recordDatabaseRecovery = (recovery: DatabaseRecovery | null) => {
       .values({ key: DATABASE_RECOVERY_KEY, value })
       .onConflictDoUpdate({ target: settings.key, set: { value } })
       .run();
-    persistDatabase();
     setPendingDatabaseRecovery(null);
   } catch (error) {
     console.error("The database recovery notice could not be stored.", error);
@@ -202,8 +194,8 @@ export const recordDatabaseRecovery = (recovery: DatabaseRecovery | null) => {
 
 /**
  * Prefers the stored record, falling back to one still parked in memory — the
- * `persistDatabase` rollback path recovers from backup at a moment when writing
- * anything to disk is exactly what is failing.
+ * write in `recordDatabaseRecovery` can fail on a database that has only just
+ * come back from its backup, which is exactly when the notice matters.
  */
 export const getDatabaseRecovery = (): DatabaseRecovery | null => {
   const stored = readSetting(DATABASE_RECOVERY_KEY);
@@ -230,7 +222,6 @@ export const acknowledgeDatabaseRecovery = (recoveredAt: string) => {
 
   setPendingDatabaseRecovery(null);
   db.delete(settings).where(eq(settings.key, DATABASE_RECOVERY_KEY)).run();
-  persistDatabase();
 };
 
 export const getSettingsPayload = (): SettingsPayload => ({

@@ -1,25 +1,31 @@
 import path from "node:path";
 
-import { beforeAll, describe, expect, test } from "bun:test";
-import initSqlJs, { type Database, type SqlJsStatic } from "sql.js";
+import Database from "better-sqlite3";
+import { describe, expect, test } from "vitest";
 
 import { migrateDatabaseSchema } from "./migrations";
 
-let SQL: SqlJsStatic;
 const migrationsFolder = path.join(process.cwd(), "drizzle");
 
-const rows = (database: Database, query: string) => database.exec(query)[0]?.values ?? [];
+/**
+ * Migrations are asserted against column values rather than object keys, so the
+ * queries name their columns and the rows come back as tuples.
+ */
+const rows = (database: Database.Database, query: string) =>
+  database
+    .prepare(query)
+    .raw()
+    .all() as unknown[][];
 
-beforeAll(async () => {
-  SQL = await initSqlJs({
-    locateFile: (file) => path.join(process.cwd(), "node_modules/sql.js/dist", file),
-  });
-});
+const freshDatabase = () => {
+  const database = new Database(":memory:");
+  database.pragma("foreign_keys = ON");
+  return database;
+};
 
 describe("database migrations", () => {
   test("creates the current schema and records the baseline once", () => {
-    const database = new SQL.Database();
-    database.run("PRAGMA foreign_keys = ON;");
+    const database = freshDatabase();
 
     try {
       migrateDatabaseSchema(database, migrationsFolder);
@@ -64,9 +70,8 @@ describe("database migrations", () => {
   });
 
   test("upgrades a pre-migration database without losing existing records", () => {
-    const database = new SQL.Database();
-    database.run("PRAGMA foreign_keys = ON;");
-    database.run(`
+    const database = freshDatabase();
+    database.exec(`
       CREATE TABLE bookshelves (
         id TEXT PRIMARY KEY NOT NULL,
         name TEXT NOT NULL,
@@ -115,9 +120,9 @@ describe("database migrations", () => {
       expect(rows(database, "SELECT reading_status, rating FROM books WHERE id = 'book-1';")).toEqual([
         ["unread", null],
       ]);
-      expect(
-        rows(database, "SELECT id, book_id, bookshelf_id, status FROM deliveries;")
-      ).toEqual([["delivery-1", "book-1", null, "sent"]]);
+      expect(rows(database, "SELECT id, book_id, bookshelf_id, status FROM deliveries;")).toEqual([
+        ["delivery-1", "book-1", null, "sent"],
+      ]);
       expect(rows(database, "SELECT book_id, bookshelf_id FROM book_shelves;")).toEqual([
         ["book-1", "default"],
       ]);

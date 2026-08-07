@@ -5,7 +5,7 @@ import { desc, eq } from "drizzle-orm";
 import { z } from "zod";
 
 import { DeliveryRecord } from "../../shared/types";
-import { db, persistDatabase } from "../db/client";
+import { db } from "../db/client";
 import { deliveries } from "../db/schema";
 import { AppError } from "../errors";
 import { getBookRecord } from "./books";
@@ -96,7 +96,6 @@ export const sendBookToKindle = async (
       createdAt,
     })
     .run();
-  persistDatabase();
 
   try {
     const smtp = getSmtpSettings();
@@ -130,7 +129,6 @@ export const sendBookToKindle = async (
       })
       .where(eq(deliveries.id, deliveryId))
       .run();
-    persistDatabase();
   } catch (error) {
     db.update(deliveries)
       .set({
@@ -139,7 +137,6 @@ export const sendBookToKindle = async (
       })
       .where(eq(deliveries.id, deliveryId))
       .run();
-    persistDatabase();
 
     throw new AppError(
       502,

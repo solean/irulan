@@ -1,10 +1,10 @@
 import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
-import { afterAll, beforeEach, describe, expect, test } from "bun:test";
+import { afterAll, beforeEach, describe, expect, test } from "vitest";
 
-// Storage is redirected to a temp directory by `src/test/setup.ts`, preloaded for the
-// whole run, so these paths cannot resolve into a real library.
+// Storage is redirected to a temp directory by `src/test/setup.ts`, which runs before
+// this file's imports, so these paths cannot resolve into a real library.
 import {
   bookDirectory,
   readerDirectory,

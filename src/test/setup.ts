@@ -1,18 +1,21 @@
 /**
- * Test environment, applied before any test file is loaded.
+ * Test environment, applied before each test file is loaded.
  *
- * `appConfig` snapshots the environment once, at first import, and every file in a
- * `bun test` run shares one module registry — so whichever file imported the config
- * first decided where all of them read and wrote. Test files each set
- * `EBOOK_DATA_DIR`/`EBOOK_STORAGE_DIR` before a dynamic import and assumed they had
- * won that race, but `config.test.ts` imports the config statically with no overrides
- * at all, and Bun loads `.env` for test runs. When that import landed first the whole
- * suite ran against the developer's real library and deleted it.
+ * `appConfig` snapshots the environment once, at first import, so whichever module
+ * imported the config first decides where everything downstream of it reads and
+ * writes. Test files each used to set `EBOOK_DATA_DIR`/`EBOOK_STORAGE_DIR` before a
+ * dynamic import and assume they had won that race, but `config.test.ts` imports the
+ * config statically with no overrides at all, and `.env` is loaded for test runs. When
+ * that import landed first the whole suite ran against the developer's real library
+ * and deleted it.
  *
- * Preloading settles the race instead of racing: this file redirects storage to a
- * per-run temp directory and then imports the config itself, so the safe paths are
- * cached before any test file can ask for them. Test files no longer set these
- * variables; they read `appConfig` and get a temp directory.
+ * vitest runs this file as a `setupFiles` entry, which means once per test FILE,
+ * sharing that file's module registry and running before its imports are evaluated.
+ * That is stricter than the single shared preload it replaces: every file redirects
+ * storage to its own temp root and then imports the config itself, so the safe paths
+ * are cached before the file under test can ask for them, and no file can inherit a
+ * config another file resolved. Test files do not set these variables; they read
+ * `appConfig` and get a temp directory.
  */
 import { mkdtempSync, rmSync } from "node:fs";
 import os from "node:os";

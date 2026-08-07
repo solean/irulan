@@ -2,13 +2,13 @@ import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync 
 import os from "node:os";
 import path from "node:path";
 
-import { afterAll, describe, expect, test } from "bun:test";
+import { afterAll, describe, expect, test } from "vitest";
 import JSZip from "jszip";
 
 import { extractEpubMetadata, prepareEpubReader, readEpubReaderAsset } from "./epub";
 
-// This file builds its own fixture directories; `src/test/setup.ts`, preloaded for the
-// whole run, keeps the app's own storage root in a temp directory.
+// This file builds its own fixture directories; `src/test/setup.ts`, run before this
+// file's imports, keeps the app's own storage root in a temp directory.
 const testDirectory = mkdtempSync(path.join(os.tmpdir(), "irulan-epub-tests-"));
 
 const CONTAINER_XML = `<?xml version="1.0" encoding="UTF-8"?>

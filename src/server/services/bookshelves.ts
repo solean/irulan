@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { asc, count, eq, inArray, sql } from "drizzle-orm";
 
 import { BookshelvesPayload, BookshelfSummary } from "../../shared/types";
-import { db, persistDatabase } from "../db/client";
+import { db } from "../db/client";
 import { books, bookshelves, bookShelves, deliveries } from "../db/schema";
 import { AppError } from "../errors";
 
@@ -187,7 +187,6 @@ export const createBookshelf = ({
       createdAt: new Date(),
     })
     .run();
-  persistDatabase();
 
   return serializeBookshelf(getBookshelfRecord(id));
 };
@@ -216,7 +215,6 @@ export const updateBookshelf = (
     })
     .where(eq(bookshelves.id, bookshelfId))
     .run();
-  persistDatabase();
 
   return serializeBookshelf(getBookshelfRecord(bookshelfId));
 };
@@ -235,7 +233,6 @@ export const deleteBookshelf = (bookshelfId: string) => {
     .run();
   db.delete(bookShelves).where(eq(bookShelves.bookshelfId, bookshelfId)).run();
   db.delete(bookshelves).where(eq(bookshelves.id, bookshelfId)).run();
-  persistDatabase();
 
   return {
     id: shelf.id,
@@ -260,7 +257,6 @@ export const addBookToBookshelf = (bookId: string, bookshelfId: string) => {
     })
     .onConflictDoNothing()
     .run();
-  persistDatabase();
 };
 
 export const removeBookFromBookshelf = (bookId: string, bookshelfId: string) => {
@@ -268,7 +264,6 @@ export const removeBookFromBookshelf = (bookId: string, bookshelfId: string) => 
   db.delete(bookShelves)
     .where(sql`${bookShelves.bookId} = ${bookId} and ${bookShelves.bookshelfId} = ${bookshelfId}`)
     .run();
-  persistDatabase();
 };
 
 export const replaceBookBookshelves = (bookId: string, bookshelfIds: string[]) => {
@@ -296,5 +291,4 @@ export const replaceBookBookshelves = (bookId: string, bookshelfIds: string[]) =
   db.insert(bookShelves)
     .values(uniqueIds.map((bookshelfId) => ({ bookId, bookshelfId, addedAt: new Date() })))
     .run();
-  persistDatabase();
 };

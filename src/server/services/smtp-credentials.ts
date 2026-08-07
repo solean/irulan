@@ -2,7 +2,7 @@ import { eq } from "drizzle-orm";
 
 import type { SmtpPasswordSource } from "../../shared/types";
 import { appConfig } from "../config";
-import { db, persistDatabase } from "../db/client";
+import { db } from "../db/client";
 import { settings } from "../db/schema";
 import { AppError } from "../errors";
 
@@ -107,5 +107,4 @@ export const migrateLegacySmtpPassword = (
     }
     tx.delete(settings).where(eq(settings.key, LEGACY_PASSWORD_KEY)).run();
   });
-  persistDatabase();
 };

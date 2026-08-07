@@ -1,21 +1,17 @@
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
-import { afterAll, beforeEach, describe, expect, test } from "bun:test";
+import { afterAll, beforeEach, describe, expect, test } from "vitest";
+import Database from "better-sqlite3";
 import { sql } from "drizzle-orm";
-import initSqlJs from "sql.js";
 
-// Storage is redirected to a temp directory by `src/test/setup.ts`, preloaded for the
-// whole run, so these imports are plain static ones and `appConfig` is already safe.
+// Storage is redirected to a temp directory by `src/test/setup.ts`, which runs before
+// this file's imports, so these are plain static ones and `appConfig` is already safe.
 import { appConfig } from "../config";
 import * as client from "../db/client";
 import * as schema from "../db/schema";
 import { deleteBook } from "./books";
 import { bookDirectory } from "../lib/storage";
-
-const SQL = await initSqlJs({
-  locateFile: (file) => path.join(process.cwd(), "node_modules/sql.js/dist", file),
-});
 
 await client.initializeDatabase();
 client.ensureSchema();
@@ -29,12 +25,16 @@ const rowCounts = () => ({
   deliveries: client.db.select().from(schema.deliveries).all().length,
 });
 
+// A second connection, so the count reflects what a reader outside this test would
+// see on disk rather than one connection's uncommitted view.
 const persistedShelfCount = () => {
-  const database = new SQL.Database(readFileSync(appConfig.dbPath));
+  const database = new Database(appConfig.dbPath, { readonly: true });
 
   try {
-    const [result] = database.exec("SELECT COUNT(*) FROM book_shelves;");
-    return Number(result?.values[0]?.[0] ?? 0);
+    const row = database.prepare("SELECT COUNT(*) AS count FROM book_shelves;").get() as {
+      count: number;
+    };
+    return row.count;
   } finally {
     database.close();
   }
@@ -110,8 +110,6 @@ beforeEach(() => {
     })
     .run();
 
-  client.persistDatabase();
-
   rmSync(appConfig.storageDir, { force: true, recursive: true });
   mkdirSync(bookDirectory(BOOK_ID), { recursive: true });
   writeFileSync(path.join(bookDirectory(BOOK_ID), "book.epub"), "epub bytes");
@@ -142,7 +140,7 @@ describe("deleteBook", () => {
   test("surfaces the delete failure instead of a rollback failure", async () => {
     blockBookDeletes();
     // A rollback that re-inserts rows by hand would itself abort here, throwing away the
-    // real error and leaking a raw sql.js failure to the caller.
+    // real error and leaking a raw SQLite failure to the caller.
     client.db.run(
       sql.raw(`
         CREATE TRIGGER block_delivery_inserts BEFORE INSERT ON deliveries

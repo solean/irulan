@@ -3,7 +3,13 @@ import type { AddressInfo } from "node:net";
 
 import { app } from "./app";
 import { appConfig } from "./config";
-import { ensureSchema, getPendingDatabaseRecovery, initializeDatabase } from "./db/client";
+import {
+  backupDatabase,
+  closeDatabase,
+  ensureSchema,
+  getPendingDatabaseRecovery,
+  initializeDatabase,
+} from "./db/client";
 import { recordDatabaseRecovery } from "./services/settings";
 import { migrateLegacySmtpPassword } from "./services/smtp-credentials";
 import { ensureStorageLayout, sweepExtractedReaderContent, sweepTrash } from "./lib/storage";
@@ -36,6 +42,10 @@ export const startServer = async (options: { port?: number; hostname?: string } 
       (info: AddressInfo) => {
         const url = `http://${hostname}:${info.port}`;
         console.log(`Irulan listening on ${url}`);
+        // SQLite's online backup steps through pages with the event loop free
+        // between batches, so refreshing the recovery copy costs served
+        // requests nothing and must not hold up the port coming up.
+        void backupDatabase();
         resolve({
           hostname,
           port: info.port,
@@ -47,6 +57,9 @@ export const startServer = async (options: { port?: number; hostname?: string } 
                   closeReject(error);
                   return;
                 }
+                // Once nothing can arrive, fold the WAL back into the database
+                // file so the library on disk is a single complete file.
+                closeDatabase();
                 closeResolve();
               });
             }),
@@ -63,8 +76,22 @@ export const startServer = async (options: { port?: number; hostname?: string } 
 };
 
 if (process.env.IRULAN_SERVER_ENTRYPOINT !== "electron") {
-  startServer().catch((error) => {
-    console.error("Failed to start Irulan.", error);
-    process.exitCode = 1;
-  });
+  startServer()
+    .then((started) => {
+      // Without this the WAL sidecar survives every Ctrl-C, and `data/app.db`
+      // on its own is then behind the library it appears to be. Nothing is lost
+      // — the next open replays the log — but someone copying that one file out
+      // as a backup would not know that.
+      for (const signal of ["SIGINT", "SIGTERM"] as const) {
+        process.once(signal, () => {
+          void started.close().finally(() => {
+            process.exit(0);
+          });
+        });
+      }
+    })
+    .catch((error) => {
+      console.error("Failed to start Irulan.", error);
+      process.exitCode = 1;
+    });
 }

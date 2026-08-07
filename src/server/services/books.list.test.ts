@@ -1,11 +1,11 @@
 import { rmSync } from "node:fs";
 
-import { afterAll, beforeEach, describe, expect, test } from "bun:test";
+import { afterAll, beforeEach, describe, expect, test } from "vitest";
 
 import { eq } from "drizzle-orm";
 
-// Storage is redirected to a temp directory by `src/test/setup.ts`, preloaded for the
-// whole run, so these imports are plain static ones and `appConfig` is already safe.
+// Storage is redirected to a temp directory by `src/test/setup.ts`, which runs before
+// this file's imports, so these are plain static ones and `appConfig` is already safe.
 import { appConfig } from "../config";
 import * as client from "../db/client";
 import * as schema from "../db/schema";
