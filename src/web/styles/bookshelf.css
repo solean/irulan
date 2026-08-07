@@ -17,12 +17,6 @@
   transition: opacity 160ms ease;
 }
 
-.bookshelf-dropzone-shell-empty .bookshelf-dropzone-content {
-  display: flex;
-  flex: 1 1 auto;
-  flex-direction: column;
-  min-height: 100%;
-}
 
 .bookshelf-dropzone-content-muted {
   opacity: 0.38;
