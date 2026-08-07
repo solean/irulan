@@ -9,7 +9,6 @@ import type {
   DeleteBookshelfResult,
   DeliveryRecord,
   ImportResult,
-  SmtpSettings,
   SettingsPayload,
   UpdateBookMetadataPayload,
   UpdateSmtpSettingsPayload,

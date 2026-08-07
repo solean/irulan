@@ -1,12 +1,9 @@
 import {
-  closeSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
-  openSync,
   rmSync,
   writeFileSync,
-  writeSync,
 } from "node:fs";
 import os from "node:os";
 import path from "node:path";

@@ -7,7 +7,6 @@ import {
   useCallback,
   useEffect,
   useEffectEvent,
-  useMemo,
   useRef,
   useState,
 } from "react";
@@ -676,6 +675,10 @@ export const BookshelfPage = () => {
     : [];
 
   return (
+    // The whole page doubles as a drop target so an EPUB can be dragged anywhere
+    // onto the bookshelf. The import modal's "Browse files" button remains the
+    // keyboard path, so this surface carries no role of its own.
+    // biome-ignore lint/a11y/noStaticElementInteractions: supplementary pointer affordance
     <div
       className={cn(
         "page bookshelf-dropzone-shell",

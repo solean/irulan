@@ -1,9 +1,7 @@
-import type { FormEvent } from "react";
 import {
   useCallback,
   useEffect,
   useRef,
-  useState,
 } from "react";
 
 import {
@@ -21,15 +19,13 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
-import { Label } from "@/components/ui/label";
 
 import type { BookshelfSummary } from "../../shared/types";
 import { useFileDropTarget } from "../hooks/use-file-drop-target";
 import { getImportableFiles } from "../lib/file-import";
 import { numberFormatter } from "../lib/format";
-import { CheckIcon, UploadIcon } from "./icons";
+import { UploadIcon } from "./icons";
 
 
 type ImportBooksModalProps = {
@@ -125,6 +121,10 @@ export const ImportBooksModal = ({
           </Button>
         </div>
 
+        {/* Drag-and-drop is a pointer-only shortcut. The "Browse files" button
+            below is the keyboard-accessible path and does the same import, so
+            the drop surface itself needs no role. */}
+        {/* biome-ignore lint/a11y/noStaticElementInteractions: supplementary pointer affordance */}
         <div
           className={cn("import-dropzone", isDropTargetActive && "import-dropzone-active")}
           onDragEnter={onDragEnter}

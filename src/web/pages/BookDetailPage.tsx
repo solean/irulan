@@ -1,11 +1,11 @@
 import type { FormEvent } from "react";
 
-import { useCallback, useEffect, useEffectEvent, useRef, useState } from "react";
+import { useEffect, useEffectEvent, useRef, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
@@ -31,7 +31,6 @@ import {
   MailIcon,
   PlayIcon,
 } from "../components/icons";
-import { OverflowMenu, type OverflowMenuItem } from "../components/menus";
 import { DeleteBookModal } from "../components/modals";
 import { BookDetailSkeleton } from "../components/skeletons";
 import { useDocumentTitle } from "../hooks/use-document-title";

@@ -9,7 +9,8 @@
     "dev:server": "node --watch --import tsx --env-file=.env src/server/index.ts",
     "dev:web": "bunx --bun vite",
     "build": "bunx --bun vite build && bunx --bun esbuild src/server/index.ts --bundle --platform=node --target=node24 --format=cjs --outfile=dist/server/index.cjs --external:better-sqlite3 && bunx tsc --noEmit",
-    "check": "bunx tsc --noEmit",
+    "check": "bunx tsc --noEmit && bunx biome lint",
+    "lint": "bunx biome lint",
     "test": "vitest run",
     "start": "NODE_ENV=production node dist/server/index.cjs",
     "electron": "bun run build && electron .",
@@ -45,6 +46,7 @@
     "zod": "^4.3.6"
   },
   "devDependencies": {
+    "@biomejs/biome": "^2.5.7",
     "@tailwindcss/vite": "^4.2.2",
     "@types/better-sqlite3": "^9.6.0",
     "@types/busboy": "^1.5.4",

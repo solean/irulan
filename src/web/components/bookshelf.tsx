@@ -20,17 +20,14 @@ import {
 } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
 
-import {
-  type BookSortKey,
-  type BookSummary,
-  type BookshelfSummary,
-  type ReadStatus,
-  type SortDirection,
+import type {
+  BookSortKey,
+  BookSummary,
+  BookshelfSummary,
+  ReadStatus,
+  SortDirection,
 } from "../../shared/types";
-import {
-  type BookshelfDensity,
-  type BookshelfView,
-} from "../lib/storage";
+import type { BookshelfDensity, BookshelfView } from "../lib/storage";
 import {
   formatBytes,
   formatDate,
@@ -159,6 +156,7 @@ export const BookshelfSkeleton = ({ view }: { view: BookshelfView }) => {
           </TableHeader>
           <TableBody>
             {Array.from({ length: 6 }, (_, index) => (
+              // biome-ignore lint/suspicious/noArrayIndexKey: fixed-length skeleton placeholders; position is the only identity
               <TableRow className="books-table-row border-0" key={`bookshelf-list-skeleton-${index}`}>
                 <TableCell className="books-table-title-cell">
                   <div className="books-table-title-content">
@@ -195,6 +193,7 @@ export const BookshelfSkeleton = ({ view }: { view: BookshelfView }) => {
   return (
     <section aria-hidden="true" className="books-grid books-grid-skeleton">
       {Array.from({ length: 6 }, (_, index) => (
+        // biome-ignore lint/suspicious/noArrayIndexKey: fixed-length skeleton placeholders; position is the only identity
         <div className="book-card skeleton-card" key={`bookshelf-grid-skeleton-${index}`}>
           <div className="book-cover">
             <div className="skeleton-block skeleton-cover" />

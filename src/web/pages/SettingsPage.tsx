@@ -1,6 +1,5 @@
 import type { FormEvent } from "react";
 import {
-  useCallback,
   useEffect,
   useEffectEvent,
   useRef,
@@ -10,7 +9,7 @@ import { Link } from "react-router-dom";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -25,7 +24,6 @@ import { Label } from "@/components/ui/label";
 import type {
   BookshelfSummary,
   SettingsPayload,
-  SmtpSettings,
 } from "../../shared/types";
 import { ArrowLeftIcon } from "../components/icons";
 import { SettingsSkeleton } from "../components/skeletons";

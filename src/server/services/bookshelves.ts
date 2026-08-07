@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import { asc, count, eq, inArray, sql } from "drizzle-orm";
 
-import { BookshelvesPayload, BookshelfSummary } from "../../shared/types";
+import type { BookshelvesPayload, BookshelfSummary } from "../../shared/types";
 import { db } from "../db/client";
 import { books, bookshelves, bookShelves, deliveries } from "../db/schema";
 import { AppError } from "../errors";

@@ -57,6 +57,10 @@ bun run test
 bun run check
 ```
 
+`bun run test` runs the Vitest suite. `bun run check` type-checks with `tsc` and then lints
+with Biome; `bun run lint` runs the linter on its own. Formatting is deliberately not
+enforced.
+
 ## macOS Desktop
 
 Run the Electron app locally:

@@ -7,7 +7,7 @@ import { defineConfig } from "vitest/config";
 export default defineConfig({
   test: {
     environment: "node",
-    include: ["src/**/*.test.ts"],
+    include: ["src/**/*.test.ts", "electron/**/*.test.ts"],
     // Redirects storage to a temp directory before the app config snapshots the
     // environment. See the comment in the setup file for why that ordering matters.
     setupFiles: ["./src/test/setup.ts"],

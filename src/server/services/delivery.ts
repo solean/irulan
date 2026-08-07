@@ -4,7 +4,7 @@ import nodemailer from "nodemailer";
 import { desc, eq } from "drizzle-orm";
 import { z } from "zod";
 
-import { DeliveryRecord } from "../../shared/types";
+import type { DeliveryRecord } from "../../shared/types";
 import { db } from "../db/client";
 import { deliveries } from "../db/schema";
 import { AppError } from "../errors";

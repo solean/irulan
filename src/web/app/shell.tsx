@@ -81,7 +81,8 @@ const AppMenu = () => {
     if (items.length === 0) return;
 
     event.preventDefault();
-    const activeIndex = items.findIndex((item) => item === document.activeElement);
+    const active = document.activeElement;
+    const activeIndex = active instanceof HTMLElement ? items.indexOf(active) : -1;
     const nextIndex =
       event.key === "Home"
         ? 0
@@ -134,7 +135,7 @@ const AppMenu = () => {
             <span>Bookshelves</span>
           </Link>
 
-          <div className="app-menu-separator" role="separator" />
+          <hr className="app-menu-separator" />
 
           <div aria-label="Theme" className="app-menu-theme-row" role="group">
             <span className="app-menu-theme-label">Theme</span>

@@ -1,12 +1,10 @@
 import type {
   CSSProperties,
-  PointerEvent as ReactPointerEvent,
 } from "react";
-import { useRef, useState } from "react";
+import { useState } from "react";
 import { StarIcon } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
   Select,
@@ -76,6 +74,7 @@ export const RatingStars = ({
         previewRating !== undefined && "rating-stars-preview",
         compact && "rating-stars-compact",
       )}
+      role="img"
       title={label}
     >
       {Array.from({ length: starCount }, (_, index) => {
@@ -85,6 +84,9 @@ export const RatingStars = ({
           <span
             aria-hidden="true"
             className="rating-star-frame"
+            // Fixed-length decorative list: the stars have no identity beyond
+            // their position, and the array never reorders.
+            // biome-ignore lint/suspicious/noArrayIndexKey: index is the identity here
             key={`rating-star-${index}`}
             style={
               {

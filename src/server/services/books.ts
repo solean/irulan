@@ -190,7 +190,7 @@ const getBookSortOrder = (sort: BookSortKey, direction: SortDirection) => {
     case "rating":
       expression = sql<number>`coalesce(${books.rating}, 0)`;
       break;
-    case "importedAt":
+    // "importedAt" and anything unrecognized land here.
     default:
       expression = books.importedAt;
       break;

@@ -98,10 +98,19 @@ const getSvgImageHref = (image: Element) =>
   image.getAttribute("xlink:href") ??
   null;
 
-const getReaderLinkTarget = (
+/**
+ * Classify one `<a href>` from EPUB markup.
+ *
+ * `appOrigin` exists because the resolution is pure otherwise: hrefs inside a
+ * book are relative to the section's own URL, and only the origin comparison
+ * needs to know where the app is served from. Callers in the reader leave it at
+ * the current window.
+ */
+export const getReaderLinkTarget = (
   bookId: string,
   section: BookReaderSection,
   rawHref: string | null,
+  appOrigin: string = window.location.origin,
 ): ReaderLinkTarget => {
   if (!rawHref) return { kind: "invalid" };
 
@@ -111,8 +120,8 @@ const getReaderLinkTarget = (
   if (/^(mailto:|tel:)/i.test(trimmed)) return { kind: "external", href: trimmed };
 
   try {
-    const resolved = new URL(trimmed, new URL(section.url, window.location.origin));
-    if (resolved.origin !== window.location.origin) {
+    const resolved = new URL(trimmed, new URL(section.url, appOrigin));
+    if (resolved.origin !== appOrigin) {
       return { kind: "external", href: resolved.toString() };
     }
 
@@ -163,7 +172,7 @@ const renderNode = (
 ): ReactNode | null => {
   if (node.nodeType === Node.TEXT_NODE) {
     const text = getNodeText(node, mode === "pre");
-    if (mode === "block" && (!text || !text.trim())) {
+    if (mode === "block" && !text?.trim()) {
       return null;
     }
 

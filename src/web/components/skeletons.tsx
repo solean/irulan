@@ -1,15 +1,5 @@
 import { Link } from "react-router-dom";
 
-import { Card, CardContent, CardHeader } from "@/components/ui/card";
-import { Skeleton } from "@/components/ui/skeleton";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 
 import { SkeletonLine } from "./bookshelf";
 import { ArrowLeftIcon } from "./icons";
@@ -66,6 +56,7 @@ export const BookDetailSkeleton = () => (
       </div>
       <dl className="about-grid">
         {Array.from({ length: 6 }, (_, index) => (
+          // biome-ignore lint/suspicious/noArrayIndexKey: fixed-length skeleton placeholders; position is the only identity
           <div key={`book-detail-about-skeleton-${index}`}>
             <dt>
               <SkeletonLine className="skeleton-line-eyebrow" />
@@ -89,6 +80,7 @@ export const BookDetailSkeleton = () => (
       </div>
       <div className="history-list">
         {Array.from({ length: 3 }, (_, index) => (
+          // biome-ignore lint/suspicious/noArrayIndexKey: fixed-length skeleton placeholders; position is the only identity
           <div className="history-row" key={`delivery-history-skeleton-${index}`}>
             <div className="history-row-main">
               <span className="skeleton-pill" />

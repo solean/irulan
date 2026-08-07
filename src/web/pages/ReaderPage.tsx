@@ -137,7 +137,10 @@ export const ReaderPage = () => {
     1,
     Number.parseInt(searchParams.get("page") ?? "1", 10) || 1,
   );
-  const activeSection = (() => {
+  // Memoized so its identity only changes when the section actually does: the
+  // asset fallback allocates a fresh object, and the section-loading effect
+  // below depends on this value.
+  const activeSection = useMemo(() => {
     if (!reader) return null;
     if (!selectedHref) return reader.sections[0] ?? null;
 
@@ -145,7 +148,7 @@ export const ReaderPage = () => {
       reader.sections.find((section) => section.href === selectedHref) ??
       createReaderAssetSection(bookId, selectedHref)
     );
-  })();
+  }, [bookId, reader, selectedHref]);
   const currentSectionIndex =
     reader && activeSection
       ? reader.sections.findIndex((section) => section.href === activeSection.href)
@@ -416,7 +419,7 @@ export const ReaderPage = () => {
     // hold in place. We deliberately do NOT null the document or reset
     // pagination here, so the outgoing chapter stays put during the fetch.
     void loadSection(activeSection);
-  }, [activeSection?.href, activeSection?.url]);
+  }, [activeSection]);
 
   const measurePagination = useEffectEvent(() => {
     const viewport = readerViewportRef.current;
@@ -971,6 +974,7 @@ export const ReaderPage = () => {
             <div className="skeleton-input" />
             <div className="stack-xs">
               {Array.from({ length: 6 }, (_, index) => (
+                // biome-ignore lint/suspicious/noArrayIndexKey: fixed-length skeleton placeholders; position is the only identity
                 <div className="skeleton-button" key={`reader-skeleton-nav-${index}`} />
               ))}
             </div>
@@ -987,6 +991,7 @@ export const ReaderPage = () => {
                   {Array.from({ length: 8 }, (_, index) => (
                     <SkeletonLine
                       className={index === 0 ? "skeleton-line-heading" : "skeleton-line-paragraph"}
+                      // biome-ignore lint/suspicious/noArrayIndexKey: fixed-length skeleton placeholders; position is the only identity
                       key={`reader-paper-skeleton-${index}`}
                     />
                   ))}
@@ -1073,6 +1078,7 @@ export const ReaderPage = () => {
               {Array.from({ length: 9 }, (_, index) => (
                 <SkeletonLine
                   className={index === 0 ? "skeleton-line-heading" : "skeleton-line-paragraph"}
+                  // biome-ignore lint/suspicious/noArrayIndexKey: fixed-length skeleton placeholders; position is the only identity
                   key={`reader-body-skeleton-${index}`}
                 />
               ))}
@@ -1084,6 +1090,8 @@ export const ReaderPage = () => {
             </div>
           ) : null
         ) : (
+          // The viewport is a labelled region that also takes focus, so arrow
+          // keys and swipes can turn pages without first clicking a control.
           <div
             aria-label={`Reading viewport, page ${currentPageIndex + 1} of ${pageCount}`}
             className={cn(
@@ -1098,6 +1106,8 @@ export const ReaderPage = () => {
             onPointerMove={onReaderPointerMove}
             onPointerUp={onReaderPointerUp}
             ref={readerViewportRef}
+            role="group"
+            // biome-ignore lint/a11y/noNoninteractiveTabindex: paging needs a keyboard focus target that is not a control
             tabIndex={0}
           >
             <article

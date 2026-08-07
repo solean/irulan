@@ -40,12 +40,12 @@ const TITLE_CASE_LOWERCASE_WORDS = new Set([
 
 export const formatDisplayTitle = (value: string) => {
   if (!value) return value;
-  const tokens = value.split(/(\s+|[\-\u2013\u2014:])/u);
+  const tokens = value.split(/(\s+|[-\u2013\u2014:])/u);
   let firstWordIndex = -1;
   let lastWordIndex = -1;
   const wordIndices: number[] = [];
   tokens.forEach((token, index) => {
-    if (/^\s+$/.test(token) || /^[\-\u2013\u2014:]$/.test(token)) return;
+    if (/^\s+$/.test(token) || /^[-\u2013\u2014:]$/.test(token)) return;
     if (firstWordIndex === -1) firstWordIndex = index;
     lastWordIndex = index;
     wordIndices.push(index);

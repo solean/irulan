@@ -231,6 +231,7 @@
 .app-menu-separator {
   height: 1px;
   margin: 4px 2px;
+  border: 0;
   background: var(--border-default);
 }
 

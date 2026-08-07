@@ -199,7 +199,8 @@ describe("SMTP password handling (finding 18)", () => {
       json({ ...smtpPayload, password: "first-secret" }),
     );
     expect(created.status).toBe(200);
-    expect((created.json()?.smtp as Record<string, unknown>).passwordSource).toBe("app");
+    const createdSmtp = created.json()?.smtp as Record<string, unknown>;
+    expect(createdSmtp.passwordSource).toBe("app");
     expect(created.body).not.toContain("first-secret");
     expect(smtpSettings.getSmtpPassword()).toBe("first-secret");
 
@@ -321,7 +322,8 @@ describe("SMTP password handling (finding 18)", () => {
 
     const loaded = await request("/api/settings");
     expect(loaded.status).toBe(200);
-    expect((loaded.json()?.smtp as Record<string, unknown>).passwordSource).toBe("app");
+    const loadedSmtp = loaded.json()?.smtp as Record<string, unknown>;
+    expect(loadedSmtp.passwordSource).toBe("app");
 
     const replaced = await request(
       "/api/settings/smtp",

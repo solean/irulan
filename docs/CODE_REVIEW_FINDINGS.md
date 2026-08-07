@@ -15,7 +15,7 @@ roughly ordered by consequence within each section.
 
 🟢 fixed  ·  🟡 open  ·  ⚪ no action needed
 
-**26 of 27 resolved** — 25 fixed, 1 that turned out not to need fixing. 1 open.
+**All 27 resolved** — 26 fixed, 1 that turned out not to need fixing.
 
 | # | Finding | Status |
 |---|---|---|
@@ -43,7 +43,7 @@ roughly ordered by consequence within each section.
 | 22 | `App.tsx` is 6,648 lines | 🟢 Fixed |
 | 23 | `routeError` duplicated 3×; `GET /` handlers unguarded | 🟢 Fixed — `da165f3` |
 | 24 | Two sources of schema truth | 🟢 Fixed |
-| 25 | Thin test coverage, no linter | 🟡 Open |
+| 25 | Thin test coverage, no linter | 🟢 Fixed |
 | 26 | `.trash` never swept; dead code | 🟢 Fixed |
 | 27 | Test suite ran against the real library | 🟢 Fixed |
 
@@ -463,21 +463,58 @@ mapping, not drift. The review did expose two real omissions in `schema.ts`: the
 schema and baseline. Migration tests cover a fresh database, repeat startup, and adoption
 of the pre-migration schema.
 
-### 🟡 25. Thin test coverage, no linter
+### 🟢 25. Thin test coverage, no linter — fixed
 
-`vitest run` now covers the database recovery and backup paths, migrations, `deleteBook`,
-`listBooks`, reader manifest building and zip-backed asset reads, both storage sweeps, and
-the API surface in `src/server/app.test.ts`. Still no ESLint or Biome config anywhere.
+Biome is the linter, configured in `biome.jsonc` over `src/`, `electron/`, and the root
+config files. `bun run lint` runs it; `bun run check` now runs `tsc --noEmit` and then the
+linter, so the command the README already told you to run cannot skip it. The repository
+lints clean.
 
-Highest-value untested targets, all pure and easy:
+Formatting is deliberately left off. Turning it on would rewrite every file for reasons
+unrelated to correctness, and the point of adding a linter here was signal, not a diff.
 
-- `src/server/services/epub.ts` — metadata extraction and TOC label resolution.
-  `ensureSafeRelativePath` is covered through `readEpubReaderAsset`, including the
-  traversal cases
-- `getReaderLinkTarget` in `src/web/lib/reader.tsx`
+Two rules are relaxed at the project level, both because they were wrong in every instance
+they flagged rather than because the code was:
 
-These are the parts most exposed to real-world EPUB variety and most likely to regress
-silently.
+- `a11y/useSemanticElements` — all eight hits were labelled `role="group"` toolbars (view,
+  density, tone, type-size toggles). The rule's suggested replacement is `<fieldset>`, a form
+  construct, for a set of buttons that is not a form.
+- `correctness/useExhaustiveDependencies` keeps reporting *missing* dependencies and stops
+  reporting *extra* ones. React's own rule never reported extras either, and several effects
+  here list a value purely as a re-run trigger (`location.pathname`, `debouncedQuery`) without
+  reading it.
+
+Everything else the linter found was fixed at the source, not suppressed: dead imports across
+nine files, `(x?.y as T).z` in two API tests, an unused Hono context parameter, a non-null
+assertion on the React root, a `case` clause that fell straight into `default`, a
+`findIndex` that wanted `indexOf`, and a `!a || !a.trim()` that wanted `?.`. Three a11y fixes
+are real: the app menu's separator is an `<hr>` instead of a `role="separator"` div, the
+rating stars carry `role="img"` beside their `aria-label`, and the reading viewport carries
+`role="group"`. The seven remaining suppressions are inline and carry reasons — fixed-length
+skeleton placeholder lists where the array index genuinely is the identity, two drag-and-drop
+surfaces that duplicate a keyboard-reachable button, and the reader viewport's `tabIndex`,
+which exists so arrow keys can turn pages without first clicking a control.
+
+`activeSection` in `ReaderPage.tsx` became a `useMemo`. It was recomputed inline every render
+and the section-loading effect depended on `[activeSection?.href, activeSection?.url]` to
+dodge the unstable identity; with the memo the effect depends on `activeSection` and the
+dependency is honest.
+
+On coverage: `src/server/services/epub.test.ts` grew from 7 tests to 50 and now covers
+metadata extraction (missing, blank, and attribute-carrying elements, multiple creators),
+all three cover-selection routes and their precedence, extension inference from href and
+media type, every distinct failure message `openEpub` can raise, spine ordering and the
+skipping of non-linear, unresolvable, and repeated items, URL segment encoding, manifest
+caching, and label resolution across EPUB 3 `nav` documents, EPUB 2 NCX fallback, nav-beats-NCX
+precedence, document titles, headings, prettified filenames, and the numbered fallback.
+`getReaderLinkTarget` is exported and tested in `src/web/lib/reader.test.ts` — it takes an
+optional app origin so it stays a pure function in the Node test environment — alongside
+`buildReaderAssetUrl`, `createReaderAssetSection`, and `resolveReaderSectionLabels`.
+
+`electron/url-policy.test.ts` was written against `bun:test` and no script ran it. It is on
+vitest now and `vitest.config.ts` includes `electron/**/*.test.ts`, so `bun run test` covers
+the `shell.openExternal` allowlist it was written to defend. The suite is 176 tests over 11
+files.
 
 ### 🟢 26. `.trash` never swept; dead code
 
@@ -551,7 +588,7 @@ root, so the shared-module-registry hazard behind this incident no longer exists
 
 ## Suggested order
 
-1. **25** — a linter, and the two remaining pure targets above.
+Nothing left. Finding 25 was the last open item and landed on 2026-08-07.
 
 Ordering note: prefer consequence over cheapness. An earlier revision of this list put the
 cheap correctness batch ahead of finding 5 on the grounds that the driver swap would soon

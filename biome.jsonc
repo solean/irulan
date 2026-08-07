@@ -1,0 +1,43 @@
+{
+  "$schema": "./node_modules/@biomejs/biome/configuration_schema.json",
+  "vcs": {
+    "enabled": true,
+    "clientKind": "git",
+    "useIgnoreFile": true
+  },
+  "files": {
+    "includes": ["src/**/*.ts", "src/**/*.tsx", "electron/**/*.cjs", "electron/**/*.ts", "*.ts"]
+  },
+  // Formatting is deliberately not enforced. Enabling it would rewrite every file in
+  // the repository for reasons unrelated to correctness; `bun run lint` is meant to be
+  // a signal, not a diff.
+  "formatter": {
+    "enabled": false
+  },
+  "assist": {
+    "enabled": false
+  },
+  "linter": {
+    "enabled": true,
+    "rules": {
+      "preset": "recommended",
+      "a11y": {
+        // Every occurrence in this codebase is a labelled `role="group"` toolbar
+        // (view/density/tone toggles). The rule's suggested replacement is
+        // `<fieldset>`, which is a form construct and wrong for all of them.
+        "useSemanticElements": "off"
+      },
+      "correctness": {
+        "useExhaustiveDependencies": {
+          "level": "error",
+          "options": {
+            // Missing dependencies are bugs and stay reported. Extra ones are an
+            // idiom here: several effects list a value purely as a re-run trigger
+            // (`location.pathname`, `debouncedQuery`) without reading it.
+            "reportUnnecessaryDependencies": false
+          }
+        }
+      }
+    }
+  }
+}

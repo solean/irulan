@@ -103,7 +103,7 @@ app.get("/assets/*", async (c) => {
   }
 });
 
-app.get("*", async (c) => {
+app.get("*", async () => {
   const indexPath = path.join(appConfig.publicDir, "index.html");
 
   try {
