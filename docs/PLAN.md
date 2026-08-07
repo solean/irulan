@@ -39,16 +39,16 @@ A backup must include the database, original EPUB files, extracted covers, and a
 
 #### Durable database persistence — done
 
-Implemented in `src/server/db/persistence.ts` and wired into
-`src/server/db/client.ts`. Every save validates the exported bytes, writes them
-to a temporary file, flushes the file and its parent directory, rotates the
-previous known-good database to `app.db.bak`, and atomically renames the
-temporary file over `app.db`. Startup integrity-checks the primary database and
-falls back to the backup, discarding stale `.tmp` files from interrupted writes.
-Covered by `src/server/db/persistence.test.ts`.
+SQLite through `better-sqlite3`, in WAL mode with `synchronous = FULL`, so a write is
+durable when the statement returns and only the pages it touched are written. Startup
+`quick_check`s the primary database and falls back to `app.db.bak` when it cannot be used,
+discarding stale `.tmp` files from interrupted restores; the backup itself is refreshed
+once per startup by SQLite's online backup, off the request path. Implemented in
+`src/server/db/recovery.ts`, wired into `src/server/db/client.ts`, covered by
+`src/server/db/recovery.test.ts`.
 
-Still open: migrating from SQL.js to native SQLite with transactions and WAL, so
-a save no longer rewrites the whole database file.
+This replaced a `sql.js` design that serialised and rewrote the entire database file on
+every mutation, which froze the event loop for ~62 ms per click on a 42 MB library.
 
 #### Secure SMTP credentials — done
 

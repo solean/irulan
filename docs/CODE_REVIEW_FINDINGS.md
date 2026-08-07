@@ -15,7 +15,7 @@ roughly ordered by consequence within each section.
 
 🟢 fixed  ·  🟡 open  ·  ⚪ no action needed
 
-**23 of 27 resolved** — 22 fixed, 1 that turned out not to need fixing. 4 open.
+**26 of 27 resolved** — 25 fixed, 1 that turned out not to need fixing. 1 open.
 
 | # | Finding | Status |
 |---|---|---|
@@ -23,9 +23,9 @@ roughly ordered by consequence within each section.
 | 2 | `deleteBook` rollback lost shelf memberships | 🟢 Fixed — `bea269b` |
 | 3 | Database writes were non-atomic and unrecoverable | 🟢 Fixed — `0e0989d` |
 | 4 | Save path did 4× redundant integrity checks; bad primary blocked all writes | 🟢 Fixed — `3b05559` |
-| 5 | Failed save leaves memory ahead of disk | 🟢 Fixed — `88233a6` |
-| 6 | Saves block the event loop | 🟡 Open (architectural) |
-| 7 | Transient memory ~2× database size per save | 🟡 Open (architectural) |
+| 5 | Failed save leaves memory ahead of disk | 🟢 Fixed — `88233a6`, guard later deleted |
+| 6 | Saves block the event loop | 🟢 Fixed — better-sqlite3 swap |
+| 7 | Transient memory ~2× database size per save | 🟢 Fixed — better-sqlite3 swap |
 | 8 | `listBooks` is O(books × shelves) in queries | 🟢 Fixed — `ab2e4b1` |
 | 9 | `shell.openExternal` has no scheme allowlist | 🟢 Fixed — `abc530b` |
 | 10 | Unmatched `/api/*` returns HTML with status 200 | 🟢 Fixed — `da165f3` |
@@ -39,7 +39,7 @@ roughly ordered by consequence within each section.
 | 18 | SMTP password round-trips to the browser | 🟢 Fixed |
 | 19 | No CSP; dead Google Fonts preconnect | 🟢 Fixed |
 | 20 | Database recovery is silent to the user | 🟢 Fixed |
-| 21 | No cross-process locking | 🟡 Open |
+| 21 | No cross-process locking | 🟢 Fixed — better-sqlite3 swap |
 | 22 | `App.tsx` is 6,648 lines | 🟢 Fixed |
 | 23 | `routeError` duplicated 3×; `GET /` handlers unguarded | 🟢 Fixed — `da165f3` |
 | 24 | Two sources of schema truth | 🟢 Fixed |
@@ -51,79 +51,92 @@ roughly ordered by consequence within each section.
 
 ## Database layer
 
-The three commits on 2026-07-31 fixed the acute problems: writes are atomic, a corrupt
-primary recovers from backup at startup, and the save path no longer does redundant
-work. What remains below is a property of keeping the whole database in memory and
-rewriting it wholesale — it cannot be repaired inside `persistence.ts`.
+The three commits on 2026-07-31 fixed the acute problems inside the sql.js model: writes
+were atomic, a corrupt primary recovered from backup at startup, and the save path stopped
+doing redundant work. Findings 6 and 7 were the residue of that model — the whole database
+in memory, rewritten wholesale on every mutation — and they are gone because the model is
+gone. The driver swap landed on 2026-08-07 and took findings 5, 6 and 7 with it.
 
-### 🟢 5. A failed save left memory ahead of disk — fixed in `88233a6`
+### 🟢 Findings 5, 6 and 7 — resolved by the better-sqlite3 swap
+
+`sql.js` is replaced by `better-sqlite3` 13. Writes go through SQLite itself, so a
+mutation touches the pages it changes and nothing else. What that deleted:
+
+- `src/server/db/persistence.ts` (314 lines), `persistDatabase`, and all 17 of its call
+  sites. Nothing replaced them: a drizzle `.run()` is durable when it returns.
+- The reload-on-failed-save guard from finding 5. A failed write now fails inside a real
+  transaction, so memory cannot end up ahead of disk.
+- The rollback tests that pinned that guard, and the whole-file persistence tests.
+
+Measured on a 41.9 MB / 40k-row database, same shape both sides:
+
+| | sql.js | better-sqlite3 |
+|---|---|---|
+| one rating write | 62 ms, event loop frozen throughout | 0.003 ms median, 0.026 ms p99 |
+| a 1 ms timer during a save | fires once | unaffected |
+| transient memory per save | +38 MB export, +41 MB check copy | none |
+| cold open + `count(*)` | whole file read and validated | 0.5 ms |
+
+End to end through the HTTP API on the packaged bundle: 400 bookshelf mutations measured
+0.41 ms median / 1.84 ms max, and reads issued concurrently with those writes came back in
+0.45 ms median / 1.6 ms max. Cover fetches no longer queue behind a rating click, which was
+the point.
+
+The driver is Node-API, which is what made this tractable: one prebuilt
+`prebuilds/darwin-arm64.node` loads unchanged under Electron 41 (ABI 145) and Node 25/26
+(ABI 141/147) with no rebuild step. The ABI objection recorded in the old version of this
+section applied to better-sqlite3 11 and earlier, which shipped per-ABI `build/Release`
+binaries; it is obsolete.
+
+The cost was elsewhere, and it was the Bun runtime, which the old analysis missed: neither
+better-sqlite3 nor `node:sqlite` loads under Bun 1.3.14, and Bun ran both `dev:server` and
+the test suite. So the server moved to Node (`node --watch --import tsx`, since Node's
+native type stripping does not resolve this repo's extensionless imports) and the tests
+moved from `bun:test` to vitest, which keeps jest-style `expect` so no assertion changed.
+Bun remains the package manager. Node 24 is now the floor — `engines` plus `.nvmrc` — because
+the Node-API prebuild segfaults on the EOL Node 21 the repo had been using.
+
+Durability and backup policy, both new:
+
+- WAL with `synchronous = FULL`, so an acknowledged write survives a power cut. The `-wal`
+  sidecar means `data/app.db` alone is no longer a complete library between checkpoints,
+  so SIGINT/SIGTERM now closes the connection and folds the log back into the file.
+- The `.bak` file is refreshed by SQLite's online backup (`Database.backup`, stepped with
+  the event loop free between batches) once per startup, off the critical path, instead of
+  riding along with every write. It is a guard against a damaged file, not a transaction
+  log. A restore also deletes the replaced primary's `-wal`/`-shm`: SQLite pairs a WAL with
+  its database by salt, and an orphaned one invites a replay against pages it never
+  described.
+
+### 🟢 5. A failed save left memory ahead of disk — fixed in `88233a6`, then deleted
 
 Every mutation applied its change in memory and then called `persistDatabase()` at one of
 15 unguarded call sites. A failed save returned 500 while the change stayed in memory, so
-the API reported it as saved until the next restart dropped it.
+the API reported it as saved until the next restart dropped it. `persistDatabase` was made
+to reopen the database from disk on a failed save, which cost a full reload on the failure
+path and was explicitly a guard rather than a cure — the note said the driver swap would
+make it unnecessary, and it did.
 
-`persistDatabase` now reopens the database from disk when a save fails, so memory matches
-what is stored before the error propagates. Observed through the API with the data
-directory made read-only, patching a rating from 2 to 5:
+The one part worth keeping now that the code is gone: `db` is a live export binding, and
+reassignment carries through the esbuild CJS bundle as well as under a plain loader
+(verified both), so services that imported it pick up a replacement on their next query.
+That is what makes hot-swapping the connection safe, and `initializeDatabase` still relies
+on it.
 
-| | PATCH result | rating read back | rating on disk |
-|---|---|---|---|
-| before | 500 | 5 | 2 |
-| after | 500 | 2 | 2 |
+### 🟢 6. Saves blocked the event loop — resolved by the swap
 
-The mechanism worth remembering: `db` is a live export binding, and reassignment carries
-through both Bun and the esbuild CJS bundle (verified both), so services that imported it
-pick up the replacement on their next query. The old handle is closed only once the
-replacement is open. A test calls through a service that resolved `db` before the swap,
-since that is where a stale handle would surface.
+`persistDatabaseAtomically` was synchronous end to end: a 1 ms sampling timer set during a
+save fired exactly once, because the whole server was frozen for the duration. Re-measured
+at 62 ms median on a 41.9 MB database, spent as 28.6 ms full `integrity_check`, 17.9 ms
+write and fsync, 6.1 ms backup rotation, 6.0 ms rename and directory fsync, 3.4 ms
+`export()`. Every concurrent cover fetch and reader asset request queued behind a rating
+click. See the swap section above for the numbers now.
 
-This is a guard, not a cure — it costs a full reload on the failure path, and the swap in
-findings 6 and 7 would make it unnecessary. It earns its place because that swap is not
-near-term.
+### 🟢 7. Transient memory was ~2× the database size per save — resolved by the swap
 
-### 🟡 6. Saves block the event loop
-
-`persistDatabaseAtomically` is synchronous end to end. A 1 ms sampling timer set during a
-save never fires once — the whole server is frozen for the duration. Measured median
-45 ms on a 39.5 MB database, so every concurrent cover fetch and reader asset request
-queues behind a rating click.
-
-### 🟡 7. Transient memory is ~2× the database size per save
-
-Measured on a 39.5 MB database: `export()` adds 38 MB, the integrity-check copy adds
-another 41 MB. RSS goes 362 MB → 441 MB and back on every save.
-
-### Fix for 6 and 7
-
-Both dissolve with a real SQLite driver, which writes only changed pages, gives real
-transactions where a failed write fails atomically, and lets `src/server/db/persistence.ts`
-and the rollback guard from finding 5 be deleted entirely.
-
-This is a bigger job than it first looks. Drizzle 0.45.2 ships these SQLite drivers:
-
-```
-better-sqlite3  bun-sqlite  durable-sqlite  expo-sqlite  op-sqlite  sqlite-core  sqlite-proxy
-```
-
-**There is no `node:sqlite` driver.** That rules out the cleanest option and leaves:
-
-- **`better-sqlite3`** — the realistic choice, but it is a native addon and the project has
-  two runtimes. `bun run start` executes `dist/server/index.cjs` under plain Node, while
-  Electron runs the same bundle under Electron's Node. A build for one ABI will not load in
-  the other. electron-builder rebuilds it for the packaged app, but `bun run electron`
-  against the repo's `node_modules` needs the Electron-ABI build.
-- **`bun-sqlite`** — dev only. Production and Electron are both Node.
-- **`sqlite-proxy` + `node:sqlite`** — sidesteps native modules entirely and is arguably the
-  better end state, but `node:sqlite` needs Node 22+ (the local toolchain is on v21.7.3) and
-  Drizzle's proxy driver is async, which would ripple `await` through every `.get()`,
-  `.all()` and `.run()` in the 15 service call sites.
-
-Worth a spike to resolve the ABI question before committing to it. `ensureSchema` in
-`src/server/db/client.ts` is raw DDL and would need to move or be re-pointed either way —
-see finding 24.
-
-Because that spike has not happened, finding 5 was fixed in place rather than waiting for
-the swap to delete it.
+On a 39.5 MB database `export()` added 38 MB and the integrity-check copy another 41 MB, so
+RSS went 362 MB → 441 MB and back on every save. Both allocations were consequences of
+serialising the whole database to write one row; neither exists now.
 
 ### 🟢 20. Recovery is silent to the user — fixed
 
@@ -138,8 +151,8 @@ on — and a `reason` distinguishing the two branches that used to look identica
 
 | branch | cause | surfaced as |
 |---|---|---|
-| `primary-corrupt` (`persistence.ts:183`) | the primary exists and will not open | persistent banner |
-| `primary-missing` (`persistence.ts:205`) | crash between `rotateBackup` and the rename | `console.warn` only |
+| `primary-corrupt` (`recovery.ts`) | the primary exists and fails `quick_check` | persistent banner |
+| `primary-missing` (`recovery.ts`) | the primary is gone but the backup is not | `console.warn` only |
 
 A missing primary costs about one save cycle and is the expected outcome of force-quitting
 mid-write. Showing the same data-loss banner for both would make it routine, and a banner
@@ -147,10 +160,10 @@ people dismiss reflexively stops working for the case that matters. The policy i
 `Set` in `services/settings.ts` (`USER_VISIBLE_RECOVERY_REASONS`) if that judgement turns
 out to be wrong.
 
-Two call sites dropped the flag, not one. The original finding named
-`initializeDatabase`; `reloadFromDisk` also discarded its return value inside the
-`persistDatabase` rollback guard, where the on-disk library falls back to the backup while
-the caller only ever learns that a save failed. Both now go through `noteRecovery`.
+Both branches go through `noteRecovery`. The original finding named `initializeDatabase` as
+the only call site that dropped the flag; the second one lived in the `persistDatabase`
+rollback guard, which the driver swap deleted, so `initializeDatabase` is once again the
+only path that can produce a recovery record.
 
 The notice is stored in the `settings` table rather than a client-side dismissal flag, and
 is acknowledged by `recoveredAt` rather than a boolean. A plain "dismissed" flag would
@@ -161,26 +174,31 @@ reintroduced by its own fix. `settings.recovery.test.ts` pins that.
 `Shell` rather than on `BookshelfPage`, because someone who deep-links to a book has to see
 it too.
 
-### 🟡 21. No cross-process locking
+### 🟢 21. No cross-process locking — resolved by the swap
 
-Running `bun run dev` and the packaged Electron app against the same data directory means
-two processes doing whole-file writes with no coordination. Last writer wins and silently
-discards the other's work.
+Running the dev server and the packaged Electron app against the same data directory used
+to mean two processes doing whole-file writes with no coordination: last writer won and
+silently discarded the other's work, and a race could leave a torn primary, which is the
+spurious-recovery case finding 20 surfaces.
 
-This also makes spurious recoveries more likely: two processes racing on the same
-whole-file write can leave a torn primary, which is what finding 20 now surfaces.
+SQLite takes POSIX locks on the database and its WAL, so this is now handled by the file
+format rather than by hope. Two processes interleave writes correctly; a writer that cannot
+get the lock waits out the connection's `busy_timeout`, which better-sqlite3 defaults to
+5000 ms (verified against the open connection), and only then raises `SQLITE_BUSY`. Nothing
+is silently lost either way.
 
 ### Known and deliberate
 
-- `replaceFromBytes` in `persistence.ts` still re-reads and re-validates after writing.
-  Redundant, but it runs once on the startup recovery path, so it costs nothing in steady
-  state.
-- `openDatabaseWithRecovery` carries two near-identical ~30-line recovery blocks that
-  could collapse into one.
-- The hard-link copy fallback in `rotateBackup` has no test. Simulating a filesystem
-  without hard-link support is not portable, and mocking `linkSync` does not work cleanly
-  against ESM's immutable bindings. The link path and the failure paths around it are
-  covered.
+- The startup check is `quick_check`, not `integrity_check`. On a 41.9 MB library the full
+  check takes 2.1 s against 20 ms for the quick one, and the damage that matters at
+  startup — a truncated, clobbered or non-SQLite file, or a scrambled page — fails the
+  quick check too, which `recovery.test.ts` pins with a deliberately damaged page.
+- `openDatabaseWithRecovery` still carries two recovery branches that differ only in the
+  reason they report. They stay separate because the reason drives whether the user sees a
+  banner.
+- The backup is refreshed once per startup, so a long-running instance carries an ageing
+  `.bak`. That is the intended trade: SQLite's own crash safety covers process death, and
+  the backup exists for a damaged file, which no write-time rotation would predict either.
 
 ---
 
@@ -434,10 +452,10 @@ Handlers now throw and return directly, taking 105 lines out of the routing laye
 
 `src/server/db/schema.ts` now defines the current schema, and committed Drizzle migrations
 under `drizzle/` are the only path that changes an existing database. Startup runs the
-SQL.js migrator and persists the result; the Electron package explicitly includes the
-migration directory. The baseline is idempotent so databases created by the old raw-DDL
-bootstrap adopt the migration journal without losing their data, and a narrow compatibility
-step adds the three columns that historical releases could be missing.
+better-sqlite3 migrator inside SQLite's own transaction; the Electron package explicitly
+includes the migration directory. The baseline is idempotent so databases created by the old
+raw-DDL bootstrap adopt the migration journal without losing their data, and a narrow
+compatibility step adds the three columns that historical releases could be missing.
 
 The cited `readStatus` ↔ `reading_status` difference was normal Drizzle property-to-column
 mapping, not drift. The review did expose two real omissions in `schema.ts`: the
@@ -447,9 +465,9 @@ of the pre-migration schema.
 
 ### 🟡 25. Thin test coverage, no linter
 
-`bun test` now covers the database persistence and rollback paths, `deleteBook`, `listBooks`,
-reader manifest building and zip-backed asset reads, both storage sweeps, and the API
-surface in `src/server/app.test.ts`. Still no ESLint or Biome config anywhere.
+`vitest run` now covers the database recovery and backup paths, migrations, `deleteBook`,
+`listBooks`, reader manifest building and zip-backed asset reads, both storage sweeps, and
+the API surface in `src/server/app.test.ts`. Still no ESLint or Biome config anywhere.
 
 Highest-value untested targets, all pure and easy:
 
@@ -520,22 +538,24 @@ within seconds.
 The lesson for the next incident: a freshly wiped SQLite file is not empty. Copy it before
 the app can rotate or vacuum it, then carve, before concluding anything is gone.
 
-`src/test/setup.ts`, preloaded via `bunfig.toml`, now settles the race instead of racing:
-it points `EBOOK_DATA_DIR`, `EBOOK_STORAGE_DIR`, and `IRULAN_PUBLIC_DIR` at a per-run temp
-directory, imports the config itself so the safe paths are cached before any test file loads,
-and then asserts every resolved path sits inside that temp root — a suite pointed at a real
-library refuses to run rather than writing to it. Test files no longer set those variables or
-dynamically import to dodge hoisting; they read `appConfig` and get a temp directory.
+`src/test/setup.ts`, run as a vitest `setupFiles` entry, now settles the race instead of
+racing: it points `EBOOK_DATA_DIR`, `EBOOK_STORAGE_DIR`, and `IRULAN_PUBLIC_DIR` at a temp
+directory, imports the config itself so the safe paths are cached before the test file's own
+imports evaluate, and then asserts every resolved path sits inside that temp root — a suite
+pointed at a real library refuses to run rather than writing to it. Test files no longer set
+those variables or dynamically import to dodge hoisting; they read `appConfig` and get a temp
+directory. Since the move off `bun test`, each file gets its own setup run and its own temp
+root, so the shared-module-registry hazard behind this incident no longer exists at all.
 
 ---
 
 ## Suggested order
 
-1. **24 → 6/7** — settle the schema question, then spike and swap the SQLite driver.
-2. **21** — cross-process locking, if the dev server and the packaged app ever run together.
-3. **25** — a linter, and the two remaining pure targets above.
+1. **25** — a linter, and the two remaining pure targets above.
 
 Ordering note: prefer consequence over cheapness. An earlier revision of this list put the
 cheap correctness batch ahead of finding 5 on the grounds that the driver swap would soon
-delete any fix for it. When the swap turned out not to be near-term that reasoning expired,
-but the order was not revisited.
+delete any fix for it, then reversed that when the swap looked far off. The swap landed on
+2026-08-07 and did delete it, which is worth remembering the next time a fix is justified by
+a rewrite that has not happened: the guard was cheap and bought six days of correctness, so
+the reversal was still right.
