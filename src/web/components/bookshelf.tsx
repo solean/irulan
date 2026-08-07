@@ -458,7 +458,7 @@ export const BookshelfList = ({
 type BookshelfSidebarProps = {
   activeBookshelfId: string | null;
   bookshelves: BookshelfSummary[];
-  totalBookCount: number;
+  libraryBookCount: number;
   statusFilter: ReadStatusFilter;
   statusCounts: Record<ReadStatusFilter, number>;
   minimized: boolean;
@@ -509,7 +509,7 @@ const SidebarItem = ({
 export const BookshelfSidebar = ({
   activeBookshelfId,
   bookshelves,
-  totalBookCount,
+  libraryBookCount,
   statusFilter,
   statusCounts,
   minimized,
@@ -550,7 +550,7 @@ export const BookshelfSidebar = ({
           <div className="sidebar-list" role="group">
             <SidebarItem
               active={activeBookshelfId === ALL_BOOKSHELVES_ID}
-              count={totalBookCount}
+              count={libraryBookCount}
               label="All books"
               onSelect={() => onSelectBookshelf(ALL_BOOKSHELVES_ID)}
             />

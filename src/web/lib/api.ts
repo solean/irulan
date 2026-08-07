@@ -3,6 +3,7 @@ import type {
   BookListOptions,
   BookPage,
   BookReader,
+  BookshelvesPayload,
   BookshelfSummary,
   DeleteBookResult,
   DeleteBookshelfResult,
@@ -143,8 +144,7 @@ export const api = {
   },
 
   async listBookshelves() {
-    const payload = await request<{ bookshelves: BookshelfSummary[] }>("/api/bookshelves");
-    return payload.bookshelves;
+    return request<BookshelvesPayload>("/api/bookshelves");
   },
 
   async createBookshelf(name: string, kindleEmail: string | null) {

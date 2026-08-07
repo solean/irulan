@@ -5,7 +5,7 @@ import {
   addBookToBookshelf,
   createBookshelf,
   deleteBookshelf,
-  listBookshelves,
+  getBookshelfList,
   removeBookFromBookshelf,
   updateBookshelf,
 } from "../services/bookshelves";
@@ -21,7 +21,7 @@ const bookMembershipSchema = z.object({
 
 export const bookshelvesRoutes = new Hono();
 
-bookshelvesRoutes.get("/", (c) => c.json({ bookshelves: listBookshelves() }));
+bookshelvesRoutes.get("/", (c) => c.json(getBookshelfList()));
 
 bookshelvesRoutes.post("/", async (c) => {
   const payload = bookshelfSchema.parse(await c.req.json());
@@ -40,10 +40,10 @@ bookshelvesRoutes.delete("/:id", (c) =>
 bookshelvesRoutes.post("/:id/books", async (c) => {
   const payload = bookMembershipSchema.parse(await c.req.json());
   addBookToBookshelf(payload.bookId, c.req.param("id"));
-  return c.json({ bookshelves: listBookshelves() });
+  return c.json(getBookshelfList());
 });
 
 bookshelvesRoutes.delete("/:id/books/:bookId", (c) => {
   removeBookFromBookshelf(c.req.param("bookId"), c.req.param("id"));
-  return c.json({ bookshelves: listBookshelves() });
+  return c.json(getBookshelfList());
 });

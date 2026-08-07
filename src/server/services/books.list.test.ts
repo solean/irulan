@@ -10,7 +10,12 @@ import { appConfig } from "../config";
 import * as client from "../db/client";
 import * as schema from "../db/schema";
 import { listBooks } from "./books";
-import { listBookshelves, listBookshelvesForBook, listBookshelvesForBooks } from "./bookshelves";
+import {
+  getBookshelfList,
+  listBookshelves,
+  listBookshelvesForBook,
+  listBookshelvesForBooks,
+} from "./bookshelves";
 
 await client.initializeDatabase();
 client.ensureSchema();
@@ -417,5 +422,34 @@ describe("listBookshelves", () => {
       // An empty shelf still reports zero rather than dropping out of the group by.
       ["Gamma", 0],
     ]);
+  });
+});
+
+describe("getBookshelfList", () => {
+  test("counts each book once no matter how many shelves hold it", () => {
+    addBookshelves(["Alpha", "Beta"]);
+    addBooks(3);
+    addMemberships([
+      // book-0 sits on both shelves. Every book is on at least one, so the two
+      // failure modes cannot cancel each other out here.
+      ["book-0", "shelf-0"],
+      ["book-0", "shelf-1"],
+      ["book-1", "shelf-0"],
+      ["book-2", "shelf-1"],
+    ]);
+
+    const { bookshelves: shelves, libraryBookCount } = getBookshelfList();
+
+    // Summing the shelf counts would say 4, counting book-0 on each shelf.
+    expect(shelves.reduce((total, shelf) => total + shelf.bookCount, 0)).toBe(4);
+    expect(libraryBookCount).toBe(3);
+    expect(listBooks().total).toBe(libraryBookCount);
+  });
+
+  test("counts books that belong to no shelf at all", () => {
+    addBookshelves(["Alpha"]);
+    addBooks(2);
+
+    expect(getBookshelfList().libraryBookCount).toBe(2);
   });
 });

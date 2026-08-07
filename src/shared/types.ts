@@ -29,6 +29,17 @@ export type BookshelfSummary = {
   createdAt: string;
 };
 
+/**
+ * The shelf list plus the size of the library as a whole.
+ *
+ * `libraryBookCount` cannot be derived by summing `bookCount`: a book on two
+ * shelves is counted by both, and a book on no shelf is counted by none.
+ */
+export type BookshelvesPayload = {
+  bookshelves: BookshelfSummary[];
+  libraryBookCount: number;
+};
+
 export type BookSummary = {
   id: string;
   title: string;

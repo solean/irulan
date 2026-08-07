@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import { asc, count, eq, inArray, sql } from "drizzle-orm";
 
-import { BookshelfSummary } from "../../shared/types";
+import { BookshelvesPayload, BookshelfSummary } from "../../shared/types";
 import { db, persistDatabase } from "../db/client";
 import { books, bookshelves, bookShelves, deliveries } from "../db/schema";
 import { AppError } from "../errors";
@@ -34,6 +34,13 @@ const getBookCount = (bookshelfId: string) =>
     .from(bookShelves)
     .where(eq(bookShelves.bookshelfId, bookshelfId))
     .get()?.value ?? 0;
+
+/**
+ * Distinct books in the library, which is not the sum of the shelf counts: a
+ * book on several shelves is counted by each of them, and a book on no shelf
+ * (every shelf holding it was deleted, say) is counted by none.
+ */
+const countLibraryBooks = () => db.select({ value: count() }).from(books).get()?.value ?? 0;
 
 /** Book totals for every shelf at once, so a list render never counts per shelf. */
 const getBookCountsByBookshelf = (): Map<string, number> =>
@@ -70,6 +77,11 @@ export const listBookshelves = (): BookshelfSummary[] => {
     .all()
     .map((bookshelf) => toBookshelfSummary(bookshelf, bookCounts.get(bookshelf.id) ?? 0));
 };
+
+export const getBookshelfList = (): BookshelvesPayload => ({
+  bookshelves: listBookshelves(),
+  libraryBookCount: countLibraryBooks(),
+});
 
 /**
  * Shelf memberships for many books, keyed by book id.

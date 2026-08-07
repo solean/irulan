@@ -130,6 +130,7 @@ export const BookshelfPage = () => {
   const [selectedImportBookshelfIds, setSelectedImportBookshelfIds] = useState<string[]>([]);
   const [settings, setSettings] = useState<SettingsPayload | null>(null);
   const [bookshelves, setBookshelves] = useState<BookshelfSummary[]>([]);
+  const [libraryBookCount, setLibraryBookCount] = useState(0);
   const [hasLoadedBooks, setHasLoadedBooks] = useState(false);
   const [hasLoadedSettings, setHasLoadedSettings] = useState(false);
   const [hasLoadedBookshelves, setHasLoadedBookshelves] = useState(false);
@@ -169,13 +170,14 @@ export const BookshelfPage = () => {
 
   const loadBookshelves = useEffectEvent(async () => {
     try {
-      const [nextBookshelves, nextSettings] = await Promise.all([
+      const [shelfList, nextSettings] = await Promise.all([
         api.listBookshelves(),
         hasLoadedSettings ? Promise.resolve<SettingsPayload | null>(null) : api.getSettings(),
       ]);
-      setBookshelves(nextBookshelves);
+      setBookshelves(shelfList.bookshelves);
+      setLibraryBookCount(shelfList.libraryBookCount);
       setHasLoadedBookshelves(true);
-      if (nextBookshelves.length === 0) {
+      if (shelfList.bookshelves.length === 0) {
         setBooks([]);
         setMatchingBookCount(0);
         setShelfBookCount(0);
@@ -591,15 +593,11 @@ export const BookshelfPage = () => {
 
   const showInitialBookshelfSkeleton = loading && !hasLoadedBooks;
   const showEmptyBookshelf = !showInitialBookshelfSkeleton && books.length === 0;
-  const totalBookCount = bookshelves.reduce(
-    (total, bookshelf) => total + bookshelf.bookCount,
-    0,
-  );
   const pageNumber = Math.floor(pageOffset / BOOKS_PAGE_SIZE) + 1;
   const pageCount = Math.max(1, Math.ceil(matchingBookCount / BOOKS_PAGE_SIZE));
   const pageStart = matchingBookCount === 0 ? 0 : pageOffset + 1;
   const pageEnd = Math.min(pageOffset + books.length, matchingBookCount);
-  const onboardingStep1Done = totalBookCount > 0;
+  const onboardingStep1Done = libraryBookCount > 0;
   const onboardingStep2Done = Boolean(settings?.smtp.configured);
   const onboardingStep3Done = bookshelves.some((bookshelf) => bookshelf.kindleEmail?.trim());
   const onboardingComplete =
@@ -757,7 +755,7 @@ export const BookshelfPage = () => {
         <BookshelfSidebar
           activeBookshelfId={activeBookshelfId}
           bookshelves={bookshelves}
-          totalBookCount={totalBookCount}
+          libraryBookCount={libraryBookCount}
           statusFilter={statusFilter}
           statusCounts={statusCounts}
           minimized={isSidebarMinimized}

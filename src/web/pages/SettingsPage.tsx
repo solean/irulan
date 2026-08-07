@@ -81,12 +81,12 @@ export const SettingsPage = () => {
     setLoadError(null);
 
     try {
-      const [payload, nextBookshelves] = await Promise.all([
+      const [payload, shelfList] = await Promise.all([
         api.getSettings(),
         api.listBookshelves(),
       ]);
       setSettings(payload);
-      setBookshelves(nextBookshelves);
+      setBookshelves(shelfList.bookshelves);
       setSmtpForm(toSmtpFormState(payload.smtp));
     } catch (requestError) {
       setLoadError(

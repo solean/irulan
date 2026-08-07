@@ -80,7 +80,7 @@ export const BookDetailPage = () => {
     setError(null);
 
     try {
-      const [nextBook, nextDeliveries, nextSettings, nextBookshelves] = await Promise.all([
+      const [nextBook, nextDeliveries, nextSettings, shelfList] = await Promise.all([
         api.getBook(bookId),
         api.getDeliveries(bookId),
         api.getSettings(),
@@ -96,7 +96,7 @@ export const BookDetailPage = () => {
       setBook(nextBook);
       setDeliveries(nextDeliveries);
       setSettings(nextSettings);
-      setBookshelves(nextBookshelves);
+      setBookshelves(shelfList.bookshelves);
       setBookShelfIdsDraft(nextBook.bookshelves.map((bookshelf) => bookshelf.id));
       const defaultEmail = defaultBookshelf?.kindleEmail ?? "";
       setRecipientEmail(defaultEmail);
@@ -254,7 +254,7 @@ export const BookDetailPage = () => {
 
     try {
       const updatedBook = await api.saveBookBookshelves(book.id, bookShelfIdsDraft);
-      const nextBookshelves = await api.listBookshelves();
+      const { bookshelves: nextBookshelves } = await api.listBookshelves();
       setBook(updatedBook);
       setBookShelfIdsDraft(updatedBook.bookshelves.map((bookshelf) => bookshelf.id));
       setBookshelves(nextBookshelves);

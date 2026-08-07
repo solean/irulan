@@ -59,10 +59,11 @@ export const BookshelvesPage = () => {
     setLoadError(null);
 
     try {
-      const [payload, nextBookshelves] = await Promise.all([
+      const [payload, shelfList] = await Promise.all([
         api.getSettings(),
         api.listBookshelves(),
       ]);
+      const nextBookshelves = shelfList.bookshelves;
       setSettings(payload);
       setBookshelves(nextBookshelves);
       setBookshelfForms(toBookshelfFormMap(nextBookshelves));
@@ -80,7 +81,7 @@ export const BookshelvesPage = () => {
   }, []);
 
   const refreshBookshelves = async () => {
-    const nextBookshelves = await api.listBookshelves();
+    const { bookshelves: nextBookshelves } = await api.listBookshelves();
     setBookshelves(nextBookshelves);
     setBookshelfForms(toBookshelfFormMap(nextBookshelves));
     return nextBookshelves;
