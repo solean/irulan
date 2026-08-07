@@ -1014,7 +1014,7 @@ export const BookshelfPage = () => {
             onOpenActionMenu={onOpenBookActionMenu}
           />
         )}
-        {!showInitialBookshelfSkeleton && matchingBookCount > 0 ? (
+        {!showInitialBookshelfSkeleton && pageCount > 1 ? (
           <nav aria-label="Bookshelf pages" className="bookshelf-pagination">
             <Button
               disabled={loading || pageOffset === 0}
