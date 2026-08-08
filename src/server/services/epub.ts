@@ -4,7 +4,11 @@ import path from "node:path";
 import { XMLParser } from "fast-xml-parser";
 import { openPromise, type Entry, type ZipFile } from "yauzl";
 
-import type { BookReaderSection } from "../../shared/types";
+import { normalizeReaderText } from "../../shared/reader-text";
+import {
+  READER_TEXT_VERSION,
+  type BookReaderSection,
+} from "../../shared/types";
 import { AppError } from "../errors";
 
 type ManifestItem = {
@@ -37,6 +41,21 @@ type ReaderManifest = {
   sections: BookReaderSection[];
 };
 
+type ReaderSpineSection = Omit<BookReaderSection, "url">;
+
+export type EpubReaderTextSection = ReaderSpineSection & {
+  spineIndex: number;
+  textVersion: typeof READER_TEXT_VERSION;
+  text: string;
+};
+
+type OrderedXmlNode = Record<string, unknown>;
+
+type RenderedText = {
+  rendered: boolean;
+  text: string;
+};
+
 type ParsedEpub = {
   zip: ZipFile;
   entries: Map<string, Entry>;
@@ -56,7 +75,7 @@ const MAX_EPUB_ENTRIES = 10_000;
 const MAX_EPUB_XML_BYTES = 5 * 1024 * 1024;
 const MAX_EPUB_COVER_BYTES = 50 * 1024 * 1024;
 const MAX_EPUB_READER_ASSET_BYTES = 50 * 1024 * 1024;
-
+const MAX_EPUB_READER_TEXT_BYTES = 50 * 1024 * 1024;
 
 const parser = new XMLParser({
   ignoreAttributes: false,
@@ -64,6 +83,195 @@ const parser = new XMLParser({
   removeNSPrefix: true,
   trimValues: true,
 });
+
+const orderedTextParser = new XMLParser({
+  ignoreAttributes: false,
+  attributeNamePrefix: "@_",
+  removeNSPrefix: true,
+  preserveOrder: true,
+  processEntities: true,
+  parseTagValue: false,
+  trimValues: false,
+});
+
+const DROPPED_READER_TAGS: Record<string, true> = {
+  head: true,
+  link: true,
+  meta: true,
+  script: true,
+  style: true,
+  title: true,
+};
+const TEXTLESS_READER_TAGS: Record<string, true> = {
+  br: true,
+  hr: true,
+  img: true,
+  svg: true,
+};
+const INLINE_READER_TAGS: Record<string, true> = {
+  a: true,
+  abbr: true,
+  b: true,
+  caption: true,
+  cite: true,
+  del: true,
+  em: true,
+  figcaption: true,
+  h1: true,
+  h2: true,
+  h3: true,
+  h4: true,
+  h5: true,
+  h6: true,
+  i: true,
+  ins: true,
+  mark: true,
+  s: true,
+  small: true,
+  span: true,
+  strong: true,
+  sub: true,
+  sup: true,
+  time: true,
+  u: true,
+};
+const GROUP_READER_TAGS: Record<string, true> = {
+  article: true,
+  aside: true,
+  div: true,
+  footer: true,
+  header: true,
+  main: true,
+  nav: true,
+  section: true,
+};
+const BLOCK_READER_TAGS: Record<string, true> = {
+  blockquote: true,
+  figure: true,
+  ol: true,
+  table: true,
+  tbody: true,
+  tfoot: true,
+  thead: true,
+  tr: true,
+  ul: true,
+};
+const BLOCK_WITH_INLINE_FALLBACK_TAGS: Record<string, true> = {
+  li: true,
+  td: true,
+  th: true,
+};
+
+const renderedChildrenText = (
+  nodes: OrderedXmlNode[],
+  mode: "block" | "inline" | "pre",
+): { renderedCount: number; text: string } => {
+  const rendered = nodes.map((node) => renderedNodeText(node, mode)).filter((node) => node.rendered);
+  return {
+    renderedCount: rendered.length,
+    text: rendered.map((node) => node.text).join(""),
+  };
+};
+
+const renderedTextNode = (
+  value: unknown,
+  mode: "block" | "inline" | "pre",
+): RenderedText => {
+  if (typeof value !== "string" || value.length === 0) {
+    return { rendered: false, text: "" };
+  }
+  if (mode === "pre") {
+    return { rendered: true, text: value };
+  }
+
+  const text = normalizeReaderText(value);
+  if (!text.trim()) {
+    return mode === "block" || !text.includes(" ")
+      ? { rendered: false, text: "" }
+      : { rendered: true, text: " " };
+  }
+  return { rendered: true, text };
+};
+
+const orderedElement = (node: OrderedXmlNode) =>
+  Object.entries(node).find(([name]) => name !== ":@");
+
+const renderedNodeText = (
+  node: OrderedXmlNode,
+  mode: "block" | "inline" | "pre",
+): RenderedText => {
+  const element = orderedElement(node);
+  if (!element) return { rendered: false, text: "" };
+
+  const [rawTag, rawChildren] = element;
+  if (rawTag === "#text") return renderedTextNode(rawChildren, mode);
+  if (rawTag.startsWith("#") || rawTag.startsWith("?") || !Array.isArray(rawChildren)) {
+    return { rendered: false, text: "" };
+  }
+
+  const tag = rawTag.toLowerCase();
+  if (DROPPED_READER_TAGS[tag]) return { rendered: false, text: "" };
+  if (TEXTLESS_READER_TAGS[tag]) {
+    if (tag === "img") {
+      const attributes = node[":@"] as Record<string, unknown> | undefined;
+      const src = attributes?.["@_src"];
+      return { rendered: typeof src === "string" && src.length > 0, text: "" };
+    }
+    return { rendered: true, text: "" };
+  }
+
+  const children = rawChildren as OrderedXmlNode[];
+  const childrenMode = tag === "pre" || mode === "pre" ? "pre" : "inline";
+  const inline = renderedChildrenText(children, childrenMode);
+  const block = renderedChildrenText(children, "block");
+
+  if (tag === "body") return { rendered: true, text: block.text };
+  if (tag === "pre") return { rendered: true, text: inline.text };
+  if (tag === "code") return { rendered: true, text: inline.text };
+  if (tag === "p") {
+    return inline.renderedCount === 0
+      ? { rendered: false, text: "" }
+      : { rendered: true, text: inline.text };
+  }
+  if (INLINE_READER_TAGS[tag]) return { rendered: true, text: inline.text };
+  if (BLOCK_WITH_INLINE_FALLBACK_TAGS[tag]) {
+    return { rendered: true, text: block.renderedCount > 0 ? block.text : inline.text };
+  }
+  if (GROUP_READER_TAGS[tag]) {
+    return { rendered: true, text: mode === "inline" ? inline.text : block.text };
+  }
+  if (BLOCK_READER_TAGS[tag]) return { rendered: true, text: block.text };
+
+  return {
+    rendered: true,
+    text: mode === "inline" || block.renderedCount === 0 ? inline.text : block.text,
+  };
+};
+
+const findOrderedElementChildren = (
+  nodes: OrderedXmlNode[],
+  expectedTag: string,
+): OrderedXmlNode[] | null => {
+  for (const node of nodes) {
+    const element = orderedElement(node);
+    if (!element) continue;
+    const [rawTag, rawChildren] = element;
+    if (!Array.isArray(rawChildren)) continue;
+    if (rawTag.toLowerCase() === expectedTag) return rawChildren as OrderedXmlNode[];
+    const nested = findOrderedElementChildren(rawChildren as OrderedXmlNode[], expectedTag);
+    if (nested) return nested;
+  }
+  return null;
+};
+
+const extractCanonicalReaderText = (markup: string) => {
+  const document = orderedTextParser.parse(markup) as OrderedXmlNode[];
+  const content =
+    findOrderedElementChildren(document, "body") ??
+    findOrderedElementChildren(document, "html") ??
+    document;
+  return normalizeReaderText(renderedChildrenText(content, "block").text);
+};
 
 const asArray = <T>(value: T | T[] | undefined): T[] => {
   if (!value) return [];
@@ -365,11 +573,8 @@ const inferSectionLabel = async (parsed: ParsedEpub, sectionPath: string, fallba
   }
 };
 
-const buildReaderSections = async (
-  parsed: ParsedEpub,
-  bookId: string,
-): Promise<BookReaderSection[]> => {
-  const sections: BookReaderSection[] = [];
+const buildReaderSpineSections = async (parsed: ParsedEpub): Promise<ReaderSpineSection[]> => {
+  const sections: ReaderSpineSection[] = [];
   const seen = new Set<string>();
   const navLabels = await extractTocLabelsFromNav(parsed);
   const tocLabels = navLabels.size > 0 ? navLabels : await extractTocLabelsFromNcx(parsed);
@@ -395,12 +600,20 @@ const buildReaderSections = async (
       id: idref ?? `section-${index + 1}`,
       href: zipPath,
       label,
-      url: `/api/books/${bookId}/read/${encodeAssetPath(zipPath)}`,
     });
   }
 
   return sections;
 };
+
+const buildReaderSections = async (
+  parsed: ParsedEpub,
+  bookId: string,
+): Promise<BookReaderSection[]> =>
+  (await buildReaderSpineSections(parsed)).map((section) => ({
+    ...section,
+    url: `/api/books/${bookId}/read/${encodeAssetPath(section.href)}`,
+  }));
 
 /**
  * A normalized path that stays inside the reader directory, or null if it escapes.
@@ -594,6 +807,52 @@ export const prepareEpubReader = async (
   await writeFile(manifestPath(readerDir), JSON.stringify(manifest, null, 2));
 
   return manifest;
+};
+
+/**
+ * Canonical visible text for every linear spine section, in reading order.
+ *
+ * This uses the renderer's element and whitespace rules so search offsets map
+ * directly to the DOM ranges resolved by the web reader.
+ */
+export const extractEpubReaderTextSections = async (
+  filePath: string,
+): Promise<EpubReaderTextSection[]> => {
+  const parsed = await openEpub(filePath);
+
+  try {
+    const sections = await buildReaderSpineSections(parsed);
+    const textSections: EpubReaderTextSection[] = [];
+
+    for (const [spineIndex, section] of sections.entries()) {
+      const entry = parsed.entries.get(section.href);
+      if (!entry) {
+        throw new AppError(400, `The EPUB reader section "${section.href}" is missing.`);
+      }
+      const markup = (
+        await readZipEntry(
+          parsed.zip,
+          entry,
+          MAX_EPUB_READER_TEXT_BYTES,
+          `reader section "${section.href}"`,
+        )
+      ).toString("utf8");
+
+      textSections.push({
+        ...section,
+        spineIndex,
+        textVersion: READER_TEXT_VERSION,
+        text: extractCanonicalReaderText(markup),
+      });
+    }
+
+    return textSections;
+  } catch (error) {
+    if (error instanceof AppError) throw error;
+    throw new AppError(400, "This EPUB contains a reader section that could not be indexed.");
+  } finally {
+    parsed.zip.close();
+  }
 };
 
 /**

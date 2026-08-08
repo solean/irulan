@@ -17,16 +17,21 @@ Offsets provide fast lookup; quote context can re-anchor a location if text norm
 ## Status
 
 The stable-location primitive is implemented: shared versioned types, canonical whitespace
-normalization, DOM selection serialization, and quote-context range resolution. It is verified
-across inline markup, rerendering, repeated text, and layout changes. Reader progress, search,
-bookmarks, and annotations do not use it yet.
+normalization, DOM selection serialization, and quote-context range resolution. Canonical
+server-side text extraction now walks every linear spine section in reading order and mirrors
+the web renderer's element and whitespace rules. Server-browser parity is verified across
+inline, nested, preformatted, hidden, textless, and fallback markup. Reader progress, search
+indexing and UI, bookmarks, and annotations do not use these primitives yet.
 
 ## Delivery
 
 1. **Stable locations — done.** Shared location types, deterministic EPUB text normalization,
    and DOM-range serialization and resolution are implemented and verified independently of
    font, spacing, viewport, and pagination changes.
-2. **In-book search** — store canonical text per spine section and index it with SQLite FTS5. Index new imports and lazily backfill existing books. Return result counts, chapter labels, snippets, and stable ranges. Add a reader search panel with `Cmd/Ctrl+F`, arrow-key navigation, and `Escape`.
+2. **In-book search — in progress.** Canonical text extraction is implemented. Next, store the
+   text per spine section and index it with SQLite FTS5. Index new imports and lazily backfill
+   existing books. Return result counts, chapter labels, snippets, and stable ranges. Add a
+   reader search panel with `Cmd/Ctrl+F`, arrow-key navigation, and `Escape`.
 3. **Bookmarks** — persist an optional label and stable location. Add actions to create a bookmark at the current position, rename it, jump to it, and delete it.
 4. **Highlights and notes** — add a text-selection toolbar for highlight, note, and copy. Persist the stable range, selected quote, colour, and optional note. Paint resolved DOM ranges without changing document layout.
 5. **Hardening** — cascade reader-tool records when a book is deleted, include them in library backups, limit search queries and snippets, and cover the flows with a multi-section EPUB fixture.

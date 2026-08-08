@@ -149,10 +149,16 @@ Detect fixed-layout and DRM-protected EPUBs. Either support them correctly or sh
 
 ### P1: Reader Tools
 
-None of this exists. There is no search endpoint, there are no bookmark or annotation tables in
-the schema, and the reader's only API call is `GET /api/books/:id/read`.
+Reader tools are in progress. Stable text locations and canonical linear-spine text extraction
+exist, but there is no search index or endpoint, there are no bookmark or annotation tables,
+and the reader's only API call is `GET /api/books/:id/read`.
 
-#### In-book search — 🔴 todo
+#### In-book search — 🟡 partial
+
+`extractEpubReaderTextSections` now produces ordered, labelled canonical text using the same
+element and whitespace behavior as the web renderer. Server-browser parity is covered by
+`src/server/services/epub-text.test.ts`. SQLite indexing, the search API, snippets, result
+counts, navigation, and keyboard UI remain.
 
 Add full-book text search with:
 
@@ -309,11 +315,11 @@ Exit criteria:
 - 🔴 nested entries and anchor targets work — not met
 - 🔴 unsupported books fail with a specific, user-readable explanation — not met
 
-### Phase 4: Reader Tools — 🔴 not started
+### Phase 4: Reader Tools — 🟡 in progress
 
 See the focused [Reader Tools Plan](reader-tools.md).
 
-- 🔴 add in-book search (todo)
+- 🟡 add in-book search (partial; canonical spine text extraction is implemented)
 - 🔴 add bookmarks (todo)
 - 🔴 add highlights and notes (todo)
 
