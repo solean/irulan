@@ -93,6 +93,32 @@ export type BookReader = {
   sections: BookReaderSection[];
 };
 
+export const READER_TEXT_VERSION = 1 as const;
+
+/**
+ * A pagination-independent point in the canonical text of one spine section.
+ *
+ * Offsets use JavaScript UTF-16 code units. Prefix and suffix make the point
+ * recoverable when preceding text shifts without storing layout-dependent data.
+ */
+export type ReaderTextLocation = {
+  sectionHref: string;
+  textVersion: typeof READER_TEXT_VERSION;
+  offset: number;
+  prefix: string;
+  suffix: string;
+};
+
+/**
+ * A non-empty text selection beginning at `offset` and ending at `endOffset`.
+ * `exact` is the canonical selected text and is also the quote selector used
+ * to validate or re-anchor the stored offsets.
+ */
+export type ReaderTextRange = ReaderTextLocation & {
+  endOffset: number;
+  exact: string;
+};
+
 export type DeliveryRecord = {
   id: string;
   bookshelfId: string | null;

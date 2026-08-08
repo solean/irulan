@@ -78,9 +78,15 @@ replace, clear, legacy plaintext migration, and environment fallback.
 
 ### P0: Reading Position and EPUB Correctness
 
-#### Stable reading locations — 🔴 todo
+#### Stable reading locations — 🟡 partial
 
-None of this is implemented. Position is still `{ section, page }` in `localStorage`
+The versioned canonical text-location contract, whitespace normalization, DOM selection
+serialization, and quote-context resolver are implemented in `src/shared/types.ts`,
+`src/shared/reader-text.ts`, and `src/web/lib/reader-location.ts`. The resolver is covered for
+inline selections, equivalent markup, repeated quotes, and changed layout in
+`src/web/lib/reader-location.test.ts`.
+
+Reader resume still stores `{ section, page }` in `localStorage`
 (`src/web/lib/storage.ts`, `src/web/pages/ReaderPage.tsx`), the books table carries only
 `reading_status` and `rating`, and the reader never writes reading state back to the server.
 
@@ -102,7 +108,7 @@ The UI should provide:
 - 🔴 automatic `unread` to `reading` transition after meaningful reading — todo
 - 🔴 optional automatic `finished` transition near the end of the book — todo
 
-Changing the font, spacing, window size, or reader layout must not lose the reader's textual position — 🟡 partial; the reader repaginates on typography and resize changes, but restores a numeric page, so the text can shift.
+Changing the font, spacing, window size, or reader layout must not lose the reader's textual position — 🟡 partial; stable text ranges resolve after layout changes, but reader resume still restores a numeric page.
 
 #### EPUB navigation — 🟡 partial
 
@@ -304,6 +310,8 @@ Exit criteria:
 - 🔴 unsupported books fail with a specific, user-readable explanation — not met
 
 ### Phase 4: Reader Tools — 🔴 not started
+
+See the focused [Reader Tools Plan](reader-tools.md).
 
 - 🔴 add in-book search (todo)
 - 🔴 add bookmarks (todo)
