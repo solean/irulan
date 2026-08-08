@@ -23,21 +23,31 @@ Irulan already provides:
 
 ## Priorities
 
+Status annotations below reflect a code audit on 2026-08-07:
+
+| | Status | Meaning |
+| --- | --- | --- |
+| 🟢 | `done` / `met` | shipped and verified in code |
+| 🟡 | `partial` / `partly met` / `in progress` | some of the requirement exists; the gap is named inline |
+| 🔴 | `todo` / `not met` / `not started` / `not satisfied` | no implementation found |
+
+The word is kept alongside the colour so the doc stays readable without colour.
+
 ### P0: Data Safety and Trust
 
-#### Library backup and restore
+#### Library backup and restore — 🔴 todo
 
 Add:
 
-- one-click library backup
-- one-click restore with validation and conflict handling
-- automatic rotating backups
-- export of an individual original EPUB
-- a way to reveal the complete library data directory in Finder
+- 🔴 one-click library backup — todo; no backup route exists (`src/server/app.ts` registers books, bookshelves, and settings only)
+- 🔴 one-click restore with validation and conflict handling — todo; only the internal `app.db.bak` recovery path in `src/server/db/recovery.ts` exists, and it covers the database alone
+- 🟡 automatic rotating backups — partial; a single `app.db.bak` is refreshed once per startup, with no rotation
+- 🔴 export of an individual original EPUB — todo; originals are stored at `storage/books/<id>/original.epub` with no export route
+- 🟡 a way to reveal the complete library data directory in Finder — partial; `shell.showItemInFolder` reveals one book's EPUB (`electron/main.cjs`), not the data directory
 
 A backup must include the database, original EPUB files, extracted covers, and any future reading data or annotations.
 
-#### Durable database persistence — done
+#### Durable database persistence — 🟢 done
 
 SQLite through `better-sqlite3`, in WAL mode with `synchronous = FULL`, so a write is
 durable when the statement returns and only the pages it touched are written. Startup
@@ -50,7 +60,7 @@ once per startup by SQLite's online backup, off the request path. Implemented in
 This replaced a `sql.js` design that serialised and rewrote the entire database file on
 every mutation, which froze the event loop for ~62 ms per click on a 42 MB library.
 
-#### Secure SMTP credentials — done
+#### Secure SMTP credentials — 🟢 done
 
 Electron encrypts app-managed SMTP passwords with its OS-backed `safeStorage`; SQLite
 stores only the encrypted value. The settings API never returns the password. It reports
@@ -63,9 +73,16 @@ to encrypted storage in Electron; standalone mode discards the obsolete row when
 `SMTP_PASS` supplies its replacement. Environment-based SMTP remains supported when
 Electron secure storage is unavailable.
 
+Covered by `src/server/app.test.ts`, which asserts no password leakage, blank-preserve, explicit
+replace, clear, legacy plaintext migration, and environment fallback.
+
 ### P0: Reading Position and EPUB Correctness
 
-#### Stable reading locations
+#### Stable reading locations — 🔴 todo
+
+None of this is implemented. Position is still `{ section, page }` in `localStorage`
+(`src/web/lib/storage.ts`, `src/web/pages/ReaderPage.tsx`), the books table carries only
+`reading_status` and `rating`, and the reader never writes reading state back to the server.
 
 Replace the current `{ section, page }` localStorage position with a stable EPUB location, such as an EPUB CFI or an element/text offset.
 
@@ -73,54 +90,63 @@ Persist reading state in SQLite so it survives browser storage resets and can be
 
 Reading state should include:
 
-- stable current location
-- overall completion percentage
-- last-read timestamp
-- optional completed timestamp
+- 🔴 stable current location — todo
+- 🔴 overall completion percentage — todo
+- 🔴 last-read timestamp — todo
+- 🔴 optional completed timestamp — todo
 
 The UI should provide:
 
-- Continue Reading on the bookshelf and book detail page
-- progress on book cards or list rows
-- automatic `unread` to `reading` transition after meaningful reading
-- optional automatic `finished` transition near the end of the book
+- 🔴 Continue Reading on the bookshelf and book detail page — todo
+- 🔴 progress on book cards or list rows — todo; the cover stripe in `bookshelf.css` is a fixed gradient, not stored progress
+- 🔴 automatic `unread` to `reading` transition after meaningful reading — todo
+- 🔴 optional automatic `finished` transition near the end of the book — todo
 
-Changing the font, spacing, window size, or reader layout must not lose the reader's textual position.
+Changing the font, spacing, window size, or reader layout must not lose the reader's textual position — 🟡 partial; the reader repaginates on typography and resize changes, but restores a numeric page, so the text can shift.
 
-#### EPUB navigation
+#### EPUB navigation — 🟡 partial
 
 Represent the EPUB navigation document as a hierarchy instead of presenting every linear spine item as an equal table-of-contents entry.
 
+The parser already walks nested `ol`/`li` and `navPoint` trees, but flattens them into a
+`Map<zipPath, label>` and strips `#fragments` (`src/server/services/epub.ts`). The wire type
+`BookReaderSection` in `src/shared/types.ts` has no children or anchor field, so the hierarchy
+cannot be represented end to end. Fixing this means changing the shared type, the parser, and the
+flat TOC render in `src/web/pages/ReaderPage.tsx` together.
+
 Support:
 
-- nested navigation entries
-- entries targeting anchors inside a spine document
-- EPUB 3 navigation documents
-- EPUB 2 NCX files
-- sensible labels only when the EPUB has no usable navigation
+- 🔴 nested navigation entries — todo; structure is discarded after parsing
+- 🔴 entries targeting anchors inside a spine document — todo; TOC fragments are stripped, though in-content anchor links do work
+- 🟢 EPUB 3 navigation documents — done; labels are extracted and preferred
+- 🟢 EPUB 2 NCX files — done; labels are extracted as the fallback
+- 🟡 sensible labels only when the EPUB has no usable navigation — partial; `inferSectionLabel` derives title, heading, or filename labels
 
-Do not expose generic `Section N` entries when a valid navigation structure exists.
+Do not expose generic `Section N` entries when a valid navigation structure exists — 🔴 not satisfied; `resolveReaderSectionLabels` in `src/web/lib/reader.tsx` manufactures `Section N` for blank, title-like, or repeated labels even when the EPUB has valid navigation.
 
-#### Rendering compatibility
+#### Rendering compatibility — 🟡 partial
 
 Define the supported EPUB surface and handle unsupported books explicitly.
 
 Improve support for:
 
-- safe publisher CSS
-- embedded fonts
-- `lang` and `dir` attributes
-- right-to-left content
-- poetry and intentionally spaced text
-- SVG and image-heavy pages
-- footnotes and backlinks
-- MathML where practical
+- 🔴 safe publisher CSS — todo; the whitelist renderer drops `style` and `link` entirely
+- 🔴 embedded fonts — todo; no `@font-face` extraction
+- 🔴 `lang` and `dir` attributes — todo; never copied onto rendered nodes
+- 🔴 right-to-left content — todo
+- 🟡 poetry and intentionally spaced text — partial; whitespace is collapsed except inside `pre`
+- 🟢 SVG and image-heavy pages — done; `img`, external SVG `image` hrefs, and inline SVG are handled
+- 🟡 footnotes and backlinks — partial; generic anchor navigation works, with no footnote semantics or backlinks
+- 🔴 MathML where practical — todo
 
-Detect fixed-layout and DRM-protected EPUBs. Either support them correctly or show a clear unsupported-format message instead of producing a broken reading view.
+Detect fixed-layout and DRM-protected EPUBs. Either support them correctly or show a clear unsupported-format message instead of producing a broken reading view — 🔴 todo; there is no `rendition:layout`, `encryption.xml`, or `rights.xml` check, and failures surface as a generic reader error.
 
 ### P1: Reader Tools
 
-#### In-book search
+None of this exists. There is no search endpoint, there are no bookmark or annotation tables in
+the schema, and the reader's only API call is `GET /api/books/:id/read`.
+
+#### In-book search — 🔴 todo
 
 Add full-book text search with:
 
@@ -132,11 +158,11 @@ Add full-book text search with:
 
 Search results must use stable locations so they remain valid after pagination changes.
 
-#### Bookmarks
+#### Bookmarks — 🔴 todo
 
 Add named or unnamed bookmarks at stable EPUB locations. Bookmarks must be persisted in SQLite and included in backups.
 
-#### Highlights and notes
+#### Highlights and notes — 🔴 todo
 
 Add text selection actions for:
 
@@ -147,9 +173,11 @@ Add text selection actions for:
 
 Annotations must survive font changes, window resizing, and normal EPUB re-pagination.
 
-### P1: Library Metadata
+### P1: Library Metadata — 🔴 todo
 
-The current editable metadata is limited to read status and rating. Add editing for:
+Editable metadata is still limited to read status and rating (`UpdateBookMetadataPayload` in
+`src/shared/types.ts`, `BookMetadataEditor` in `src/web/components/book.tsx`), and import captures
+title, author, and cover only. Add editing for:
 
 - title
 - author or authors
@@ -161,154 +189,159 @@ The current editable metadata is limited to read status and rating. Add editing 
 - ISBN or other identifiers
 - publisher and publication date
 
-Import all useful metadata present in the EPUB rather than only the first creator.
+Import all useful metadata present in the EPUB rather than only the first creator — 🔴 todo; `epub.ts` takes `asArray(metadata.creator)[0]`.
 
-Add bulk editing for common fields such as bookshelf membership, tags, read status, and rating.
+Add bulk editing for common fields such as bookshelf membership, tags, read status, and rating — 🔴 todo; only a single-book PATCH route exists.
 
-### P2: Library Workflows
+### P2: Library Workflows — 🔴 todo
 
 Add multi-select and bulk actions for:
 
-- assigning bookshelves
-- changing read status
-- adding tags
-- exporting original EPUBs
-- deleting books with confirmation
+- 🔴 assigning bookshelves — todo
+- 🔴 changing read status — todo
+- 🔴 adding tags — todo
+- 🔴 exporting original EPUBs — todo
+- 🟡 deleting books with confirmation — partial; single-book delete confirmation exists, bulk does not
 
 Add ingestion options in this order:
 
-1. import a directory recursively
-2. import or link an existing Calibre library
-3. optional watched folders
-4. optional OPDS support
+1. 🔴 import a directory recursively — todo; import accepts browser multipart files only
+2. 🔴 import or link an existing Calibre library — todo
+3. 🔴 optional watched folders — todo
+4. 🔴 optional OPDS support — todo
 
 Goodreads integration should remain lower priority than local library import, data portability, and reader correctness.
 
-### P2: Desktop Distribution
+### P2: Desktop Distribution — 🔴 todo
 
 Add desktop integration after the core data and reader work is reliable:
 
-- `.epub` file association
-- Open with Irulan
-- drag EPUBs onto the app or Dock icon
-- signed and notarized macOS builds
-- application updates
-- a documented library-data location
-- a first-run choice for importing an existing library
+- 🔴 `.epub` file association — todo; no `open-file` handler and no association in the build config
+- 🔴 Open with Irulan — todo
+- 🟡 drag EPUBs onto the app or Dock icon — partial; in-app drop targets exist, with no Dock or OS handler
+- 🔴 signed and notarized macOS builds — todo; no signing or notarization config
+- 🔴 application updates — todo; no `autoUpdater`
+- 🟡 a documented library-data location — partial; `electron/main.cjs` defines `userData/data` and `userData/storage`, but they are undocumented
+- 🔴 a first-run choice for importing an existing library — todo; onboarding covers first book, SMTP, and Kindle only
 
 ## Test and Compatibility Matrix
 
-There are currently no automated tests. Add a permanent EPUB fixture corpus covering observable behavior rather than implementation details.
+Eleven test files exist (`src/server/app.test.ts`, `config.test.ts`, `services/epub.test.ts`,
+`services/books.delete.test.ts`, `services/books.list.test.ts`, `services/settings.recovery.test.ts`,
+`db/recovery.test.ts`, `db/migrations.test.ts`, `lib/storage.test.ts`, `src/web/lib/reader.test.ts`,
+`electron/url-policy.test.ts`). What is missing is a permanent EPUB fixture corpus covering
+observable behavior rather than implementation details: `epub.test.ts` generates every fixture in
+memory with JSZip, and no `.epub` file exists on disk.
 
 Required fixtures:
 
-- EPUB 2 with NCX navigation
-- EPUB 3 with nested navigation
-- complete metadata and cover
-- missing title, author, or cover
-- multiple creators
-- SVG cover
-- internal anchor links and footnotes
-- embedded fonts and publisher CSS
-- right-to-left content
-- image-heavy content
-- fixed-layout EPUB
-- malformed archive
-- excessive archive expansion or zip bomb
-- duplicate file import
+- 🟡 EPUB 2 with NCX navigation — covered in memory
+- 🟡 EPUB 3 with nested navigation — covered in memory; nesting is traversed but not asserted as a hierarchy
+- 🔴 complete metadata and cover — todo as a single corpus fixture
+- 🟡 missing title, author, or cover — covered in memory
+- 🟡 multiple creators — covered in memory; asserts only the first creator is kept
+- 🔴 SVG cover — todo; cover tests use PNG and JPEG only
+- 🔴 internal anchor links and footnotes — todo; `reader.test.ts` exercises the URL resolver, not an EPUB
+- 🔴 embedded fonts and publisher CSS — todo
+- 🔴 right-to-left content — todo
+- 🔴 image-heavy content — todo
+- 🔴 fixed-layout EPUB — todo
+- 🟡 malformed archive — covered in memory
+- 🔴 excessive archive expansion or zip bomb — todo; the entry and uncompressed-byte caps in `epub.ts` have no test
+- 🔴 duplicate file import — todo; only the concurrent duplicate API test exists
 
 Required integration coverage:
 
-- import stores the original file and metadata
-- duplicate import does not create a second book
-- backup and restore reproduce the complete library
-- interrupted persistence leaves a recoverable database
-- reading location survives font and window changes
-- deletion removes the intended book and related records
-- SMTP secrets are never returned by the API
-- Kindle delivery records success and failure accurately
+- 🔴 import stores the original file and metadata — todo as an end-to-end test
+- 🟢 duplicate import does not create a second book — done (`app.test.ts`)
+- 🔴 backup and restore reproduce the complete library — todo; blocked on the feature
+- 🟢 interrupted persistence leaves a recoverable database — done (`db/recovery.test.ts`)
+- 🔴 reading location survives font and window changes — todo
+- 🟢 deletion removes the intended book and related records — done (`books.delete.test.ts`)
+- 🟢 SMTP secrets are never returned by the API — done (`app.test.ts`)
+- 🔴 Kindle delivery records success and failure accurately — todo; no delivery tests exist
 
 ## Delivery Sequence
 
-### Phase 1: Trust
+### Phase 1: Trust — 🟡 in progress
 
-- ~~implement durable database persistence~~ (done)
-- implement backup, restore, and EPUB export
-- move SMTP secrets to Keychain
-- add credential tests
-- migrate to native SQLite with transactions and WAL
-
-Exit criteria:
-
-- the library survives an interrupted database write
-- a backup restores books, metadata, shelves, settings, and originals
-- no settings response contains the SMTP password
-
-### Phase 2: Reading State
-
-- introduce stable EPUB locations
-- persist reading progress in SQLite
-- add Continue Reading and overall progress
-- automate read-status transitions conservatively
+- 🟢 implement durable database persistence (done)
+- 🔴 implement backup, restore, and EPUB export (todo)
+- 🟢 move SMTP secrets to Keychain (done)
+- 🟢 add credential tests (done)
+- 🟢 migrate to native SQLite with transactions and WAL (done)
 
 Exit criteria:
 
-- reopening a book returns to the same text after resizing or changing typography
-- progress is visible from the bookshelf
-- progress is included in backup and restore
+- 🟢 the library survives an interrupted database write — met
+- 🔴 a backup restores books, metadata, shelves, settings, and originals — not met
+- 🟢 no settings response contains the SMTP password — met
 
-### Phase 3: EPUB Compatibility
+### Phase 2: Reading State — 🔴 not started
 
-- preserve the real navigation hierarchy
-- expand safe EPUB rendering support
-- detect unsupported fixed-layout and DRM books
-- establish the EPUB fixture suite
-
-Exit criteria:
-
-- EPUB 2 and EPUB 3 navigation fixtures render correctly
-- nested entries and anchor targets work
-- unsupported books fail with a specific, user-readable explanation
-
-### Phase 4: Reader Tools
-
-- add in-book search
-- add bookmarks
-- add highlights and notes
+- 🔴 introduce stable EPUB locations (todo)
+- 🔴 persist reading progress in SQLite (todo)
+- 🔴 add Continue Reading and overall progress (todo)
+- 🔴 automate read-status transitions conservatively (todo)
 
 Exit criteria:
 
-- every saved or searched location remains stable across pagination changes
-- annotations are persisted and backed up
+- 🔴 reopening a book returns to the same text after resizing or changing typography — not met
+- 🔴 progress is visible from the bookshelf — not met
+- 🔴 progress is included in backup and restore — not met
 
-### Phase 5: Library Depth
+### Phase 3: EPUB Compatibility — 🟡 in progress
 
-- add richer metadata and cover editing
-- add multi-select and bulk actions
-- add folder and Calibre-library import
-
-Exit criteria:
-
-- incorrect imported metadata can be fully corrected in the app
-- common library changes do not require editing books one at a time
-- an existing collection can be migrated without manually selecting every EPUB
-
-### Phase 6: Distribution
-
-- add file associations and desktop import entry points
-- sign and notarize releases
-- add application updates
+- 🔴 preserve the real navigation hierarchy (todo; labels are extracted, structure is discarded)
+- 🔴 expand safe EPUB rendering support (todo; images and SVG only today)
+- 🔴 detect unsupported fixed-layout and DRM books (todo)
+- 🔴 establish the EPUB fixture suite (todo; in-memory specs only)
 
 Exit criteria:
 
-- opening an EPUB from Finder imports or opens it intentionally
-- users can install and update the app without bypassing macOS security warnings
+- 🟡 EPUB 2 and EPUB 3 navigation fixtures render correctly — partly met; labels resolve, hierarchy does not
+- 🔴 nested entries and anchor targets work — not met
+- 🔴 unsupported books fail with a specific, user-readable explanation — not met
+
+### Phase 4: Reader Tools — 🔴 not started
+
+- 🔴 add in-book search (todo)
+- 🔴 add bookmarks (todo)
+- 🔴 add highlights and notes (todo)
+
+Exit criteria:
+
+- 🔴 every saved or searched location remains stable across pagination changes — not met
+- 🔴 annotations are persisted and backed up — not met
+
+### Phase 5: Library Depth — 🔴 not started
+
+- 🔴 add richer metadata and cover editing (todo)
+- 🔴 add multi-select and bulk actions (todo)
+- 🔴 add folder and Calibre-library import (todo)
+
+Exit criteria:
+
+- 🔴 incorrect imported metadata can be fully corrected in the app — not met
+- 🔴 common library changes do not require editing books one at a time — not met
+- 🔴 an existing collection can be migrated without manually selecting every EPUB — not met
+
+### Phase 6: Distribution — 🔴 not started
+
+- 🔴 add file associations and desktop import entry points (todo)
+- 🔴 sign and notarize releases (todo)
+- 🔴 add application updates (todo)
+
+Exit criteria:
+
+- 🔴 opening an EPUB from Finder imports or opens it intentionally — not met
+- 🔴 users can install and update the app without bypassing macOS security warnings — not met
 
 ## Backlog Cleanup
 
-The existing `todo.md` is partially stale:
+The existing `todo.md` is stale:
 
-- SMTP configuration is substantially implemented; remaining work is secure storage and reliability coverage.
+- SMTP configuration and secure credential storage are complete, including credential tests.
 - ratings and manual completion status are implemented; stable automatic reading progress remains.
 - onboarding is implemented.
 - Calibre or folder import remains valuable and should precede Goodreads integration.
