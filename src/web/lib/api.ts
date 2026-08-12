@@ -3,6 +3,7 @@ import type {
   BookListOptions,
   BookPage,
   BookReader,
+  BookSearchPage,
   BookshelvesPayload,
   BookshelfSummary,
   DeleteBookResult,
@@ -96,6 +97,13 @@ export const api = {
   async getBookReader(bookId: string) {
     const payload = await request<{ reader: BookReader }>(`/api/books/${bookId}/read`);
     return payload.reader;
+  },
+
+  async searchBook(bookId: string, query: string, options: { offset?: number; limit?: number } = {}) {
+    const params = new URLSearchParams({ q: query });
+    if (options.offset !== undefined) params.set("offset", String(options.offset));
+    if (options.limit !== undefined) params.set("limit", String(options.limit));
+    return request<BookSearchPage>(`/api/books/${bookId}/search?${params.toString()}`);
   },
 
   async saveBookBookshelves(bookId: string, bookshelfIds: string[]) {

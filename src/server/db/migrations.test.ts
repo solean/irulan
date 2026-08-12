@@ -31,18 +31,42 @@ describe("database migrations", () => {
       migrateDatabaseSchema(database, migrationsFolder);
       migrateDatabaseSchema(database, migrationsFolder);
 
-      expect(rows(database, "SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name;")).toEqual([
+      expect(
+        rows(
+          database,
+          "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'reader_section_fts_%' ORDER BY name;",
+        ),
+      ).toEqual([
         ["__drizzle_migrations"],
         ["book_shelves"],
         ["books"],
         ["bookshelves"],
         ["deliveries"],
+        ["reader_section_fts"],
+        ["reader_section_text"],
         ["settings"],
+        ["sqlite_sequence"],
       ]);
-      expect(rows(database, "SELECT COUNT(*) FROM __drizzle_migrations;")).toEqual([[1]]);
+      expect(rows(database, "SELECT COUNT(*) FROM __drizzle_migrations;")).toEqual([[2]]);
       expect(rows(database, "SELECT id, name FROM bookshelves;")).toEqual([
         ["default", "My bookshelf"],
       ]);
+      database.exec(`
+        INSERT INTO books (
+          id, title, author, file_path, file_hash, source_filename, file_size_bytes, imported_at
+        ) VALUES ('search-book', 'Search', 'Author', '/book.epub', 'hash', 'book.epub', 1, 1);
+        INSERT INTO reader_section_text (
+          book_id, href, label, spine_index, text_version, text, indexed_at
+        ) VALUES ('search-book', 'chapter.xhtml', 'Chapter', 0, 1, 'searchable passage', 1);
+      `);
+      expect(
+        rows(
+          database,
+          "SELECT text FROM reader_section_fts WHERE reader_section_fts MATCH 'searchable';",
+        ),
+      ).toEqual([["searchable passage"]]);
+      database.exec("DELETE FROM books WHERE id = 'search-book';");
+      expect(rows(database, "SELECT COUNT(*) FROM reader_section_fts;")).toEqual([[0]]);
       expect(
         rows(
           database,
@@ -126,7 +150,7 @@ describe("database migrations", () => {
       expect(rows(database, "SELECT book_id, bookshelf_id FROM book_shelves;")).toEqual([
         ["book-1", "default"],
       ]);
-      expect(rows(database, "SELECT COUNT(*) FROM __drizzle_migrations;")).toEqual([[1]]);
+      expect(rows(database, "SELECT COUNT(*) FROM __drizzle_migrations;")).toEqual([[2]]);
     } finally {
       database.close();
     }

@@ -68,9 +68,15 @@ const buildImportEpub = async () => {
     <dc:title>Concurrent Book</dc:title>
     <dc:creator>Test Author</dc:creator>
   </metadata>
-  <manifest/>
-  <spine/>
+  <manifest>
+    <item id="c1" href="chapter.xhtml" media-type="application/xhtml+xml"/>
+  </manifest>
+  <spine><itemref idref="c1"/></spine>
 </package>`,
+  );
+  zip.file(
+    "OEBPS/chapter.xhtml",
+    "<html><head><title>Chapter</title></head><body><p>Concurrent searchable text.</p></body></html>",
   );
   return zip.generateAsync({ type: "arraybuffer" });
 };
@@ -543,11 +549,18 @@ describe("bounded streaming book imports (finding 17)", () => {
     const responses = await Promise.all([importRequest(), importRequest()]);
     expect(responses.map((response) => response.status)).toEqual([200, 200]);
 
-    const statuses = responses
-      .flatMap((response) => response.json()?.results as Array<{ status: string }>)
-      .map((result) => result.status)
-      .sort();
-    expect(statuses).toEqual(["duplicate", "imported"]);
+    const results = responses.flatMap(
+      (response) =>
+        response.json()?.results as Array<{ status: string; book?: { id: string } }>,
+    );
+    expect(results.map((result) => result.status).sort()).toEqual(["duplicate", "imported"]);
+
+    const imported = results.find((result) => result.status === "imported");
+    const searchResponse = await request(
+      `/api/books/${imported?.book?.id}/search?q=searchable`,
+    );
+    expect(searchResponse.status).toBe(200);
+    expect(searchResponse.json()?.total).toBe(1);
     expect(client.db.select().from(schema.books).all()).toHaveLength(1);
     expect(client.db.select().from(schema.bookShelves).all()).toHaveLength(1);
   });

@@ -119,6 +119,26 @@ export type ReaderTextRange = ReaderTextLocation & {
   exact: string;
 };
 
+export const BOOK_SEARCH_PAGE_SIZE = 20;
+export const MAX_BOOK_SEARCH_PAGE_SIZE = 50;
+export const MAX_BOOK_SEARCH_QUERY_LENGTH = 200;
+
+export type BookSearchResult = {
+  sectionHref: string;
+  sectionLabel: string;
+  spineIndex: number;
+  snippet: string;
+  range: ReaderTextRange;
+};
+
+export type BookSearchPage = {
+  query: string;
+  results: BookSearchResult[];
+  offset: number;
+  limit: number;
+  total: number;
+};
+
 export type DeliveryRecord = {
   id: string;
   bookshelfId: string | null;
