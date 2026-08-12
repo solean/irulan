@@ -6,12 +6,18 @@ import type {
   BookSearchPage,
   BookshelvesPayload,
   BookshelfSummary,
+  CreateReaderAnnotationPayload,
+  CreateReaderBookmarkPayload,
   DeleteBookResult,
   DeleteBookshelfResult,
   DeliveryRecord,
   ImportResult,
+  ReaderAnnotation,
+  ReaderBookmark,
   SettingsPayload,
   UpdateBookMetadataPayload,
+  UpdateReaderAnnotationPayload,
+  UpdateReaderBookmarkPayload,
   UpdateSmtpSettingsPayload,
 } from "../../shared/types";
 
@@ -104,6 +110,90 @@ export const api = {
     if (options.offset !== undefined) params.set("offset", String(options.offset));
     if (options.limit !== undefined) params.set("limit", String(options.limit));
     return request<BookSearchPage>(`/api/books/${bookId}/search?${params.toString()}`);
+  },
+
+  async listReaderBookmarks(bookId: string) {
+    const payload = await request<{ bookmarks: ReaderBookmark[] }>(
+      `/api/books/${bookId}/bookmarks`,
+    );
+    return payload.bookmarks;
+  },
+
+  async createReaderBookmark(bookId: string, bookmark: CreateReaderBookmarkPayload) {
+    const payload = await request<{ bookmark: ReaderBookmark }>(
+      `/api/books/${bookId}/bookmarks`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(bookmark),
+      },
+    );
+    return payload.bookmark;
+  },
+
+  async updateReaderBookmark(
+    bookId: string,
+    bookmarkId: string,
+    bookmark: UpdateReaderBookmarkPayload,
+  ) {
+    const payload = await request<{ bookmark: ReaderBookmark }>(
+      `/api/books/${bookId}/bookmarks/${bookmarkId}`,
+      {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(bookmark),
+      },
+    );
+    return payload.bookmark;
+  },
+
+  async deleteReaderBookmark(bookId: string, bookmarkId: string) {
+    await request<{ deletion: { id: string } }>(
+      `/api/books/${bookId}/bookmarks/${bookmarkId}`,
+      { method: "DELETE" },
+    );
+  },
+
+  async listReaderAnnotations(bookId: string) {
+    const payload = await request<{ annotations: ReaderAnnotation[] }>(
+      `/api/books/${bookId}/annotations`,
+    );
+    return payload.annotations;
+  },
+
+  async createReaderAnnotation(bookId: string, annotation: CreateReaderAnnotationPayload) {
+    const payload = await request<{ annotation: ReaderAnnotation }>(
+      `/api/books/${bookId}/annotations`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(annotation),
+      },
+    );
+    return payload.annotation;
+  },
+
+  async updateReaderAnnotation(
+    bookId: string,
+    annotationId: string,
+    annotation: UpdateReaderAnnotationPayload,
+  ) {
+    const payload = await request<{ annotation: ReaderAnnotation }>(
+      `/api/books/${bookId}/annotations/${annotationId}`,
+      {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(annotation),
+      },
+    );
+    return payload.annotation;
+  },
+
+  async deleteReaderAnnotation(bookId: string, annotationId: string) {
+    await request<{ deletion: { id: string } }>(
+      `/api/books/${bookId}/annotations/${annotationId}`,
+      { method: "DELETE" },
+    );
   },
 
   async saveBookBookshelves(bookId: string, bookshelfIds: string[]) {

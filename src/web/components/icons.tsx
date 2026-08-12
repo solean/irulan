@@ -53,6 +53,25 @@ export const DensityCompactIcon = () => (
 )
 
 
+export const HighlightIcon = () => (
+  <svg viewBox="0 0 16 16" aria-hidden="true">
+    <path d="m10.5 2.5 3 3-6.8 6.8H3.2V8.8zM2.5 13.5h11" />
+  </svg>
+)
+
+export const BookmarkIcon = () => (
+  <svg viewBox="0 0 16 16" aria-hidden="true">
+    <path d="M4 2.5h8v11l-4-2.5-4 2.5z" />
+  </svg>
+)
+
+export const SearchIcon = () => (
+  <svg viewBox="0 0 16 16" aria-hidden="true">
+    <circle cx="7" cy="7" r="4" />
+    <path d="m10 10 3 3" />
+  </svg>
+)
+
 export const ContentsIcon = () => (
   <svg viewBox="0 0 16 16" aria-hidden="true">
     <path d="M2 4h12M2 8h12M2 12h9" />

@@ -6,7 +6,9 @@ import { normalizeReaderText } from "../../shared/reader-text";
 import { READER_TEXT_VERSION } from "../../shared/types";
 import {
   getCanonicalReaderText,
+  resolveReaderTextLocation,
   resolveReaderTextRange,
+  serializeReaderTextLocation,
   serializeReaderTextRange,
 } from "./reader-location";
 
@@ -33,6 +35,44 @@ beforeEach(() => {
 });
 
 describe("reader text locations", () => {
+  test("serializes and re-anchors a point after preceding text shifts", () => {
+    const original = render("<article><p>Alpha <em>brave</em> new world.</p></article>");
+    const paragraph = original.querySelector("p");
+    if (!paragraph) throw new Error("The test paragraph is missing.");
+
+    const boundary = document.createRange();
+    boundary.setStart(textNode(paragraph), "Alpha ".length);
+    boundary.collapse(true);
+    const stored = serializeReaderTextLocation(SECTION_HREF, original, boundary);
+
+    expect(stored).toEqual({
+      sectionHref: SECTION_HREF,
+      textVersion: READER_TEXT_VERSION,
+      offset: 6,
+      prefix: "Alpha ",
+      suffix: "brave new world.",
+    });
+
+    const rerendered = render(
+      "<article style='font-size: 24px; width: 300px'>Opening. Alpha <strong>brave</strong> new world.</article>",
+    );
+    const resolved = stored ? resolveReaderTextLocation(rerendered, stored) : null;
+
+    expect(resolved?.collapsed).toBe(true);
+    expect(resolved?.startContainer.textContent).toBe("brave");
+    expect(resolved?.startOffset).toBe(0);
+  });
+
+  test("rejects a text point outside the reader", () => {
+    const root = render("<article><p>Readable text</p></article><p id=outside>Outside</p>");
+    const outside = textNode(document.querySelector("#outside") as Element);
+    const boundary = document.createRange();
+    boundary.setStart(outside, 2);
+    boundary.collapse(true);
+
+    expect(serializeReaderTextLocation(SECTION_HREF, root, boundary)).toBeNull();
+  });
+
   test("serializes and resolves a selection spanning inline elements", () => {
     const root = render(
       '<article><p id="line">Alpha \n <em>brave</em>   new world.</p></article>',

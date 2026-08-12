@@ -893,3 +893,393 @@
   color: var(--text-primary);
 }
 
+
+.reader-tool-panel {
+  position: fixed;
+  top: max(20px, env(safe-area-inset-top));
+  right: max(20px, env(safe-area-inset-right));
+  bottom: max(20px, env(safe-area-inset-bottom));
+  z-index: 30;
+  width: min(430px, calc(100vw - 40px));
+  padding: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  overflow: hidden;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  background: var(--bg-overlay);
+  color: var(--text-primary);
+  box-shadow:
+    0 24px 70px rgba(0, 0, 0, 0.3),
+    0 4px 16px rgba(0, 0, 0, 0.14);
+}
+
+.reader-tool-panel-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.reader-tool-panel-header h2 {
+  margin: 2px 0 0;
+  font-family: var(--font-serif);
+  font-size: 20px;
+  font-weight: 550;
+  letter-spacing: -0.015em;
+}
+
+.reader-search-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+}
+
+.reader-search-status {
+  min-height: 1.25rem;
+  color: var(--text-secondary);
+  font-size: var(--fs-sm);
+}
+
+.reader-search-results {
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 6px;
+  overflow-y: auto;
+  list-style: none;
+}
+
+.reader-search-result {
+  width: 100%;
+  padding: 11px 12px;
+  display: grid;
+  gap: 5px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.reader-search-result:hover,
+.reader-search-result.active {
+  border-color: var(--border-default);
+  background: var(--bg-subtle);
+}
+
+.reader-search-result:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: -2px;
+}
+
+.reader-search-result-section {
+  color: var(--text-primary);
+  font-size: var(--fs-sm);
+  font-weight: 650;
+}
+
+.reader-search-result-snippet {
+  display: -webkit-box;
+  overflow: hidden;
+  color: var(--text-secondary);
+  font-family: var(--font-serif);
+  font-size: var(--fs-sm);
+  line-height: 1.45;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+}
+
+::highlight(reader-search-result) {
+  background-color: rgba(250, 190, 45, 0.62);
+  color: inherit;
+  text-decoration: underline;
+  text-decoration-color: rgba(128, 82, 0, 0.55);
+  text-decoration-thickness: 0.08em;
+}
+
+@media (max-width: 560px) {
+  .reader-tool-panel {
+    top: auto;
+    right: 8px;
+    bottom: 8px;
+    left: 8px;
+    width: auto;
+    max-height: min(78vh, 680px);
+  }
+}
+
+.reader-tool-status {
+  min-height: 1.25rem;
+  color: var(--text-secondary);
+  font-size: var(--fs-sm);
+}
+
+.reader-tool-empty {
+  padding: 28px 18px;
+  display: grid;
+  gap: 5px;
+  border: 1px dashed var(--border-default);
+  border-radius: var(--radius-md);
+  color: var(--text-secondary);
+  text-align: center;
+}
+
+.reader-tool-empty strong {
+  color: var(--text-primary);
+}
+
+.reader-tool-list {
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 8px;
+  overflow-y: auto;
+  list-style: none;
+}
+
+.reader-tool-card {
+  overflow: hidden;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  background: var(--bg-surface);
+}
+
+.reader-tool-card-target {
+  width: 100%;
+  padding: 12px;
+  display: grid;
+  gap: 4px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.reader-tool-card-target:hover {
+  background: var(--bg-subtle);
+}
+
+.reader-tool-card-target:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: -2px;
+}
+
+.reader-tool-card-title {
+  color: var(--text-primary);
+  font-size: var(--fs-sm);
+  font-weight: 650;
+}
+
+.reader-tool-card-section {
+  color: var(--text-tertiary);
+  font-size: var(--fs-xs);
+}
+
+.reader-tool-card-quote {
+  overflow: hidden;
+  color: var(--text-secondary);
+  font-family: var(--font-serif);
+  font-size: var(--fs-sm);
+  line-height: 1.4;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.reader-tool-card-actions {
+  padding: 7px 10px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.reader-bookmark-rename {
+  padding: 10px;
+  display: grid;
+  gap: 8px;
+}
+
+.reader-bookmark-rename .reader-tool-card-actions {
+  padding: 0;
+  border-top: 0;
+}
+
+.reader-selection-toolbar {
+  position: fixed;
+  z-index: 45;
+  padding: 5px;
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  background: var(--bg-overlay);
+  color: var(--text-primary);
+  box-shadow:
+    0 14px 36px rgba(0, 0, 0, 0.25),
+    0 2px 8px rgba(0, 0, 0, 0.16);
+}
+
+.reader-highlight-colors {
+  padding: 0 5px 0 2px;
+  display: flex;
+  gap: 4px;
+  border-right: 1px solid var(--border-subtle);
+}
+
+.reader-highlight-color {
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: 2px solid transparent;
+  border-radius: 999px;
+  background: var(--highlight-color);
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.14);
+  cursor: pointer;
+}
+
+.reader-highlight-color[aria-pressed="true"] {
+  border-color: var(--text-primary);
+}
+
+.reader-highlight-color:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+.reader-highlight-color[data-color="yellow"] {
+  --highlight-color: #f3cf62;
+}
+
+.reader-highlight-color[data-color="green"] {
+  --highlight-color: #91d6a0;
+}
+
+.reader-highlight-color[data-color="blue"] {
+  --highlight-color: #8bc9ef;
+}
+
+.reader-highlight-color[data-color="pink"] {
+  --highlight-color: #eea5c3;
+}
+
+.reader-tool-help {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: var(--fs-sm);
+  line-height: 1.45;
+}
+
+.reader-annotation-quote,
+.reader-annotation-note {
+  color: var(--text-secondary);
+  font-family: var(--font-serif);
+  font-size: var(--fs-sm);
+  line-height: 1.45;
+}
+
+.reader-annotation-quote {
+  display: -webkit-box;
+  overflow: hidden;
+  font-style: italic;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+}
+
+.reader-annotation-note {
+  margin-top: 4px;
+  padding-top: 7px;
+  border-top: 1px solid var(--border-subtle);
+  white-space: pre-wrap;
+}
+
+.reader-annotation-edit {
+  padding: 10px;
+  display: grid;
+  gap: 7px;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.reader-annotation-edit label,
+.reader-note-label {
+  color: var(--text-secondary);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+}
+
+.reader-annotation-edit textarea,
+#reader-new-note {
+  width: 100%;
+  padding: 9px 10px;
+  resize: vertical;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  background: var(--bg-input);
+  color: var(--text-primary);
+  font: inherit;
+  line-height: 1.45;
+}
+
+.reader-annotation-edit textarea:focus-visible,
+#reader-new-note:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 1px;
+}
+
+.reader-annotation-edit .reader-tool-card-actions {
+  padding: 0;
+  border-top: 0;
+}
+
+.reader-annotation-color-label select {
+  min-height: 30px;
+  padding: 0 24px 0 8px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  background: var(--bg-input);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: var(--fs-xs);
+  text-transform: capitalize;
+}
+
+.reader-note-quote {
+  max-height: 7rem;
+  margin: 0;
+  padding: 10px 12px;
+  overflow: auto;
+  border-left: 3px solid #d9b13f;
+  background: var(--bg-subtle);
+  color: var(--text-secondary);
+  font-family: var(--font-serif);
+  font-size: var(--fs-sm);
+  font-style: italic;
+  line-height: 1.45;
+}
+
+::highlight(reader-annotation-yellow) {
+  background-color: rgba(243, 207, 98, 0.52);
+}
+
+::highlight(reader-annotation-green) {
+  background-color: rgba(111, 201, 133, 0.46);
+}
+
+::highlight(reader-annotation-blue) {
+  background-color: rgba(100, 181, 232, 0.46);
+}
+
+::highlight(reader-annotation-pink) {
+  background-color: rgba(226, 126, 168, 0.44);
+}

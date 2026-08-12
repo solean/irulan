@@ -1,3 +1,6 @@
+import type { ReaderTextLocation } from "../../shared/types";
+import { isReaderTextLocation } from "./reader-location";
+
 import {
   parseThemePreference,
   THEME_STORAGE_KEY,
@@ -9,7 +12,7 @@ export type BookshelfDensity = "comfortable" | "compact";
 export type ReaderTone = "paper" | "sepia" | "night";
 export type ReaderFontId = "original" | "iowan" | "georgia" | "palatino" | "charter" | "sans";
 export type ReaderSpacingId = "compact" | "cozy" | "roomy";
-export type StoredReaderProgress = { section: string; page: number };
+export type StoredReaderProgress = ReaderTextLocation;
 
 const BOOKSHELF_VIEW_KEY = "ebook-manager-bookshelf-view";
 const BOOKSHELF_DENSITY_KEY = "ebook-manager-bookshelf-density";
@@ -248,14 +251,8 @@ export function getStoredReaderProgress(bookId: string): StoredReaderProgress | 
   try {
     const raw = localStorage.getItem(getReaderProgressKey(bookId));
     if (!raw) return null;
-    const parsed = JSON.parse(raw) as Partial<StoredReaderProgress> | null;
-    if (parsed && typeof parsed.section === "string" && parsed.section.length > 0) {
-      const page = Number(parsed.page);
-      return {
-        section: parsed.section,
-        page: Number.isFinite(page) && page >= 1 ? Math.round(page) : 1,
-      };
-    }
+    const parsed: unknown = JSON.parse(raw);
+    return isReaderTextLocation(parsed) ? parsed : null;
   } catch {
     /* localStorage unavailable or malformed */
   }

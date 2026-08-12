@@ -22,19 +22,27 @@ import { cn } from "@/lib/utils";
 import type {
   BookReader,
   BookReaderSection,
+  ReaderTextLocation,
+  ReaderTextRange,
 } from "../../shared/types";
 import { SkeletonLine } from "../components/bookshelf";
+import { ReaderAnnotations } from "../components/reader-annotations";
+import { ReaderBookmarks } from "../components/reader-bookmarks";
 import {
   ReaderFontSelect,
   ReaderFontSizeToggle,
   ReaderSpacingToggle,
   ReaderToneToggle,
 } from "../components/reader-appearance-controls";
+import { ReaderSearch } from "../components/reader-search";
 import {
   ArrowLeftIcon,
+  BookmarkIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
   ContentsIcon,
+  HighlightIcon,
+  SearchIcon,
 } from "../components/icons";
 import { useDocumentTitle } from "../hooks/use-document-title";
 import { api } from "../lib/api";
@@ -48,6 +56,11 @@ import {
   resolveReaderSectionLabels,
   type ReaderLinkTarget,
 } from "../lib/reader";
+import {
+  resolveReaderTextLocation,
+  resolveReaderTextRange,
+  serializeReaderViewportLocation,
+} from "../lib/reader-location";
 import {
   DEFAULT_READER_FONT,
   DEFAULT_READER_SPACING,
@@ -127,6 +140,14 @@ export const ReaderPage = () => {
   // True while a pointer drag is actively moving the page (suppresses text
   // selection and switches the cursor).
   const [isDraggingPage, setIsDraggingPage] = useState(false);
+  const [readerToolPanel, setReaderToolPanel] = useState<
+    null | "search" | "bookmarks" | "annotations"
+  >(null);
+  const [activeSearchRange, setActiveSearchRange] = useState<ReaderTextRange | null>(null);
+  const [pendingReaderTarget, setPendingReaderTarget] = useState<
+    ReaderTextLocation | ReaderTextRange | null
+  >(null);
+  const [readerToolNavigationError, setReaderToolNavigationError] = useState<string | null>(null);
 
   const selectedHref = searchParams.get("section")?.trim() ?? "";
   const anchorId = searchParams.get("anchor")?.trim() ?? null;
@@ -220,12 +241,6 @@ export const ReaderPage = () => {
     setStoredReaderSpacing(lineSpacing);
   }, [lineSpacing]);
 
-  // Remember where the reader is so reopening this book resumes here. Only once
-  // a section is in the URL — before that the position is still being restored.
-  useEffect(() => {
-    if (!reader || !selectedHref) return;
-    setStoredReaderProgress(bookId, { section: selectedHref, page: currentPage });
-  }, [bookId, currentPage, reader, selectedHref]);
 
   const goToSection = useCallback(
     (
@@ -294,6 +309,86 @@ export const ReaderPage = () => {
     },
     [activeSection?.href, anchorId, isPopout, readerBookshelfId, setSearchParams],
   );
+
+  const navigateToReaderTarget = useCallback(
+    (target: ReaderTextLocation | ReaderTextRange) => {
+      setPendingReaderTarget(target);
+      setReaderToolNavigationError(null);
+      goToSection(target.sectionHref, {
+        replace: target.sectionHref === activeSection?.href,
+      });
+    },
+    [activeSection?.href, goToSection],
+  );
+
+  const navigateToSearchRange = useCallback(
+    (range: ReaderTextRange) => {
+      setActiveSearchRange(range);
+      navigateToReaderTarget(range);
+    },
+    [navigateToReaderTarget],
+  );
+
+  const getCurrentReaderLocation = useCallback(() => {
+    const root = readerBodyRef.current;
+    const viewport = readerViewportRef.current;
+    if (
+      !root ||
+      !viewport ||
+      !displayedHref ||
+      displayedHref !== activeSection?.href ||
+      sectionLoading ||
+      isSwappingSection
+    ) {
+      return null;
+    }
+    return serializeReaderViewportLocation(displayedHref, root, viewport);
+  }, [activeSection?.href, displayedHref, isSwappingSection, sectionLoading]);
+
+  const persistReaderProgress = useEffectEvent(() => {
+    if (!reader || !selectedHref || pendingReaderTarget || pageSpan <= 0) return;
+    const location = getCurrentReaderLocation();
+    if (location) setStoredReaderProgress(bookId, location);
+  });
+
+  useEffect(() => {
+    const animationFrame = window.requestAnimationFrame(persistReaderProgress);
+    return () => window.cancelAnimationFrame(animationFrame);
+  }, [
+    bookId,
+    currentPage,
+    displayedHref,
+    isSwappingSection,
+    pageSpan,
+    pendingReaderTarget,
+    reader,
+    sectionDocument,
+    sectionLoading,
+    selectedHref,
+  ]);
+
+  const getReaderSectionLabel = useCallback(
+    (href: string) => {
+      const index = reader?.sections.findIndex((section) => section.href === href) ?? -1;
+      return index >= 0 ? (sectionLabels[index] ?? reader?.sections[index]?.label ?? href) : href;
+    },
+    [reader, sectionLabels],
+  );
+
+  const setReaderSearchOpen = useCallback((open: boolean) => {
+    if (open) setReaderPanel(null);
+    setReaderToolPanel(open ? "search" : null);
+  }, []);
+
+  const setReaderBookmarksOpen = useCallback((open: boolean) => {
+    if (open) setReaderPanel(null);
+    setReaderToolPanel(open ? "bookmarks" : null);
+  }, []);
+
+  const setReaderAnnotationsOpen = useCallback((open: boolean) => {
+    if (open) setReaderPanel(null);
+    setReaderToolPanel(open ? "annotations" : null);
+  }, []);
 
   const loadReader = useEffectEvent(async () => {
     setLoading(true);
@@ -378,8 +473,9 @@ export const ReaderPage = () => {
     // No section in the URL means the reader was just opened: resume the saved
     // position if one belongs to this book's spine, otherwise start at the top.
     const saved = getStoredReaderProgress(bookId);
-    if (saved && reader.sections.some((section) => section.href === saved.section)) {
-      goToSection(saved.section, { page: saved.page, replace: true });
+    if (saved && reader.sections.some((section) => section.href === saved.sectionHref)) {
+      setPendingReaderTarget(saved);
+      goToSection(saved.sectionHref, { replace: true });
       return;
     }
 
@@ -557,6 +653,79 @@ export const ReaderPage = () => {
     };
   }, [anchorId, currentPage, goToPage, pageOffset, pageSpan, sectionDocument, sectionLoading]);
 
+  useLayoutEffect(() => {
+    if (
+      !pendingReaderTarget ||
+      pendingReaderTarget.sectionHref !== displayedHref ||
+      sectionLoading ||
+      isSwappingSection ||
+      pageSpan <= 0
+    ) {
+      return;
+    }
+
+    const root = readerBodyRef.current;
+    if (!root) return;
+
+    const animationFrame = window.requestAnimationFrame(() => {
+      const resolved =
+        "endOffset" in pendingReaderTarget
+          ? resolveReaderTextRange(root, pendingReaderTarget)
+          : resolveReaderTextLocation(root, pendingReaderTarget);
+      if (!resolved) {
+        setPendingReaderTarget(null);
+        setReaderToolNavigationError("The saved text could not be located in this section.");
+        return;
+      }
+
+      const targetBounds = resolved.getClientRects()[0] ?? resolved.getBoundingClientRect();
+      const rootBounds = root.getBoundingClientRect();
+      const absoluteLeft = Math.max(0, targetBounds.left - rootBounds.left);
+      const nextPage = Math.max(1, Math.min(pageCount, Math.floor(absoluteLeft / pageSpan) + 1));
+
+      setPendingReaderTarget(null);
+      if (nextPage !== currentPage) {
+        goToPage(nextPage, { replace: true });
+      }
+    });
+
+    return () => window.cancelAnimationFrame(animationFrame);
+  }, [
+    currentPage,
+    displayedHref,
+    goToPage,
+    isSwappingSection,
+    pageCount,
+    pageSpan,
+    pendingReaderTarget,
+    sectionLoading,
+  ]);
+
+  useLayoutEffect(() => {
+    const highlightName = "reader-search-result";
+    if (
+      typeof CSS === "undefined" ||
+      !CSS.highlights ||
+      typeof Highlight === "undefined"
+    ) {
+      return;
+    }
+
+    CSS.highlights.delete(highlightName);
+    const root = readerBodyRef.current;
+    if (!root || !activeSearchRange || activeSearchRange.sectionHref !== displayedHref) {
+      return;
+    }
+
+    const resolved = resolveReaderTextRange(root, activeSearchRange);
+    if (!resolved) return;
+    CSS.highlights.set(highlightName, new Highlight(resolved));
+
+    return () => {
+      CSS.highlights.delete(highlightName);
+    };
+  }, [activeSearchRange, displayedHref, sectionDocument]);
+
   const onInternalReaderLinkClick = useCallback(
     (
       event: MouseEvent<HTMLAnchorElement>,
@@ -634,7 +803,13 @@ export const ReaderPage = () => {
 
   useEffect(() => {
     const onWindowKeyDown = (event: KeyboardEvent) => {
-      if (event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey) {
+      if (
+        event.defaultPrevented ||
+        event.altKey ||
+        event.ctrlKey ||
+        event.metaKey ||
+        event.shiftKey
+      ) {
         return;
       }
 
@@ -680,7 +855,7 @@ export const ReaderPage = () => {
 
   const onReaderViewportKeyDown = useCallback(
     (event: ReactKeyboardEvent<HTMLDivElement>) => {
-      if (event.altKey || event.ctrlKey || event.metaKey) {
+      if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) {
         return;
       }
 
@@ -1061,6 +1236,36 @@ export const ReaderPage = () => {
     <ReaderSpacingToggle onChange={setLineSpacing} spacing={lineSpacing} />
   );
 
+  const readerTools = (
+    <>
+      <ReaderSearch
+        bookId={bookId}
+        onNavigate={navigateToSearchRange}
+        onOpenChange={setReaderSearchOpen}
+        open={readerToolPanel === "search"}
+      />
+      <ReaderBookmarks
+        bookId={bookId}
+        getCurrentLocation={getCurrentReaderLocation}
+        getSectionLabel={getReaderSectionLabel}
+        onNavigate={navigateToReaderTarget}
+        onOpenChange={setReaderBookmarksOpen}
+        open={readerToolPanel === "bookmarks"}
+      />
+      <ReaderAnnotations
+        bookId={bookId}
+        contentRevision={sectionDocument}
+        getSectionLabel={getReaderSectionLabel}
+        onNavigate={navigateToReaderTarget}
+        onOpenChange={setReaderAnnotationsOpen}
+        open={readerToolPanel === "annotations"}
+        readerRootRef={readerBodyRef}
+        sectionHref={displayedHref}
+        viewportRef={readerViewportRef}
+      />
+    </>
+  );
+
   // The reading surface (tinted ground + floating page + paginated body) is
   // identical in both layouts — only the surrounding chrome differs.
   const readingSurface = (
@@ -1152,6 +1357,44 @@ export const ReaderPage = () => {
             >
               <ContentsIcon />
             </button>
+            <button
+              aria-expanded={readerToolPanel === "search"}
+              aria-keyshortcuts="Meta+F Control+F"
+              aria-label="Search this book"
+              className={cn(
+                "reader-immersive-control",
+                readerToolPanel === "search" && "active",
+              )}
+              onClick={() => setReaderSearchOpen(readerToolPanel !== "search")}
+              title="Search this book (Cmd/Ctrl+F)"
+              type="button"
+            >
+              <SearchIcon />
+            </button>
+            <button
+              aria-expanded={readerToolPanel === "bookmarks"}
+              aria-label="Bookmarks"
+              className={cn(
+                "reader-immersive-control",
+                readerToolPanel === "bookmarks" && "active",
+              )}
+              onClick={() => setReaderBookmarksOpen(readerToolPanel !== "bookmarks")}
+              type="button"
+            >
+              <BookmarkIcon />
+            </button>
+            <button
+              aria-expanded={readerToolPanel === "annotations"}
+              aria-label="Highlights and notes"
+              className={cn(
+                "reader-immersive-control",
+                readerToolPanel === "annotations" && "active",
+              )}
+              onClick={() => setReaderAnnotationsOpen(readerToolPanel !== "annotations")}
+              type="button"
+            >
+              <HighlightIcon />
+            </button>
           </div>
 
           <span className="reader-immersive-title">{reader.title}</span>
@@ -1206,6 +1449,11 @@ export const ReaderPage = () => {
         </footer>
 
         {error ? <p className="inline-error reader-immersive-error">{error}</p> : null}
+        {readerToolNavigationError ? (
+          <p aria-live="polite" className="inline-error reader-immersive-error">
+            {readerToolNavigationError}
+          </p>
+        ) : null}
 
         {readerPanel ? (
           <>
@@ -1254,6 +1502,7 @@ export const ReaderPage = () => {
             )}
           </>
         ) : null}
+        {readerTools}
       </div>
     );
   }
@@ -1269,6 +1518,11 @@ export const ReaderPage = () => {
       </Button>
 
       {error ? <p className="inline-error">{error}</p> : null}
+      {readerToolNavigationError ? (
+        <p aria-live="polite" className="inline-error">
+          {readerToolNavigationError}
+        </p>
+      ) : null}
 
       <section className="reader-shell">
         <Card className="panel reader-sidebar stack-sm">
@@ -1328,6 +1582,35 @@ export const ReaderPage = () => {
             </div>
 
             <div className="reader-toolbar-controls">
+              <Button
+                aria-expanded={readerToolPanel === "search"}
+                aria-keyshortcuts="Meta+F Control+F"
+                onClick={() => setReaderSearchOpen(readerToolPanel !== "search")}
+                title="Search this book (Cmd/Ctrl+F)"
+                type="button"
+                variant="outline"
+              >
+                <SearchIcon />
+                Search
+              </Button>
+              <Button
+                aria-expanded={readerToolPanel === "bookmarks"}
+                onClick={() => setReaderBookmarksOpen(readerToolPanel !== "bookmarks")}
+                type="button"
+                variant="outline"
+              >
+                <BookmarkIcon />
+                Bookmarks
+              </Button>
+              <Button
+                aria-expanded={readerToolPanel === "annotations"}
+                onClick={() => setReaderAnnotationsOpen(readerToolPanel !== "annotations")}
+                type="button"
+                variant="outline"
+              >
+                <HighlightIcon />
+                Highlights
+              </Button>
               {toneToggle}
               {fontFamilySelect}
               {fontToggle}
@@ -1338,6 +1621,7 @@ export const ReaderPage = () => {
           {readingSurface}
         </section>
       </section>
+      {readerTools}
     </div>
   );
 };
