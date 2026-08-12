@@ -29,6 +29,7 @@ import { books, bookShelves, deliveries } from "../db/schema";
 import { AppError } from "../errors";
 import { bookDirectory, readerDirectory, trashDirectory } from "../lib/storage";
 import { extractEpubMetadata, prepareEpubReader, readEpubReaderAsset } from "./epub";
+import { queueBookSearchIndex } from "./book-search";
 import {
   addBookToBookshelf,
   listBookshelvesForBook,
@@ -523,6 +524,8 @@ export const importBookFile = async (
     for (const bookshelf of targetBookshelves) {
       addBookToBookshelf(bookId, bookshelf.id);
     }
+
+    queueBookSearchIndex(bookId);
 
     return {
       status: "imported",

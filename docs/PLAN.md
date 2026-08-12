@@ -149,24 +149,29 @@ Detect fixed-layout and DRM-protected EPUBs. Either support them correctly or sh
 
 ### P1: Reader Tools
 
-Reader tools are in progress. Stable text locations and canonical linear-spine text extraction
-exist, but there is no search index or endpoint, there are no bookmark or annotation tables,
-and the reader's only API call is `GET /api/books/:id/read`.
+Reader tools are in progress. Stable text locations, canonical linear-spine extraction,
+transactional SQLite storage, FTS5 indexing, and the book-search API exist. There are no
+bookmark or annotation tables, and the reader does not expose the search UI yet.
 
 #### In-book search — 🟡 partial
 
-`extractEpubReaderTextSections` now produces ordered, labelled canonical text using the same
-element and whitespace behavior as the web renderer. Server-browser parity is covered by
-`src/server/services/epub-text.test.ts`. SQLite indexing, the search API, snippets, result
-counts, navigation, and keyboard UI remain.
+`GET /api/books/:id/search` lazily indexes existing books and returns paginated result counts,
+chapter labels, bounded snippets, and stable ranges. New imports queue indexing without waiting
+on it. Canonical source rows and the synchronized FTS5 index cascade on book deletion. Plain
+text queries are length-limited and converted to quoted `AND` terms rather than exposing FTS
+operators. Covered by `src/server/services/book-search.test.ts`, migration tests, deletion
+tests, and server-browser extraction parity tests.
+
+The reader search panel, keyboard interaction, and navigation to the resolved result range
+remain.
 
 Add full-book text search with:
 
-- result snippets
-- chapter labels
-- result counts
-- direct navigation to the matched text
-- keyboard access
+- 🟢 result snippets — done in the API
+- 🟢 chapter labels — done in the API
+- 🟢 result counts — done in the API
+- 🔴 direct navigation to the matched text — todo in the reader UI
+- 🔴 keyboard access — todo
 
 Search results must use stable locations so they remain valid after pagination changes.
 
@@ -319,13 +324,13 @@ Exit criteria:
 
 See the focused [Reader Tools Plan](reader-tools.md).
 
-- 🟡 add in-book search (partial; canonical spine text extraction is implemented)
+- 🟡 add in-book search (partial; server indexing and API are done, reader UI remains)
 - 🔴 add bookmarks (todo)
 - 🔴 add highlights and notes (todo)
 
 Exit criteria:
 
-- 🔴 every saved or searched location remains stable across pagination changes — not met
+- 🟡 every saved or searched location remains stable across pagination changes — partial; search returns stable text ranges, but result navigation is not wired into the reader
 - 🔴 annotations are persisted and backed up — not met
 
 ### Phase 5: Library Depth — 🔴 not started

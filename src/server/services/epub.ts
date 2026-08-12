@@ -822,6 +822,9 @@ export const extractEpubReaderTextSections = async (
 
   try {
     const sections = await buildReaderSpineSections(parsed);
+    if (sections.length === 0) {
+      throw new AppError(400, "This EPUB does not expose readable spine sections.");
+    }
     const textSections: EpubReaderTextSection[] = [];
 
     for (const [spineIndex, section] of sections.entries()) {

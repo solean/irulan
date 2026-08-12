@@ -23,6 +23,10 @@ const rowCounts = () => ({
   books: client.db.select().from(schema.books).all().length,
   shelves: client.db.select().from(schema.bookShelves).all().length,
   deliveries: client.db.select().from(schema.deliveries).all().length,
+  searchSections: client.db.select().from(schema.readerSectionText).all().length,
+  searchIndex:
+    client.db.get<{ count: number }>(sql`SELECT count(*) AS count FROM reader_section_fts`)
+      ?.count ?? 0,
 });
 
 // A second connection, so the count reflects what a reader outside this test would
@@ -91,6 +95,19 @@ beforeEach(() => {
     .run();
 
   client.db
+    .insert(schema.readerSectionText)
+    .values({
+      bookId: BOOK_ID,
+      href: "chapter.xhtml",
+      label: "Chapter",
+      spineIndex: 0,
+      textVersion: 1,
+      text: "Searchable text",
+      indexedAt: now,
+    })
+    .run();
+
+  client.db
     .insert(schema.bookShelves)
     .values(SHELF_IDS.map((bookshelfId) => ({ bookId: BOOK_ID, bookshelfId, addedAt: now })))
     .run();
@@ -125,7 +142,13 @@ describe("deleteBook", () => {
 
     await expect(deleteBook(BOOK_ID)).rejects.toThrow("The book could not be deleted.");
 
-    expect(rowCounts()).toEqual({ books: 1, shelves: SHELF_IDS.length, deliveries: 1 });
+    expect(rowCounts()).toEqual({
+      books: 1,
+      shelves: SHELF_IDS.length,
+      deliveries: 1,
+      searchSections: 1,
+      searchIndex: 1,
+    });
     expect(persistedShelfCount()).toBe(SHELF_IDS.length);
   });
 
@@ -151,14 +174,26 @@ describe("deleteBook", () => {
     await expect(deleteBook(BOOK_ID)).rejects.toThrow("The book could not be deleted.");
 
     client.db.run(sql.raw("DROP TRIGGER IF EXISTS block_delivery_inserts;"));
-    expect(rowCounts()).toEqual({ books: 1, shelves: SHELF_IDS.length, deliveries: 1 });
+    expect(rowCounts()).toEqual({
+      books: 1,
+      shelves: SHELF_IDS.length,
+      deliveries: 1,
+      searchSections: 1,
+      searchIndex: 1,
+    });
   });
 
   test("removes the book, shelf memberships, and deliveries on success", async () => {
     const result = await deleteBook(BOOK_ID);
 
     expect(result.id).toBe(BOOK_ID);
-    expect(rowCounts()).toEqual({ books: 0, shelves: 0, deliveries: 0 });
+    expect(rowCounts()).toEqual({
+      books: 0,
+      shelves: 0,
+      deliveries: 0,
+      searchSections: 0,
+      searchIndex: 0,
+    });
     expect(persistedShelfCount()).toBe(0);
     expect(existsSync(bookDirectory(BOOK_ID))).toBe(false);
   });

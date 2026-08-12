@@ -1,4 +1,12 @@
-import { index, integer, primaryKey, real, sqliteTable, text } from "drizzle-orm/sqlite-core";
+import {
+  index,
+  integer,
+  primaryKey,
+  real,
+  sqliteTable,
+  text,
+  uniqueIndex,
+} from "drizzle-orm/sqlite-core";
 
 import type { ReadStatus } from "../../shared/types";
 
@@ -30,6 +38,26 @@ export const books = sqliteTable(
     rating: real("rating"),
   },
   (table) => [index("books_imported_at_idx").on(table.importedAt)],
+);
+
+export const readerSectionText = sqliteTable(
+  "reader_section_text",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    bookId: text("book_id")
+      .notNull()
+      .references(() => books.id, { onDelete: "cascade" }),
+    href: text("href").notNull(),
+    label: text("label").notNull(),
+    spineIndex: integer("spine_index").notNull(),
+    textVersion: integer("text_version").notNull(),
+    text: text("text").notNull(),
+    indexedAt: integer("indexed_at", { mode: "timestamp_ms" }).notNull(),
+  },
+  (table) => [
+    uniqueIndex("reader_section_text_book_id_href_idx").on(table.bookId, table.href),
+    index("reader_section_text_book_id_spine_index_idx").on(table.bookId, table.spineIndex),
+  ],
 );
 
 export const bookShelves = sqliteTable(

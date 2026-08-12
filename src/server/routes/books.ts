@@ -6,8 +6,11 @@ import busboy, { type Busboy } from "busboy";
 import { Hono } from "hono";
 import { z } from "zod";
 import {
+  BOOK_SEARCH_PAGE_SIZE,
   BOOK_SORT_KEYS,
   BOOKS_PAGE_SIZE,
+  MAX_BOOK_SEARCH_PAGE_SIZE,
+  MAX_BOOK_SEARCH_QUERY_LENGTH,
   MAX_BOOKS_PAGE_SIZE,
   READ_STATUSES,
   SORT_DIRECTIONS,
@@ -30,6 +33,7 @@ import {
 } from "../services/books";
 import { replaceBookBookshelves } from "../services/bookshelves";
 import { listDeliveriesForBook, sendBookToKindle } from "../services/delivery";
+import { searchBook } from "../services/book-search";
 
 const listBooksQuerySchema = z.object({
   q: z.string().default(""),
@@ -44,6 +48,17 @@ const listBooksQuerySchema = z.object({
     .min(1)
     .max(MAX_BOOKS_PAGE_SIZE)
     .default(BOOKS_PAGE_SIZE),
+});
+
+const searchBookQuerySchema = z.object({
+  q: z.string().trim().min(1, "Enter text to search for.").max(MAX_BOOK_SEARCH_QUERY_LENGTH),
+  offset: z.coerce.number().int().min(0).default(0),
+  limit: z.coerce
+    .number()
+    .int()
+    .min(1)
+    .max(MAX_BOOK_SEARCH_PAGE_SIZE)
+    .default(BOOK_SEARCH_PAGE_SIZE),
 });
 
 const sendSchema = z.object({
@@ -226,6 +241,17 @@ booksRoutes.get("/:id/cover", async (c) => {
       "Cache-Control": "public, max-age=3600",
     },
   });
+});
+
+booksRoutes.get("/:id/search", async (c) => {
+  const query = searchBookQuerySchema.parse(c.req.query());
+  return c.json(
+    await searchBook(c.req.param("id"), {
+      query: query.q,
+      offset: query.offset,
+      limit: query.limit,
+    }),
+  );
 });
 
 booksRoutes.get("/:id/read", async (c) =>

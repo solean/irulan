@@ -1,10 +1,13 @@
-import { isReaderTextWhitespace, normalizeReaderText } from "../../shared/reader-text";
+import {
+  createReaderTextRange,
+  isReaderTextWhitespace,
+  normalizeReaderText,
+} from "../../shared/reader-text";
 import {
   READER_TEXT_VERSION,
   type ReaderTextRange,
 } from "../../shared/types";
 
-const READER_TEXT_CONTEXT_LENGTH = 48;
 const SHOW_TEXT = 4;
 
 type TextSegment = {
@@ -208,9 +211,8 @@ export const serializeReaderTextRange = (
   root: Element,
   selection: Range,
 ): ReaderTextRange | null => {
-  const normalizedHref = sectionHref.trim();
   if (
-    !normalizedHref ||
+    !sectionHref.trim() ||
     selection.collapsed ||
     selection.startContainer.ownerDocument !== root.ownerDocument ||
     selection.endContainer.ownerDocument !== root.ownerDocument ||
@@ -233,20 +235,9 @@ export const serializeReaderTextRange = (
     selection.endContainer,
     selection.endOffset,
   );
-  if (offset === null || endOffset === null || endOffset <= offset) return null;
+  if (offset === null || endOffset === null) return null;
 
-  const exact = map.text.slice(offset, endOffset);
-  if (!exact.trim()) return null;
-
-  return {
-    sectionHref: normalizedHref,
-    textVersion: READER_TEXT_VERSION,
-    offset,
-    endOffset,
-    exact,
-    prefix: map.text.slice(Math.max(0, offset - READER_TEXT_CONTEXT_LENGTH), offset),
-    suffix: map.text.slice(endOffset, endOffset + READER_TEXT_CONTEXT_LENGTH),
-  };
+  return createReaderTextRange(sectionHref, map.text, offset, endOffset);
 };
 
 /** Resolve a stored text quote to the current rendered DOM, or fail without guessing. */
