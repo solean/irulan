@@ -12,6 +12,7 @@ import type {
   DeleteBookshelfResult,
   DeliveryRecord,
   ImportResult,
+  LibraryRestoreResult,
   ReaderAnnotation,
   ReaderBookmark,
   SettingsPayload,
@@ -277,6 +278,30 @@ export const api = {
       },
     );
     return payload.deletion;
+  },
+
+  async downloadLibraryBackup() {
+    const response = await fetch("/api/library/backup");
+    if (!response.ok) {
+      const payload = await response.json().catch(() => null);
+      throw new Error(
+        payload && typeof payload.error === "string"
+          ? payload.error
+          : `Request failed with ${response.status}.`,
+      );
+    }
+    const disposition = response.headers.get("Content-Disposition") ?? "";
+    const fileName = disposition.match(/filename="([^"]+)"/)?.[1] ?? "irulan-library-backup.zip";
+    return { blob: await response.blob(), fileName };
+  },
+
+  async restoreLibraryBackup(file: File) {
+    const payload = await request<{ restore: LibraryRestoreResult }>("/api/library/restore", {
+      method: "POST",
+      headers: { "Content-Type": "application/zip" },
+      body: file,
+    });
+    return payload.restore;
   },
 
   async getSettings() {

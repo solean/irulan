@@ -5,11 +5,13 @@ import { Hono } from "hono";
 
 import { contentSecurityPolicy } from "../security/csp";
 import { appConfig } from "./config";
-import { toErrorResponse } from "./errors";
+import { AppError, toErrorResponse } from "./errors";
 import { booksRoutes } from "./routes/books";
 import { bookshelvesRoutes } from "./routes/bookshelves";
+import { libraryRoutes } from "./routes/library";
 import { settingsRoutes } from "./routes/settings";
 import { readerToolsRoutes } from "./routes/reader-tools";
+import { isLibraryRestoreInProgress } from "./services/library-backup";
 
 export const app = new Hono();
 
@@ -20,6 +22,12 @@ const cspHeaders = { "Content-Security-Policy": contentSecurityPolicy() };
 // same try/catch, and one that forgets can no longer answer a deliberate 404
 // with a plain-text 500.
 
+app.use("/api/*", async (_c, next) => {
+  if (isLibraryRestoreInProgress()) {
+    throw new AppError(503, "The library is being restored. Try again when it finishes.");
+  }
+  await next();
+});
 app.onError((error) => toErrorResponse(error));
 
 const contentTypes: Record<string, string> = {
@@ -87,6 +95,7 @@ app.route("/api/books", booksRoutes);
 app.route("/api/books", readerToolsRoutes);
 app.route("/api/bookshelves", bookshelvesRoutes);
 app.route("/api/settings", settingsRoutes);
+app.route("/api/library", libraryRoutes);
 
 // Anything left under /api is a genuine miss. Without this it would fall through
 // to the SPA catch-all below and answer with index.html and a 200, which the web

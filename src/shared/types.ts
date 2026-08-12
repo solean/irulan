@@ -186,6 +186,11 @@ export type UpdateReaderAnnotationPayload = {
   note?: string | null;
 };
 
+export type LibraryRestoreResult = {
+  restoredAt: string;
+  bookCount: number;
+};
+
 export type DeliveryRecord = {
   id: string;
   bookshelfId: string | null;

@@ -30,6 +30,7 @@ import { AppError } from "../errors";
 import { bookDirectory, readerDirectory, trashDirectory } from "../lib/storage";
 import { extractEpubMetadata, prepareEpubReader, readEpubReaderAsset } from "./epub";
 import { queueBookSearchIndex } from "./book-search";
+import { withLibraryFileLock } from "./library-lock";
 import {
   addBookToBookshelf,
   listBookshelvesForBook,
@@ -397,7 +398,7 @@ export const readBookReaderAsset = async (bookId: string, assetPath: string) => 
   return bytes;
 };
 
-export const deleteBook = async (bookId: string): Promise<DeleteBookResult> => {
+const deleteBookUnlocked = async (bookId: string): Promise<DeleteBookResult> => {
   const book = getBookRecord(bookId);
   const sourceDir = bookDirectory(book.id);
   const trashRoot = trashDirectory();
@@ -449,7 +450,10 @@ export const deleteBook = async (bookId: string): Promise<DeleteBookResult> => {
   };
 };
 
-export const importBookFile = async (
+export const deleteBook = (bookId: string) =>
+  withLibraryFileLock(() => deleteBookUnlocked(bookId));
+
+const importBookFileUnlocked = async (
   file: StagedBookFile,
   bookshelfIds?: string | string[] | null,
 ): Promise<ImportResult> => {
@@ -539,4 +543,11 @@ export const importBookFile = async (
     }
     throw new AppError(500, "The EPUB could not be saved.");
   }
+};
+
+export const importBookFile = (file: StagedBookFile, bookshelfIds?: string | string[] | null) =>
+  withLibraryFileLock(() => importBookFileUnlocked(file, bookshelfIds));
+
+export const clearPreparedReaderCache = () => {
+  preparedReaderRequests.clear();
 };
