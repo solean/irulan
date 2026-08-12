@@ -35,17 +35,22 @@ The word is kept alongside the colour so the doc stays readable without colour.
 
 ### P0: Data Safety and Trust
 
-#### Library backup and restore — 🔴 todo
+#### Library backup and restore — 🟡 partial
 
-Add:
+- 🟢 one-click complete-library backup — done; a streaming ZIP contains a database snapshot,
+  every original EPUB, and every extracted cover
+- 🟢 one-click restore — done; uploads are bounded, archive paths and manifests are validated,
+  file hashes are checked, the staged database is migrated and integrity-checked, and an
+  installation failure rolls back to the previous library
+- 🟡 automatic rotating backups — partial; a single `app.db.bak` is refreshed once per startup,
+  with no rotation
+- 🔴 export of an individual original EPUB — todo; originals are stored at
+  `storage/books/<id>/original.epub` with no individual export route
+- 🟡 reveal the complete library data directory in Finder — partial;
+  `shell.showItemInFolder` reveals one book's EPUB (`electron/main.cjs`), not the data directory
 
-- 🔴 one-click library backup — todo; no backup route exists (`src/server/app.ts` registers books, bookshelves, and settings only)
-- 🔴 one-click restore with validation and conflict handling — todo; only the internal `app.db.bak` recovery path in `src/server/db/recovery.ts` exists, and it covers the database alone
-- 🟡 automatic rotating backups — partial; a single `app.db.bak` is refreshed once per startup, with no rotation
-- 🔴 export of an individual original EPUB — todo; originals are stored at `storage/books/<id>/original.epub` with no export route
-- 🟡 a way to reveal the complete library data directory in Finder — partial; `shell.showItemInFolder` reveals one book's EPUB (`electron/main.cjs`), not the data directory
-
-A backup must include the database, original EPUB files, extracted covers, and any future reading data or annotations.
+Complete-library backups include the database, original EPUB files, extracted covers, bookmarks,
+annotations, settings, shelves, and delivery history.
 
 #### Durable database persistence — 🟢 done
 
@@ -81,22 +86,18 @@ replace, clear, legacy plaintext migration, and environment fallback.
 #### Stable reading locations — 🟡 partial
 
 The versioned canonical text-location contract, whitespace normalization, DOM selection
-serialization, and quote-context resolver are implemented in `src/shared/types.ts`,
-`src/shared/reader-text.ts`, and `src/web/lib/reader-location.ts`. The resolver is covered for
-inline selections, equivalent markup, repeated quotes, and changed layout in
-`src/web/lib/reader-location.test.ts`.
+serialization, viewport-position capture, and quote-context resolver are implemented in
+`src/shared/types.ts`, `src/shared/reader-text.ts`, and `src/web/lib/reader-location.ts`.
+Reader resume stores the first visible stable text point and resolves it against the current
+pagination instead of persisting a page number. Point and range resolution are covered across
+equivalent markup, repeated quotes, changed layout, and malformed persisted data.
 
-Reader resume still stores `{ section, page }` in `localStorage`
-(`src/web/lib/storage.ts`, `src/web/pages/ReaderPage.tsx`), the books table carries only
-`reading_status` and `rating`, and the reader never writes reading state back to the server.
-
-Replace the current `{ section, page }` localStorage position with a stable EPUB location, such as an EPUB CFI or an element/text offset.
-
-Persist reading state in SQLite so it survives browser storage resets and can be included in backups.
+Reading progress remains browser-local. Persisting reading state in SQLite is still required for
+it to survive browser-storage resets and participate in complete-library backups.
 
 Reading state should include:
 
-- 🔴 stable current location — todo
+- 🟢 stable current location — done in browser storage
 - 🔴 overall completion percentage — todo
 - 🔴 last-read timestamp — todo
 - 🔴 optional completed timestamp — todo
@@ -108,7 +109,7 @@ The UI should provide:
 - 🔴 automatic `unread` to `reading` transition after meaningful reading — todo
 - 🔴 optional automatic `finished` transition near the end of the book — todo
 
-Changing the font, spacing, window size, or reader layout must not lose the reader's textual position — 🟡 partial; stable text ranges resolve after layout changes, but reader resume still restores a numeric page.
+Changing the font, spacing, window size, or reader layout must not lose the reader's textual position — 🟡 partial; saved progress re-resolves from stable text, but preserving the active view during a live reflow remains.
 
 #### EPUB navigation — 🟡 partial
 
@@ -147,48 +148,38 @@ Improve support for:
 
 Detect fixed-layout and DRM-protected EPUBs. Either support them correctly or show a clear unsupported-format message instead of producing a broken reading view — 🔴 todo; there is no `rendition:layout`, `encryption.xml`, or `rights.xml` check, and failures surface as a generic reader error.
 
-### P1: Reader Tools
+### P1: Reader Tools — 🟢 done
 
-Reader tools are in progress. Stable text locations, canonical linear-spine extraction,
-transactional SQLite storage, FTS5 indexing, and the book-search API exist. There are no
-bookmark or annotation tables, and the reader does not expose the search UI yet.
+Reader tools use versioned, canonical text locations rather than page numbers. Shared point and
+range types support current-position capture, DOM selection serialization, and quote-context
+re-anchoring after font, spacing, viewport, or pagination changes.
 
-#### In-book search — 🟡 partial
+#### In-book search — 🟢 done
 
-`GET /api/books/:id/search` lazily indexes existing books and returns paginated result counts,
-chapter labels, bounded snippets, and stable ranges. New imports queue indexing without waiting
-on it. Canonical source rows and the synchronized FTS5 index cascade on book deletion. Plain
-text queries are length-limited and converted to quoted `AND` terms rather than exposing FTS
-operators. Covered by `src/server/services/book-search.test.ts`, migration tests, deletion
-tests, and server-browser extraction parity tests.
+`GET /api/books/:id/search` indexes every linear spine section and returns paginated counts,
+chapter labels, bounded snippets, and stable ranges. New imports queue indexing without delaying
+the response; existing books backfill lazily. Plain-text queries are bounded and converted to
+quoted `AND` terms rather than exposing FTS operators. The reader panel supports `Cmd/Ctrl+F`,
+result-arrow navigation, `Enter`, `Escape`, and opening the resolved match.
 
-The reader search panel, keyboard interaction, and navigation to the resolved result range
-remain.
+- 🟢 result snippets
+- 🟢 chapter labels
+- 🟢 result counts
+- 🟢 direct navigation to matched text
+- 🟢 keyboard access
 
-Add full-book text search with:
+#### Bookmarks — 🟢 done
 
-- 🟢 result snippets — done in the API
-- 🟢 chapter labels — done in the API
-- 🟢 result counts — done in the API
-- 🔴 direct navigation to the matched text — todo in the reader UI
-- 🔴 keyboard access — todo
+Named and unnamed bookmarks persist stable text points in SQLite. Reader controls create a
+bookmark at the first visible reading position and support opening, renaming, and deleting it.
+Bookmarks cascade on book deletion and survive complete-library backup and restore.
 
-Search results must use stable locations so they remain valid after pagination changes.
+#### Highlights and notes — 🟢 done
 
-#### Bookmarks — 🔴 todo
-
-Add named or unnamed bookmarks at stable EPUB locations. Bookmarks must be persisted in SQLite and included in backups.
-
-#### Highlights and notes — 🔴 todo
-
-Add text selection actions for:
-
-- highlighting
-- adding a note
-- copying text
-- optional dictionary or system lookup integration
-
-Annotations must survive font changes, window resizing, and normal EPUB re-pagination.
+The reader selection toolbar supports colour highlights, notes, and copying selected text.
+Saved annotations can be opened, recoloured, edited, and deleted. Quote-context resolution
+re-anchors saved ranges, and CSS Highlight painting leaves document layout and pagination
+unchanged. Annotations cascade on book deletion and survive complete-library backup and restore.
 
 ### P1: Library Metadata — 🔴 todo
 
@@ -320,18 +311,19 @@ Exit criteria:
 - 🔴 nested entries and anchor targets work — not met
 - 🔴 unsupported books fail with a specific, user-readable explanation — not met
 
-### Phase 4: Reader Tools — 🟡 in progress
+### Phase 4: Reader Tools — 🟢 done
 
 See the focused [Reader Tools Plan](reader-tools.md).
 
-- 🟡 add in-book search (partial; server indexing and API are done, reader UI remains)
-- 🔴 add bookmarks (todo)
-- 🔴 add highlights and notes (todo)
+- 🟢 add in-book search
+- 🟢 add bookmarks
+- 🟢 add highlights and notes
 
 Exit criteria:
 
-- 🟡 every saved or searched location remains stable across pagination changes — partial; search returns stable text ranges, but result navigation is not wired into the reader
-- 🔴 annotations are persisted and backed up — not met
+- 🟢 every saved or searched location remains stable across pagination changes
+- 🟢 bookmarks, highlights, and notes are persisted and backed up
+- 🟢 all reader tools are keyboard accessible
 
 ### Phase 5: Library Depth — 🔴 not started
 
