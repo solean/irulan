@@ -9,6 +9,7 @@ import { toErrorResponse } from "./errors";
 import { booksRoutes } from "./routes/books";
 import { bookshelvesRoutes } from "./routes/bookshelves";
 import { settingsRoutes } from "./routes/settings";
+import { readerToolsRoutes } from "./routes/reader-tools";
 
 export const app = new Hono();
 
@@ -18,6 +19,7 @@ const cspHeaders = { "Content-Security-Policy": contentSecurityPolicy() };
 // router mounted on it. Handlers throw; they no longer each carry a copy of the
 // same try/catch, and one that forgets can no longer answer a deliberate 404
 // with a plain-text 500.
+
 app.onError((error) => toErrorResponse(error));
 
 const contentTypes: Record<string, string> = {
@@ -82,6 +84,7 @@ app.get("/api/health", (c) =>
 );
 
 app.route("/api/books", booksRoutes);
+app.route("/api/books", readerToolsRoutes);
 app.route("/api/bookshelves", bookshelvesRoutes);
 app.route("/api/settings", settingsRoutes);
 

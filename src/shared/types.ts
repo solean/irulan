@@ -139,6 +139,53 @@ export type BookSearchPage = {
   total: number;
 };
 
+export const MAX_READER_SECTION_HREF_LENGTH = 2_048;
+export const MAX_READER_BOOKMARK_LABEL_LENGTH = 160;
+export const READER_ANNOTATION_COLORS = ["yellow", "green", "blue", "pink"] as const;
+export const MAX_READER_ANNOTATION_NOTE_LENGTH = 10_000;
+export const MAX_READER_ANNOTATION_QUOTE_LENGTH = 50_000;
+
+export type ReaderAnnotationColor = (typeof READER_ANNOTATION_COLORS)[number];
+
+export type ReaderBookmark = {
+  id: string;
+  bookId: string;
+  label: string | null;
+  location: ReaderTextLocation;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type CreateReaderBookmarkPayload = {
+  location: ReaderTextLocation;
+  label?: string | null;
+};
+
+export type UpdateReaderBookmarkPayload = {
+  label: string | null;
+};
+
+export type ReaderAnnotation = {
+  id: string;
+  bookId: string;
+  range: ReaderTextRange;
+  color: ReaderAnnotationColor;
+  note: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type CreateReaderAnnotationPayload = {
+  range: ReaderTextRange;
+  color: ReaderAnnotationColor;
+  note?: string | null;
+};
+
+export type UpdateReaderAnnotationPayload = {
+  color?: ReaderAnnotationColor;
+  note?: string | null;
+};
+
 export type DeliveryRecord = {
   id: string;
   bookshelfId: string | null;

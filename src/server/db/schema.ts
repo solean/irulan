@@ -8,7 +8,7 @@ import {
   uniqueIndex,
 } from "drizzle-orm/sqlite-core";
 
-import type { ReadStatus } from "../../shared/types";
+import type { ReadStatus, ReaderAnnotationColor } from "../../shared/types";
 
 export const bookshelves = sqliteTable(
   "bookshelves",
@@ -57,6 +57,56 @@ export const readerSectionText = sqliteTable(
   (table) => [
     uniqueIndex("reader_section_text_book_id_href_idx").on(table.bookId, table.href),
     index("reader_section_text_book_id_spine_index_idx").on(table.bookId, table.spineIndex),
+  ],
+);
+
+export const readerBookmarks = sqliteTable(
+  "reader_bookmarks",
+  {
+    id: text("id").primaryKey(),
+    bookId: text("book_id")
+      .notNull()
+      .references(() => books.id, { onDelete: "cascade" }),
+    label: text("label"),
+    sectionHref: text("section_href").notNull(),
+    textVersion: integer("text_version").notNull(),
+    offset: integer("offset").notNull(),
+    prefix: text("prefix").notNull(),
+    suffix: text("suffix").notNull(),
+    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+    updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
+  },
+  (table) => [
+    index("reader_bookmarks_book_id_created_at_idx").on(table.bookId, table.createdAt),
+  ],
+);
+
+export const readerAnnotations = sqliteTable(
+  "reader_annotations",
+  {
+    id: text("id").primaryKey(),
+    bookId: text("book_id")
+      .notNull()
+      .references(() => books.id, { onDelete: "cascade" }),
+    sectionHref: text("section_href").notNull(),
+    textVersion: integer("text_version").notNull(),
+    offset: integer("offset").notNull(),
+    endOffset: integer("end_offset").notNull(),
+    exact: text("exact").notNull(),
+    prefix: text("prefix").notNull(),
+    suffix: text("suffix").notNull(),
+    color: text("color").$type<ReaderAnnotationColor>().notNull(),
+    note: text("note"),
+    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+    updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
+  },
+  (table) => [
+    index("reader_annotations_book_id_section_offset_idx").on(
+      table.bookId,
+      table.sectionHref,
+      table.offset,
+    ),
+    index("reader_annotations_book_id_created_at_idx").on(table.bookId, table.createdAt),
   ],
 );
 
