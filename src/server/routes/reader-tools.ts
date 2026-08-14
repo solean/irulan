@@ -132,7 +132,8 @@ readerToolsRoutes.get("/:bookId/annotations", (c) =>
 
 readerToolsRoutes.post("/:bookId/annotations", async (c) => {
   const payload = createAnnotationSchema.parse(await c.req.json());
-  return c.json({ annotation: createReaderAnnotation(c.req.param("bookId"), payload) }, 201);
+  const { annotation, created } = createReaderAnnotation(c.req.param("bookId"), payload);
+  return c.json({ annotation }, created ? 201 : 200);
 });
 
 readerToolsRoutes.patch("/:bookId/annotations/:annotationId", async (c) => {

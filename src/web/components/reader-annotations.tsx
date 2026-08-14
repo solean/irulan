@@ -241,7 +241,11 @@ export const ReaderAnnotations = ({
           color: selectedColor,
           note,
         });
-        setAnnotations((current) => [annotation, ...current]);
+        setAnnotations((current) =>
+          current.some((item) => item.id === annotation.id)
+            ? replaceAnnotation(current, annotation)
+            : [annotation, ...current],
+        );
         setStatus(note ? "Note saved." : "Highlight saved.");
         clearSelection();
         return true;

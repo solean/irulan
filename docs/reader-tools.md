@@ -38,8 +38,10 @@ covers extraction, search, stable navigation, deletion, backup, and restore.
 3. **Bookmarks — done.** Named and unnamed bookmarks persist stable locations and can be
    created at the current reading position, renamed, opened, and deleted.
 4. **Highlights and notes — done.** The selection toolbar supports colour highlights, notes,
-   and copying. Saved annotations can be opened, recoloured, edited, and deleted, and resolved
-   ranges are painted without changing pagination.
+   and copying. A range carries one annotation: highlighting an already highlighted passage
+   recolours it instead of stacking a second highlight, enforced by a unique range index.
+   Saved annotations can be opened, recoloured, edited, and deleted, and resolved ranges are
+   painted without changing pagination.
 5. **Hardening — done.** Reader-tool records cascade on book deletion, survive full-library
    backup and restore, enforce bounded inputs, and are covered with a multi-section EPUB.
 

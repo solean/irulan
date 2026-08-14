@@ -101,10 +101,14 @@ export const readerAnnotations = sqliteTable(
     updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
   },
   (table) => [
-    index("reader_annotations_book_id_section_offset_idx").on(
+    // One highlight per anchored range: re-highlighting a passage recolours the
+    // saved annotation instead of stacking a second one over the same text.
+    uniqueIndex("reader_annotations_book_id_range_idx").on(
       table.bookId,
       table.sectionHref,
+      table.textVersion,
       table.offset,
+      table.endOffset,
     ),
     index("reader_annotations_book_id_created_at_idx").on(table.bookId, table.createdAt),
   ],

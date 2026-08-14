@@ -170,6 +170,39 @@ describe("reader annotations", () => {
     expect(client.db.select().from(readerAnnotations).all()).toEqual([]);
   });
 
+  test("recolours the existing highlight when the same range is highlighted again", async () => {
+    const firstResponse = await request(`/api/books/${BOOK_ID}/annotations`, "POST", {
+      range,
+      color: "green",
+      note: "Keep this note.",
+    });
+    expect(firstResponse.status).toBe(201);
+    const first = (await firstResponse.json()).annotation;
+
+    const secondResponse = await request(`/api/books/${BOOK_ID}/annotations`, "POST", {
+      range,
+      color: "blue",
+    });
+    expect(secondResponse.status).toBe(200);
+    expect((await secondResponse.json()).annotation).toMatchObject({
+      id: first.id,
+      color: "blue",
+      note: "Keep this note.",
+      range,
+    });
+
+    const listed = (await (await request(`/api/books/${BOOK_ID}/annotations`)).json()).annotations;
+    expect(listed).toHaveLength(1);
+    expect(listed[0]).toMatchObject({ id: first.id, color: "blue" });
+
+    const neighbourResponse = await request(`/api/books/${BOOK_ID}/annotations`, "POST", {
+      range: { ...range, offset: range.offset + 9, exact: "passage" },
+      color: "pink",
+    });
+    expect(neighbourResponse.status).toBe(201);
+    expect(client.db.select().from(readerAnnotations).all()).toHaveLength(2);
+  });
+
   test("rejects ranges whose quote and offsets disagree", async () => {
     const response = await request(`/api/books/${BOOK_ID}/annotations`, "POST", {
       range: { ...range, endOffset: range.endOffset + 1 },

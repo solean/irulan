@@ -1,3 +1,5 @@
+import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import path from "node:path";
 
 import Database from "better-sqlite3";
@@ -49,7 +51,7 @@ describe("database migrations", () => {
         ["settings"],
         ["sqlite_sequence"],
       ]);
-      expect(rows(database, "SELECT COUNT(*) FROM __drizzle_migrations;")).toEqual([[3]]);
+      expect(rows(database, "SELECT COUNT(*) FROM __drizzle_migrations;")).toEqual([[4]]);
       expect(rows(database, "SELECT id, name FROM bookshelves;")).toEqual([
         ["default", "My bookshelf"],
       ]);
@@ -152,9 +154,62 @@ describe("database migrations", () => {
       expect(rows(database, "SELECT book_id, bookshelf_id FROM book_shelves;")).toEqual([
         ["book-1", "default"],
       ]);
-      expect(rows(database, "SELECT COUNT(*) FROM __drizzle_migrations;")).toEqual([[3]]);
+      expect(rows(database, "SELECT COUNT(*) FROM __drizzle_migrations;")).toEqual([[4]]);
     } finally {
       database.close();
+    }
+  });
+
+  test("collapses annotations that duplicate an anchored range", () => {
+    const legacyFolder = path.join(
+      mkdtempSync(path.join(tmpdir(), "irulan-migrations-")),
+      "drizzle",
+    );
+    cpSync(migrationsFolder, legacyFolder, { recursive: true });
+    const journalPath = path.join(legacyFolder, "meta", "_journal.json");
+    const journal = JSON.parse(readFileSync(journalPath, "utf8")) as {
+      entries: { tag: string }[];
+    };
+    journal.entries = journal.entries.filter((entry) => entry.tag !== "0003_bizarre_ultragirl");
+    writeFileSync(journalPath, JSON.stringify(journal));
+
+    const database = freshDatabase();
+    try {
+      migrateDatabaseSchema(database, legacyFolder);
+      database.exec(`
+        INSERT INTO books (
+          id, title, author, file_path, file_hash, source_filename, file_size_bytes,
+          imported_at, reading_status
+        ) VALUES ('book-1', 'Book', 'Author', '/book.epub', 'hash', 'book.epub', 10, 1, 'unread');
+        INSERT INTO reader_annotations (
+          id, book_id, section_href, text_version, offset, end_offset, exact, prefix, suffix,
+          color, note, created_at, updated_at
+        ) VALUES
+          ('older', 'book-1', 'c1.xhtml', 1, 10, 17, 'horizon', 'a', 'b', 'green', 'Kept note', 100, 100),
+          ('newer', 'book-1', 'c1.xhtml', 1, 10, 17, 'horizon', 'a', 'b', 'blue', NULL, 200, 200),
+          ('other', 'book-1', 'c1.xhtml', 1, 20, 29, 'Lightning', 'a', 'b', 'pink', NULL, 300, 300);
+      `);
+
+      migrateDatabaseSchema(database, migrationsFolder);
+
+      expect(
+        rows(database, "SELECT id, color, note FROM reader_annotations ORDER BY offset;"),
+      ).toEqual([
+        ["newer", "blue", "Kept note"],
+        ["other", "pink", null],
+      ]);
+      expect(() =>
+        database.exec(`
+          INSERT INTO reader_annotations (
+            id, book_id, section_href, text_version, offset, end_offset, exact, prefix, suffix,
+            color, note, created_at, updated_at
+          ) VALUES
+            ('duplicate', 'book-1', 'c1.xhtml', 1, 10, 17, 'horizon', 'a', 'b', 'yellow', NULL, 400, 400);
+        `),
+      ).toThrow(/UNIQUE/);
+    } finally {
+      database.close();
+      rmSync(legacyFolder, { force: true, recursive: true });
     }
   });
 });

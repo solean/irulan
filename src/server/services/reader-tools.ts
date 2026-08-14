@@ -136,10 +136,16 @@ export const listReaderAnnotations = (bookId: string): ReaderAnnotation[] => {
     .map(serializeAnnotation);
 };
 
+/**
+ * Highlighting a passage that is already highlighted recolours the saved
+ * annotation. The upsert leans on the unique range index so two readers racing
+ * on the same selection cannot stack duplicates over the same text. A payload
+ * without a note leaves any saved note alone.
+ */
 export const createReaderAnnotation = (
   bookId: string,
   payload: CreateReaderAnnotationPayload,
-): ReaderAnnotation => {
+): { annotation: ReaderAnnotation; created: boolean } => {
   getBookRecord(bookId);
   const now = new Date();
   const record: typeof readerAnnotations.$inferInsert = {
@@ -157,8 +163,25 @@ export const createReaderAnnotation = (
     createdAt: now,
     updatedAt: now,
   };
-  db.insert(readerAnnotations).values(record).run();
-  return serializeAnnotation(getAnnotationRecord(bookId, record.id));
+  const saved = db
+    .insert(readerAnnotations)
+    .values(record)
+    .onConflictDoUpdate({
+      target: [
+        readerAnnotations.bookId,
+        readerAnnotations.sectionHref,
+        readerAnnotations.textVersion,
+        readerAnnotations.offset,
+        readerAnnotations.endOffset,
+      ],
+      set:
+        payload.note === undefined
+          ? { color: payload.color, updatedAt: now }
+          : { color: payload.color, note: payload.note, updatedAt: now },
+    })
+    .returning()
+    .get();
+  return { annotation: serializeAnnotation(saved), created: saved.id === record.id };
 };
 
 export const updateReaderAnnotation = (
