@@ -88,7 +88,7 @@ export const ReaderBookmarks = ({
   const addBookmark = useCallback(async () => {
     const location = getCurrentLocation();
     if (!location) {
-      setError("The current text position could not be captured. Try again after the page finishes loading.");
+      setError("No text is on screen to bookmark. Try a page with text once it has loaded.");
       return;
     }
 

@@ -399,19 +399,50 @@ export const resolveReaderTextLocation = (
   }
 };
 
-const caretRangeFromPoint = (document: Document, x: number, y: number) => {
-  const position = document.caretPositionFromPoint?.(x, y);
-  if (position) {
-    const range = document.createRange();
-    range.setStart(position.offsetNode, position.offset);
-    range.collapse(true);
-    return range;
+/**
+ * Whether the character at `offset` is laid out at or after the top-left corner
+ * of the visible page. Collapsed characters carry no box, so they answer
+ * `null` and the caller probes the next one.
+ */
+const isCharacterVisible = (measure: Range, node: Text, offset: number, viewport: DOMRect) => {
+  measure.setStart(node, offset);
+  measure.setEnd(node, offset + 1);
+  const bounds = measure.getBoundingClientRect();
+  if (bounds.width === 0 && bounds.height === 0) return null;
+  return bounds.right > viewport.left + 0.5 && bounds.bottom > viewport.top + 0.5;
+};
+
+/**
+ * First character of `node` that the viewport shows. Text order follows column
+ * and line order, so the visible run starts at a single boundary a binary
+ * search can find. The boundary is measured inside the node instead of hit
+ * testing the document, which would answer with whatever panel or toolbar sits
+ * above the text.
+ */
+const findFirstVisibleOffset = (node: Text, viewport: DOMRect) => {
+  const measure = node.ownerDocument.createRange();
+  let low = 0;
+  let high = node.data.length - 1;
+  let found: number | null = null;
+
+  while (low <= high) {
+    const middle = (low + high) >> 1;
+    let probe = middle;
+    let visible = isCharacterVisible(measure, node, probe, viewport);
+    while (visible === null && probe < high) {
+      probe += 1;
+      visible = isCharacterVisible(measure, node, probe, viewport);
+    }
+
+    if (visible === true) {
+      found = probe;
+      high = middle - 1;
+    } else {
+      low = probe + 1;
+    }
   }
 
-  const legacyDocument = document as Document & {
-    caretRangeFromPoint?: (pointX: number, pointY: number) => Range | null;
-  };
-  return legacyDocument.caretRangeFromPoint?.(x, y) ?? null;
+  return found;
 };
 
 /**
@@ -426,7 +457,7 @@ export const serializeReaderViewportLocation = (
 ): ReaderTextLocation | null => {
   const viewportBounds = viewport.getBoundingClientRect();
   const walker = root.ownerDocument.createTreeWalker(root, SHOW_TEXT);
-  let best: { left: number; top: number; x: number; y: number } | null = null;
+  let best: { left: number; node: Text; top: number } | null = null;
   let current = walker.nextNode();
 
   while (current) {
@@ -440,12 +471,7 @@ export const serializeReaderViewportLocation = (
         const top = Math.max(bounds.top, viewportBounds.top);
         const bottom = Math.min(bounds.bottom, viewportBounds.bottom);
         if (right > left && bottom > top) {
-          const candidate = {
-            left,
-            top,
-            x: Math.min(right - 0.5, left + 1),
-            y: top + (bottom - top) / 2,
-          };
+          const candidate = { left, node, top };
           if (
             !best ||
             candidate.top < best.top - 0.5 ||
@@ -460,7 +486,11 @@ export const serializeReaderViewportLocation = (
   }
 
   if (!best) return null;
-  const boundary = caretRangeFromPoint(root.ownerDocument, best.x, best.y);
-  if (!boundary || !containsBoundary(root, boundary.startContainer)) return null;
+  const offset = findFirstVisibleOffset(best.node, viewportBounds);
+  if (offset === null) return null;
+
+  const boundary = root.ownerDocument.createRange();
+  boundary.setStart(best.node, offset);
+  boundary.collapse(true);
   return serializeReaderTextLocation(sectionHref, root, boundary);
 };
