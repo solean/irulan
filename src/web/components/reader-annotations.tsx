@@ -27,6 +27,7 @@ import {
   type ReaderAnnotationColor,
   type ReaderTextRange,
 } from "../../shared/types";
+import { useDismissOnOutsidePress } from "../hooks/use-dismiss-on-outside-press";
 import { api } from "../lib/api";
 import {
   resolveReaderTextRange,
@@ -69,6 +70,7 @@ export const ReaderAnnotations = ({
   sectionHref,
   viewportRef,
 }: ReaderAnnotationsProps) => {
+  const panelRef = useRef<HTMLElement | null>(null);
   const latestRequest = useRef(0);
   const selectionFrame = useRef<number | null>(null);
   const [annotations, setAnnotations] = useState<ReaderAnnotation[]>([]);
@@ -222,6 +224,8 @@ export const ReaderAnnotations = ({
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [clearSelection, noteTarget, onOpenChange, open, selectedText]);
+
+  useDismissOnOutsidePress(panelRef, open, () => onOpenChange(false));
 
   const createAnnotation = useCallback(
     async (range: ReaderTextRange, note: string | null) => {
@@ -406,7 +410,12 @@ export const ReaderAnnotations = ({
       ) : null}
 
       {open ? (
-        <aside aria-label="Highlights and notes" className="reader-tool-panel" role="dialog">
+        <aside
+          aria-label="Highlights and notes"
+          className="reader-tool-panel"
+          ref={panelRef}
+          role="dialog"
+        >
           <div className="reader-tool-panel-header">
             <div>
               <p className="eyebrow">Reader tools</p>

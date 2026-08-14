@@ -12,6 +12,13 @@
   backdrop-filter: blur(12px);
 }
 
+/* Modals cover the title bar, whose pixels Electron reserves for window
+   dragging. Without opting out, the backdrop and the dialog's own controls stop
+   responding wherever they overlap the bar. */
+.electron-shell :is(.modal-backdrop, [data-slot="dialog-overlay"], [data-slot="dialog-content"]) {
+  -webkit-app-region: no-drag;
+}
+
 .import-modal {
   width: min(100%, 560px);
   border: 1px solid var(--border-strong);

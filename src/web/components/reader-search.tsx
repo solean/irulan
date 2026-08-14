@@ -16,6 +16,7 @@ import {
   type ReaderTextRange,
 } from "../../shared/types";
 import { useDebouncedValue } from "../hooks/use-debounced-value";
+import { useDismissOnOutsidePress } from "../hooks/use-dismiss-on-outside-press";
 import { api } from "../lib/api";
 import { numberFormatter } from "../lib/format";
 
@@ -29,6 +30,7 @@ type ReaderSearchProps = {
 const SEARCH_DEBOUNCE_MS = 180;
 
 export const ReaderSearch = ({ bookId, onNavigate, onOpenChange, open }: ReaderSearchProps) => {
+  const panelRef = useRef<HTMLElement | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
   const latestRequest = useRef(0);
   const [query, setQuery] = useState("");
@@ -169,10 +171,17 @@ export const ReaderSearch = ({ bookId, onNavigate, onOpenChange, open }: ReaderS
     }
   }, [bookId, loadingMore, requestedQuery, results.length, total]);
 
+  useDismissOnOutsidePress(panelRef, open, () => onOpenChange(false));
+
   if (!open) return null;
 
   return (
-    <aside aria-label="Search this book" className="reader-tool-panel" role="dialog">
+    <aside
+      aria-label="Search this book"
+      className="reader-tool-panel"
+      ref={panelRef}
+      role="dialog"
+    >
       <div className="reader-tool-panel-header">
         <div>
           <p className="eyebrow">Reader search</p>

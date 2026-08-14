@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import type { ReaderBookmark, ReaderTextLocation } from "../../shared/types";
 import { MAX_READER_BOOKMARK_LABEL_LENGTH } from "../../shared/types";
+import { useDismissOnOutsidePress } from "../hooks/use-dismiss-on-outside-press";
 import { api } from "../lib/api";
 
 type ReaderBookmarksProps = {
@@ -23,6 +24,7 @@ export const ReaderBookmarks = ({
   onOpenChange,
   open,
 }: ReaderBookmarksProps) => {
+  const panelRef = useRef<HTMLElement | null>(null);
   const latestRequest = useRef(0);
   const renameInputRef = useRef<HTMLInputElement | null>(null);
   const [bookmarks, setBookmarks] = useState<ReaderBookmark[]>([]);
@@ -156,10 +158,12 @@ export const ReaderBookmarks = ({
     [bookId],
   );
 
+  useDismissOnOutsidePress(panelRef, open, () => onOpenChange(false));
+
   if (!open) return null;
 
   return (
-    <aside aria-label="Bookmarks" className="reader-tool-panel" role="dialog">
+    <aside aria-label="Bookmarks" className="reader-tool-panel" ref={panelRef} role="dialog">
       <div className="reader-tool-panel-header">
         <div>
           <p className="eyebrow">Reader tools</p>

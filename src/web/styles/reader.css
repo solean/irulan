@@ -297,6 +297,19 @@
   padding-left: 92px;
 }
 
+/* Floating reader surfaces are positioned over the title bar, and Electron hands
+   every pixel of a drag region to window dragging — including pixels an overlay
+   paints on top. Controls near the top of these surfaces, such as a panel's
+   Close button, stay dead until the surface opts out. */
+.electron-shell :is(
+    .reader-tool-panel,
+    .reader-selection-toolbar,
+    .reader-immersive-panel,
+    .reader-immersive-scrim
+  ) {
+  -webkit-app-region: no-drag;
+}
+
 .reader-immersive-bar-group {
   display: flex;
   align-items: center;
