@@ -179,6 +179,9 @@ const openReaderWindow = (bookId, search) => {
     minWidth: 480,
     minHeight: 600,
   });
+  if (process.platform === "darwin") {
+    readerWindow.setWindowButtonVisibility(false);
+  }
 
   readerWindows.set(normalizedId, readerWindow);
   readerWindow.on("closed", () => {
@@ -207,6 +210,16 @@ const getStoredBookFilePath = (bookId) => {
 
 ipcMain.handle("reader:popout", (_event, payload) => {
   openReaderWindow(payload?.bookId, payload?.search);
+});
+
+ipcMain.on("reader:windowButtons", (event, payload) => {
+  if (process.platform !== "darwin") return;
+
+  for (const readerWindow of readerWindows.values()) {
+    if (readerWindow.isDestroyed() || readerWindow.webContents !== event.sender) continue;
+    readerWindow.setWindowButtonVisibility(payload?.visible === true);
+    return;
+  }
 });
 
 ipcMain.handle("theme:preference", (_event, payload) => {

@@ -1345,7 +1345,11 @@ export const ReaderPage = () => {
   if (isPopout) {
     return (
       <div className="reader-immersive" data-reader-tone={tone}>
-        <header className="reader-immersive-bar">
+        <header
+          className="reader-immersive-bar"
+          onPointerEnter={() => window.irulan?.setReaderWindowButtonsVisible(true)}
+          onPointerLeave={() => window.irulan?.setReaderWindowButtonsVisible(false)}
+        >
           <div className="reader-immersive-bar-group">
             <button
               aria-expanded={readerPanel === "contents"}

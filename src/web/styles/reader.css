@@ -288,14 +288,16 @@
 }
 
 .electron-shell .reader-immersive {
-  /* trafficLightPosition.y is the top inset of the native macOS buttons. The
-     rendered dots center around 29px from the top, so center this row there. */
-  --reader-immersive-bar-height: 58px;
-  --reader-immersive-panel-top: 58px;
+  /* Keep the native controls and toolbar row visually centered while trimming
+     the title area's top inset. */
+  --reader-immersive-bar-height: 56px;
+  --reader-immersive-panel-top: 56px;
 }
 
 .electron-shell .reader-immersive-bar {
-  -webkit-app-region: drag;
+  /* Electron drag regions discard pointer movement. Keep the toolbar interactive
+     across its full width so its controls can reveal from any point in the bar. */
+  -webkit-app-region: no-drag;
 }
 
 .electron-shell .reader-immersive-bar-group:first-child {
@@ -326,6 +328,19 @@
 
 .reader-immersive-bar-trail {
   justify-self: end;
+}
+
+@media (hover: hover) {
+  .reader-immersive-bar-group {
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 140ms ease;
+  }
+
+  .reader-immersive-bar:is(:hover, :focus-within) .reader-immersive-bar-group {
+    opacity: 1;
+    pointer-events: auto;
+  }
 }
 
 .reader-immersive-control {
@@ -377,7 +392,7 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  -webkit-app-region: drag;
+  -webkit-app-region: no-drag;
 }
 
 @media (max-width: 740px) {

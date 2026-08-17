@@ -15,6 +15,8 @@ contextBridge.exposeInMainWorld("irulan", {
   // main process has handled the request.
   openReader: (bookId, search) =>
     ipcRenderer.invoke("reader:popout", { bookId, search }),
+  setReaderWindowButtonsVisible: (visible) =>
+    ipcRenderer.send("reader:windowButtons", { visible }),
   showBookFile: (bookId) =>
     ipcRenderer.invoke("book:showFile", { bookId }),
   // The shell's persisted preference, injected at window creation. Every

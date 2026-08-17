@@ -2,6 +2,7 @@
 
 interface IrulanBridge {
   openReader: (bookId: string, search: string) => Promise<void>;
+  setReaderWindowButtonsVisible: (visible: boolean) => void;
   showBookFile: (bookId: string) => Promise<void>;
   themePreference?: import("../shared/theme").ThemePreference;
   setThemePreference: (
