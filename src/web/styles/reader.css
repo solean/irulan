@@ -278,7 +278,8 @@
   position: relative;
   z-index: 6;
   flex: 0 0 auto;
-  display: flex;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   align-items: center;
   gap: 12px;
   height: var(--reader-immersive-bar-height);
@@ -294,7 +295,12 @@
 
 .electron-shell .reader-immersive-bar {
   -webkit-app-region: drag;
-  padding-left: 92px;
+}
+
+.electron-shell .reader-immersive-bar-group:first-child {
+  /* Keep the controls clear of the traffic lights without shifting the grid's
+     center away from the center of the window. */
+  margin-left: 78px;
 }
 
 /* Floating reader surfaces are positioned over the title bar, and Electron hands
@@ -318,7 +324,7 @@
 }
 
 .reader-immersive-bar-trail {
-  margin-left: auto;
+  justify-self: end;
 }
 
 .reader-immersive-control {
@@ -361,7 +367,6 @@
 }
 
 .reader-immersive-title {
-  flex: 1 1 auto;
   min-width: 0;
   text-align: center;
   font-family: var(--font-serif);
@@ -372,6 +377,16 @@
   overflow: hidden;
   text-overflow: ellipsis;
   -webkit-app-region: drag;
+}
+
+@media (max-width: 740px) {
+  .electron-shell .reader-immersive-bar {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+  }
+
+  .electron-shell .reader-immersive-title {
+    visibility: hidden;
+  }
 }
 
 .reader-immersive-stage {
