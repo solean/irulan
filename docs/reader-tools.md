@@ -14,7 +14,10 @@ Reader tools depend on the stable-location work in Phase 2 of the product plan. 
 
 Offsets provide fast lookup; quote context can re-anchor a location if text normalization changes. Never persist page numbers.
 
-## Status
+## Status — 🟢 complete
+
+🟢 `done` / `met` means shipped and verified. The word is kept alongside the colour so the
+plan remains readable without colour.
 
 Complete. Stable, versioned text locations are shared by reading progress, search results,
 bookmarks, and annotations. Canonical extraction covers every linear spine section and keeps
@@ -29,25 +32,25 @@ covers extraction, search, stable navigation, deletion, backup, and restore.
 
 ## Delivery
 
-1. **Stable locations — done.** Shared point and range types, deterministic text normalization,
-   viewport-position serialization, DOM selection serialization, and quote-context resolution
-   are implemented independently of pagination.
-2. **In-book search — done.** Canonical extraction, transactional SQLite storage, FTS5
+1. **Stable locations — 🟢 done.** Shared point and range types, deterministic text
+   normalization, viewport-position serialization, DOM selection serialization, and
+   quote-context resolution are implemented independently of pagination.
+2. **In-book search — 🟢 done.** Canonical extraction, transactional SQLite storage, FTS5
    indexing, lazy backfill, bounded plain-text queries and snippets, pagination, the reader
    search panel, keyboard controls, and direct stable-range navigation are implemented.
-3. **Bookmarks — done.** Named and unnamed bookmarks persist stable locations and can be
+3. **Bookmarks — 🟢 done.** Named and unnamed bookmarks persist stable locations and can be
    created at the current reading position, renamed, opened, and deleted.
-4. **Highlights and notes — done.** The selection toolbar supports colour highlights, notes,
-   and copying. A range carries one annotation: highlighting an already highlighted passage
-   recolours it instead of stacking a second highlight, enforced by a unique range index.
-   Saved annotations can be opened, recoloured, edited, and deleted, and resolved ranges are
-   painted without changing pagination.
-5. **Hardening — done.** Reader-tool records cascade on book deletion, survive full-library
+4. **Highlights and notes — 🟢 done.** The selection toolbar supports colour highlights,
+   notes, and copying. A range carries one annotation: highlighting an already highlighted
+   passage recolours it instead of stacking a second highlight, enforced by a unique range
+   index. Saved annotations can be opened, recoloured, edited, and deleted, and resolved
+   ranges are painted without changing pagination.
+5. **Hardening — 🟢 done.** Reader-tool records cascade on book deletion, survive full-library
    backup and restore, enforce bounded inputs, and are covered with a multi-section EPUB.
 
 ## Exit Criteria
 
-- Search covers the complete linear spine and opens the matched text.
-- Search results and saved locations survive repagination.
-- Bookmarks, highlights, and notes survive reload and library restore.
-- All reader tools are usable by keyboard.
+- 🟢 Search covers the complete linear spine and opens the matched text — met.
+- 🟢 Search results and saved locations survive repagination — met.
+- 🟢 Bookmarks, highlights, and notes survive reload and library restore — met.
+- 🟢 All reader tools are usable by keyboard — met.
