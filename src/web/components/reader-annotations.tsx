@@ -54,6 +54,8 @@ type SelectedText = {
   top: number;
 };
 
+const SELECTION_TOOLBAR_VIEWPORT_GUTTER = 8;
+
 const highlightName = (color: ReaderAnnotationColor) => `reader-annotation-${color}`;
 
 const replaceAnnotation = (annotations: ReaderAnnotation[], updated: ReaderAnnotation) =>
@@ -73,6 +75,7 @@ export const ReaderAnnotations = ({
   const panelRef = useRef<HTMLElement | null>(null);
   const latestRequest = useRef(0);
   const selectionFrame = useRef<number | null>(null);
+  const selectionToolbarRef = useRef<HTMLDivElement | null>(null);
   const [annotations, setAnnotations] = useState<ReaderAnnotation[]>([]);
   const [selectedText, setSelectedText] = useState<SelectedText | null>(null);
   const [selectedColor, setSelectedColor] = useState<ReaderAnnotationColor>("yellow");
@@ -189,6 +192,22 @@ export const ReaderAnnotations = ({
       top: below ? bounds.bottom + 10 : bounds.top - 10,
     });
   });
+
+  useLayoutEffect(() => {
+    const toolbar = selectionToolbarRef.current;
+    if (!toolbar || !selectedText) return;
+
+    toolbar.style.setProperty("--reader-selection-toolbar-shift-x", "0px");
+    const bounds = toolbar.getBoundingClientRect();
+    const rightEdge = window.innerWidth - SELECTION_TOOLBAR_VIEWPORT_GUTTER;
+    const shift =
+      bounds.left < SELECTION_TOOLBAR_VIEWPORT_GUTTER
+        ? SELECTION_TOOLBAR_VIEWPORT_GUTTER - bounds.left
+        : bounds.right > rightEdge
+          ? rightEdge - bounds.right
+          : 0;
+    toolbar.style.setProperty("--reader-selection-toolbar-shift-x", `${shift}px`);
+  }, [selectedText]);
 
   useEffect(() => {
 
@@ -350,7 +369,9 @@ export const ReaderAnnotations = ({
     ? ({
         left: selectedText.left,
         top: selectedText.top,
-        transform: selectedText.below ? "translate(-50%, 0)" : "translate(-50%, -100%)",
+        transform: selectedText.below
+          ? "translate(calc(-50% + var(--reader-selection-toolbar-shift-x, 0px)), 0)"
+          : "translate(calc(-50% + var(--reader-selection-toolbar-shift-x, 0px)), -100%)",
       } satisfies CSSProperties)
     : undefined;
 
@@ -367,6 +388,7 @@ export const ReaderAnnotations = ({
           className="reader-selection-toolbar"
           onPointerDown={(event) => event.preventDefault()}
           role="toolbar"
+          ref={selectionToolbarRef}
           style={selectionToolbarStyle}
         >
           <div aria-label="Highlight colour" className="reader-highlight-colors" role="group">
