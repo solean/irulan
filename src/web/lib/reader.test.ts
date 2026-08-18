@@ -4,6 +4,7 @@ import type { BookReaderSection } from "../../shared/types";
 import {
   buildReaderAssetUrl,
   createReaderAssetSection,
+  getReaderBookPagePosition,
   getReaderLinkTarget,
   resolveReaderSectionLabels,
 } from "./reader";
@@ -18,6 +19,7 @@ const section: BookReaderSection = {
   id: "c1",
   href: "OEBPS/chapter1.xhtml",
   label: "Chapter One",
+  textLength: 1_000,
   url: "/api/books/book-1/read/OEBPS/chapter1.xhtml",
 };
 
@@ -166,6 +168,7 @@ describe("reader asset sections", () => {
       id: "asset:OEBPS/notes/end_notes.xhtml",
       href: "OEBPS/notes/end_notes.xhtml",
       label: "End notes",
+      textLength: 0,
       url: "/api/books/book-1/read/OEBPS/notes/end_notes.xhtml",
     });
 
@@ -183,12 +186,64 @@ describe("reader asset sections", () => {
   });
 });
 
+describe("getReaderBookPagePosition", () => {
+  const sections = ["frontmatter", "chapter-1", "chapter-2"].map(
+    (name, index): BookReaderSection => ({
+      id: name,
+      href: `OEBPS/${name}.xhtml`,
+      label: `Section ${index + 1}`,
+      textLength: [0, 5_000, 3_000][index] ?? 0,
+      url: `/api/books/book-1/read/OEBPS/${name}.xhtml`,
+    }),
+  );
+  const pageCountsFor = (...counts: number[]) => {
+    const pageCounts = new Map<string, number>();
+    counts.forEach((count, index) => {
+      const currentSection = sections[index];
+      if (currentSection) pageCounts.set(currentSection.href, count);
+    });
+    return pageCounts;
+  };
+
+
+  test("offsets a section page by every preceding section", () => {
+    const pageCounts = pageCountsFor(2, 5, 3);
+
+    expect(getReaderBookPagePosition(sections, pageCounts, sections[1].href, 4, 1_000)).toEqual({
+      currentPage: 6,
+      totalPages: 10,
+    });
+  });
+
+  test("estimates unmeasured sections from their text length", () => {
+    expect(getReaderBookPagePosition(sections, null, sections[1].href, 2, 1_000)).toEqual({
+      currentPage: 3,
+      totalPages: 9,
+    });
+  });
+
+  test("rejects linked documents outside the book spine", () => {
+    const pageCounts = pageCountsFor(1, 1, 1);
+
+    expect(
+      getReaderBookPagePosition(
+        sections,
+        pageCounts,
+        "OEBPS/notes/unlisted.xhtml",
+        1,
+        1_000,
+      ),
+    ).toBeNull();
+  });
+});
+
 describe("resolveReaderSectionLabels", () => {
   const withLabels = (...labels: string[]): BookReaderSection[] =>
     labels.map((label, index) => ({
       id: `s${index}`,
       href: `OEBPS/${index}.xhtml`,
       label,
+      textLength: 1_000,
       url: `/api/books/book-1/read/OEBPS/${index}.xhtml`,
     }));
 

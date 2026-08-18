@@ -319,7 +319,13 @@ const renderNode = (
 
       return (
         <figure className="reader-figure" id={anchorId} key={path}>
-          <img alt="" aria-hidden="true" className="reader-image" loading="lazy" src={svgUrl} />
+          <img
+            alt=""
+            aria-hidden="true"
+            className="reader-image"
+            loading="lazy"
+            src={svgUrl}
+          />
         </figure>
       );
     }
@@ -509,8 +515,55 @@ export const createReaderAssetSection = (bookId: string, href: string): BookRead
   id: `asset:${href}`,
   href,
   label: prettifyReaderLabel(href),
+  textLength: 0,
   url: buildReaderAssetUrl(bookId, href),
 });
+export type ReaderBookPagePosition = {
+  currentPage: number;
+  totalPages: number;
+};
+
+export const getReaderBookPagePosition = (
+  sections: readonly BookReaderSection[],
+  sectionPageCounts: ReadonlyMap<string, number> | null,
+  sectionHref: string | null,
+  sectionPage: number,
+  estimatedCharactersPerPage: number,
+): ReaderBookPagePosition | null => {
+  const charactersPerPage =
+    Number.isFinite(estimatedCharactersPerPage) && estimatedCharactersPerPage > 0
+      ? estimatedCharactersPerPage
+      : 1;
+  let pageOffset = 0;
+  let currentBookPage: number | null = null;
+
+  for (const section of sections) {
+    const measuredPageCount = sectionPageCounts?.get(section.href);
+    const textLength =
+      Number.isFinite(section.textLength) && section.textLength > 0 ? section.textLength : 0;
+    const pageCount =
+      measuredPageCount !== undefined &&
+      Number.isSafeInteger(measuredPageCount) &&
+      measuredPageCount > 0
+        ? measuredPageCount
+        : Math.max(1, Math.ceil(textLength / charactersPerPage));
+
+    if (currentBookPage === null && section.href === sectionHref) {
+      const localPage = Number.isFinite(sectionPage) ? Math.round(sectionPage) : 1;
+      currentBookPage = pageOffset + Math.max(1, Math.min(pageCount, localPage));
+    }
+
+    pageOffset += pageCount;
+  }
+
+  return currentBookPage === null
+    ? null
+    : {
+        currentPage: currentBookPage,
+        totalPages: pageOffset,
+      };
+};
+
 
 export const getReaderDocumentTitle = (document: Document) => {
   const selectors = ["title", "body h1", "body h2", "body header h1", "body header h2"];

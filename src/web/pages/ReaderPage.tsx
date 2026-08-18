@@ -51,6 +51,7 @@ import { getBookHref } from "../lib/navigation";
 import {
   createReaderAssetSection,
   getReaderDocumentTitle,
+  getReaderBookPagePosition,
   parseReaderMarkup,
   renderReaderDocument,
   resolveReaderSectionLabels,
@@ -87,6 +88,78 @@ import {
 // chapter length is unknown until it loads and is measured, so the target is
 // clamped to the real final page after measurement.
 const READER_LAST_PAGE = Number.MAX_SAFE_INTEGER;
+const DEFAULT_READER_CHARACTERS_PER_PAGE = 1_100;
+const MIN_READER_CALIBRATION_PAGES = 4;
+const READER_TEXT_FLOW_EFFICIENCY = 0.82;
+
+type ReaderBookPagination = Readonly<{
+  bookId: string;
+  charactersPerPage: number;
+  sectionPageCounts: ReadonlyMap<string, number>;
+  signature: string;
+}>;
+
+const getReaderSectionMarkup = async (
+  section: BookReaderSection,
+  markupCache: Map<string, string>,
+) => {
+  const cachedMarkup = markupCache.get(section.href);
+  if (cachedMarkup) return cachedMarkup;
+
+  const response = await fetch(section.url, {
+    headers: {
+      Accept: "application/xhtml+xml, text/html;q=0.9",
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error(`Request failed with ${response.status}.`);
+  }
+
+  const markup = await response.text();
+  markupCache.set(section.href, markup);
+  return markup;
+};
+
+const measureReaderSectionPagination = (body: HTMLElement, pageWidth: number) => {
+  const columnGap = Number.parseFloat(window.getComputedStyle(body).columnGap || "0");
+  const stride = pageWidth + columnGap;
+  if (stride <= 0) return null;
+
+  // scrollWidth spans whole column boxes, so total / stride rounds to the exact
+  // column count. Deriving the span back out keeps every page edge aligned.
+  const total = body.scrollWidth + columnGap;
+  const pageCount = Math.max(1, Math.round(total / stride));
+  return {
+    pageCount,
+    pageSpan: total / pageCount,
+  };
+};
+const estimateReaderCharactersPerPage = (body: HTMLElement, bounds: DOMRect) => {
+  const style = window.getComputedStyle(body);
+  const fontSize = Number.parseFloat(style.fontSize) || 16;
+  const lineHeight = Number.parseFloat(style.lineHeight) || fontSize * 1.5;
+  const letterSpacing = Number.parseFloat(style.letterSpacing) || 0;
+  const context = document.createElement("canvas").getContext("2d");
+  if (!context) return DEFAULT_READER_CHARACTERS_PER_PAGE;
+
+  context.font = `${style.fontStyle} ${style.fontWeight} ${fontSize}px ${style.fontFamily}`;
+  const sample = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz 0123456789";
+  const averageCharacterWidth = context.measureText(sample).width / sample.length + letterSpacing;
+  if (averageCharacterWidth <= 0 || lineHeight <= 0) {
+    return DEFAULT_READER_CHARACTERS_PER_PAGE;
+  }
+
+  const charactersPerLine = bounds.width / averageCharacterWidth;
+  const linesPerPage = bounds.height / lineHeight;
+  return Math.max(
+    1,
+    Math.round(charactersPerLine * linesPerPage * READER_TEXT_FLOW_EFFICIENCY),
+  );
+};
+
+
+
 
 export const ReaderPage = () => {
   const { bookId = "" } = useParams();
@@ -124,6 +197,7 @@ export const ReaderPage = () => {
   const [sectionError, setSectionError] = useState<string | null>(null);
   const [pageCount, setPageCount] = useState(1);
   const [pageSpan, setPageSpan] = useState(0);
+  const [bookPagination, setBookPagination] = useState<ReaderBookPagination | null>(null);
   // Transform of the on-screen chapter, held steady while a new chapter loads
   // so the outgoing one doesn't snap back to its start mid-fetch.
   const frozenOffsetRef = useRef(0);
@@ -200,6 +274,23 @@ export const ReaderPage = () => {
   } as CSSProperties;
   const currentPageIndex = Math.min(Math.max(0, currentPage - 1), Math.max(0, pageCount - 1));
   const pageOffset = pageSpan > 0 ? currentPageIndex * pageSpan : 0;
+  const currentBookPagination = bookPagination?.bookId === bookId ? bookPagination : null;
+  const bookPagePosition = useMemo(() => {
+    if (!reader || !activeSection) return null;
+
+    return getReaderBookPagePosition(
+      reader.sections,
+      currentBookPagination?.sectionPageCounts ?? null,
+      activeSection.href,
+      currentPageIndex + 1,
+      currentBookPagination?.charactersPerPage ?? DEFAULT_READER_CHARACTERS_PER_PAGE,
+    );
+  }, [activeSection, currentBookPagination, currentPageIndex, reader]);
+  const readerPageStatus = bookPagePosition
+    ? `Page ${numberFormatter.format(bookPagePosition.currentPage)} of ${numberFormatter.format(bookPagePosition.totalPages)}`
+    : !activeSection
+      ? "No readable pages"
+      : "Linked section";
 
   // While a new (uncached) chapter is fetching, the displayed document still
   // belongs to the previous section. Hold it steady at its last offset so it
@@ -411,22 +502,7 @@ export const ReaderPage = () => {
     setSectionError(null);
 
     try {
-      let markup = sectionMarkupCache.current.get(section.href) ?? null;
-
-      if (!markup) {
-        const response = await fetch(section.url, {
-          headers: {
-            Accept: "application/xhtml+xml, text/html;q=0.9",
-          },
-        });
-
-        if (!response.ok) {
-          throw new Error(`Request failed with ${response.status}.`);
-        }
-
-        markup = await response.text();
-        sectionMarkupCache.current.set(section.href, markup);
-      }
+      const markup = await getReaderSectionMarkup(section, sectionMarkupCache.current);
 
       const nextDocument = parseReaderMarkup(markup);
 
@@ -462,6 +538,7 @@ export const ReaderPage = () => {
     setSectionDocument(null);
     setSectionTitle(null);
     setSectionError(null);
+    setBookPagination(null);
     void loadReader();
   }, [bookId]);
 
@@ -529,26 +606,72 @@ export const ReaderPage = () => {
     // Use the fractional content width, not the integer clientWidth: a sub-pixel
     // gap between the CSS column width and our page stride accumulates across a
     // chapter and eventually clips a few px of text at the viewport edge.
-    const pageWidth = viewport.getBoundingClientRect().width;
+    const viewportBounds = viewport.getBoundingClientRect();
+    const pageWidth = viewportBounds.width;
     body.style.setProperty("--reader-page-width", `${pageWidth}px`);
 
-    const columnGap = Number.parseFloat(window.getComputedStyle(body).columnGap || "0");
-    const stride = pageWidth + columnGap;
-    if (stride <= 0) {
+    const pagination = measureReaderSectionPagination(body, pageWidth);
+    if (!pagination || viewportBounds.height <= 0) {
       setPageCount(1);
       setPageSpan(0);
       return;
     }
 
-    // scrollWidth spans whole column boxes, so total / stride rounds to the exact
-    // column count; deriving the stride back out keeps every page edge aligned
-    // (and avoids the spurious trailing page that `ceil` produced).
-    const total = body.scrollWidth + columnGap;
-    const nextPageCount = Math.max(1, Math.round(total / stride));
-    const nextPageSpan = total / nextPageCount;
+    const signature = [
+      bookId,
+      isPopout ? "immersive" : "windowed",
+      fontFamily,
+      fontScale,
+      lineSpacing,
+      viewportBounds.width.toFixed(3),
+      viewportBounds.height.toFixed(3),
+    ].join(":");
+    const measuredSection = reader?.sections.find((section) => section.href === displayedHref);
+    const typographyEstimate = estimateReaderCharactersPerPage(body, viewportBounds);
 
-    setPageSpan(nextPageSpan);
-    setPageCount(nextPageCount);
+    setBookPagination((current) => {
+      const sameLayout = current?.bookId === bookId && current.signature === signature;
+      const sectionPageCounts = new Map(
+        sameLayout ? current.sectionPageCounts : undefined,
+      );
+      if (measuredSection) {
+        sectionPageCounts.set(measuredSection.href, pagination.pageCount);
+      }
+
+      let calibratedCharacters = 0;
+      let calibratedPages = 0;
+      for (const section of reader?.sections ?? []) {
+        const measuredPages = sectionPageCounts.get(section.href);
+        if (
+          measuredPages !== undefined &&
+          measuredPages >= MIN_READER_CALIBRATION_PAGES &&
+          section.textLength > 0
+        ) {
+          calibratedCharacters += section.textLength;
+          calibratedPages += measuredPages;
+        }
+      }
+      const charactersPerPage =
+        calibratedPages > 0 ? calibratedCharacters / calibratedPages : typographyEstimate;
+
+      if (
+        sameLayout &&
+        current.charactersPerPage === charactersPerPage &&
+        (!measuredSection ||
+          current.sectionPageCounts.get(measuredSection.href) === pagination.pageCount)
+      ) {
+        return current;
+      }
+
+      return {
+        bookId,
+        charactersPerPage,
+        sectionPageCounts,
+        signature,
+      };
+    });
+    setPageSpan(pagination.pageSpan);
+    setPageCount(pagination.pageCount);
   });
 
   // Measure synchronously before the browser paints the new section so the
@@ -574,8 +697,14 @@ export const ReaderPage = () => {
 
     observer.observe(viewport);
     observer.observe(body);
+    let cancelled = false;
+    void document.fonts.ready.then(() => {
+      if (!cancelled) measurePagination();
+    });
+
 
     return () => {
+      cancelled = true;
       observer.disconnect();
     };
   }, [fontFamily, fontScale, lineSpacing, sectionDocument, sectionLoading]);
@@ -1298,7 +1427,7 @@ export const ReaderPage = () => {
           // The viewport is a labelled region that also takes focus, so arrow
           // keys and swipes can turn pages without first clicking a control.
           <div
-            aria-label={`Reading viewport, page ${currentPageIndex + 1} of ${pageCount}`}
+            aria-label={`Reading viewport, ${readerPageStatus}`}
             className={cn(
               "reader-page-window",
               isSwappingSection && "reader-page-window-loading",
@@ -1447,8 +1576,8 @@ export const ReaderPage = () => {
         </div>
 
         <footer className="reader-immersive-footer">
-          <span className="reader-immersive-page">
-            Page {numberFormatter.format(currentPageIndex + 1)} of {numberFormatter.format(pageCount)}
+          <span aria-live="polite" className="reader-immersive-page">
+            {readerPageStatus}
           </span>
         </footer>
 
@@ -1579,9 +1708,8 @@ export const ReaderPage = () => {
 
             <div className="reader-toolbar-status">
               <strong className="reader-current-label">{activeSectionLabel}</strong>
-              <span className="reader-page-status">
-                Page {numberFormatter.format(currentPageIndex + 1)} of{" "}
-                {numberFormatter.format(pageCount)}
+              <span aria-live="polite" className="reader-page-status">
+                {readerPageStatus}
               </span>
             </div>
 

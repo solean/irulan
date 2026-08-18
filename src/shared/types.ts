@@ -83,6 +83,7 @@ export type BookReaderSection = {
   id: string;
   href: string;
   label: string;
+  textLength: number;
   url: string;
 };
 
