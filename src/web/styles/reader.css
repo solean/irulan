@@ -179,6 +179,76 @@
   --reader-paper-shadow: rgba(0, 0, 0, 0.5);
 }
 
+/* Reader overlays follow the book's tone instead of the application theme.
+   The bridge covers both bespoke reader CSS and the semantic tokens used by
+   shared buttons, inputs, and portalled selects. */
+.reader-tone-scope {
+  color-scheme: light;
+  --reader-paper: #faf6ef;
+  --reader-ink: #241d17;
+  --reader-muted: #7a6858;
+  --reader-link: #235ea4;
+  --bg-base: var(--reader-paper);
+  --bg-surface: color-mix(in srgb, var(--reader-paper) 97%, var(--reader-ink));
+  --bg-elevated: color-mix(in srgb, var(--reader-paper) 93%, var(--reader-ink));
+  --bg-overlay: color-mix(in srgb, var(--reader-paper) 91%, var(--reader-ink));
+  --bg-hover: color-mix(in srgb, var(--reader-ink) 5%, transparent);
+  --bg-active: color-mix(in srgb, var(--reader-ink) 8%, transparent);
+  --bg-subtle: var(--bg-hover);
+  --bg-input: color-mix(in srgb, var(--reader-paper) 94%, var(--reader-ink));
+  --border-default: color-mix(in srgb, var(--reader-ink) 12%, transparent);
+  --border-subtle: color-mix(in srgb, var(--reader-ink) 8%, transparent);
+  --border-strong: color-mix(in srgb, var(--reader-ink) 18%, transparent);
+  --border-hover: color-mix(in srgb, var(--reader-ink) 25%, transparent);
+  --text-primary: var(--reader-ink);
+  --text-secondary: var(--reader-muted);
+  --text-tertiary: color-mix(in srgb, var(--reader-muted) 78%, transparent);
+  --text-on-accent: var(--reader-paper);
+  --accent: var(--reader-link);
+  --accent-hover: color-mix(in srgb, var(--reader-link) 84%, var(--reader-ink));
+  --accent-soft: color-mix(in srgb, var(--reader-link) 13%, transparent);
+  --accent-muted: color-mix(in srgb, var(--reader-link) 8%, transparent);
+  --button-primary: var(--reader-link);
+  --button-primary-hover: var(--accent-hover);
+  --button-primary-foreground: var(--reader-paper);
+  --background: var(--reader-paper);
+  --foreground: var(--reader-ink);
+  --card: var(--bg-surface);
+  --card-foreground: var(--reader-ink);
+  --popover: var(--bg-surface);
+  --popover-foreground: var(--reader-ink);
+  --primary: var(--reader-link);
+  --primary-foreground: var(--reader-paper);
+  --secondary: var(--bg-elevated);
+  --secondary-foreground: var(--reader-ink);
+  --muted: var(--bg-elevated);
+  --muted-foreground: var(--reader-muted);
+  --accent-foreground: var(--reader-paper);
+  --border: var(--border-default);
+  --input: var(--border-strong);
+  --ring: var(--reader-link);
+  --focus-ring: var(--reader-link);
+}
+
+.reader-tone-scope[data-reader-tone="sepia"] {
+  --reader-paper: #efe2c7;
+  --reader-ink: #312316;
+  --reader-muted: #8f7555;
+  --reader-link: #7b4b1d;
+}
+
+.reader-tone-scope[data-reader-tone="night"] {
+  color-scheme: dark;
+  --reader-paper: #191c20;
+  --reader-ink: #edf1f5;
+  --reader-muted: #9aa4b0;
+  --reader-link: #89bfff;
+}
+
+.reader-tools {
+  display: contents;
+}
+
 .reader-paper {
   max-width: 720px;
   margin: 0 auto;

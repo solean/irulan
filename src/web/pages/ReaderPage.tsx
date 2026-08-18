@@ -1230,14 +1230,14 @@ export const ReaderPage = () => {
     <ReaderFontSizeToggle fontScale={fontScale} onAdjust={onAdjustFontScale} />
   );
   const fontFamilySelect = (
-    <ReaderFontSelect fontFamily={fontFamily} onChange={setFontFamily} />
+    <ReaderFontSelect fontFamily={fontFamily} onChange={setFontFamily} tone={tone} />
   );
   const spacingToggle = (
     <ReaderSpacingToggle onChange={setLineSpacing} spacing={lineSpacing} />
   );
 
   const readerTools = (
-    <>
+    <div className="reader-tone-scope reader-tools" data-reader-tone={tone}>
       <ReaderSearch
         bookId={bookId}
         onNavigate={navigateToSearchRange}
@@ -1263,7 +1263,7 @@ export const ReaderPage = () => {
         sectionHref={displayedHref}
         viewportRef={readerViewportRef}
       />
-    </>
+    </div>
   );
 
   // The reading surface (tinted ground + floating page + paginated body) is
@@ -1344,7 +1344,7 @@ export const ReaderPage = () => {
   // turns happen at the edges, and progress sits quietly at the bottom.
   if (isPopout) {
     return (
-      <div className="reader-immersive" data-reader-tone={tone}>
+      <div className="reader-immersive reader-tone-scope" data-reader-tone={tone}>
         <header
           className="reader-immersive-bar"
           onPointerEnter={() => window.irulan?.setReaderWindowButtonsVisible(true)}
