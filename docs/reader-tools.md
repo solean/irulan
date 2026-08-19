@@ -39,7 +39,8 @@ covers extraction, search, stable navigation, deletion, backup, and restore.
    indexing, lazy backfill, bounded plain-text queries and snippets, pagination, the reader
    search panel, keyboard controls, and direct stable-range navigation are implemented.
 3. **Bookmarks — 🟢 done.** Named and unnamed bookmarks persist stable locations and can be
-   created at the current reading position, renamed, opened, and deleted.
+   created at the current reading position, renamed, opened, and deleted. A filled corner marker
+   identifies the page containing a bookmark.
 4. **Highlights and notes — 🟢 done.** The selection toolbar supports colour highlights,
    notes, and copying. A range carries one annotation: highlighting an already highlighted
    passage recolours it instead of stacking a second highlight, enforced by a unique range

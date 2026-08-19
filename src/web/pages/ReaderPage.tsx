@@ -21,6 +21,7 @@ import { Card } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import type {
   BookReader,
+  ReaderBookmark,
   BookReaderSection,
   ReaderTextLocation,
   ReaderTextRange,
@@ -58,6 +59,7 @@ import {
   type ReaderLinkTarget,
 } from "../lib/reader";
 import {
+  hasReaderTextLocationOnPage,
   resolveReaderTextLocation,
   resolveReaderTextRange,
   serializeReaderViewportLocation,
@@ -97,6 +99,13 @@ type ReaderBookPagination = Readonly<{
   charactersPerPage: number;
   sectionPageCounts: ReadonlyMap<string, number>;
   signature: string;
+}>;
+
+type ReaderBookmarksState = Readonly<{
+  bookId: string;
+  bookmarks: ReaderBookmark[];
+  error: string | null;
+  loading: boolean;
 }>;
 
 const getReaderSectionMarkup = async (
@@ -222,6 +231,33 @@ export const ReaderPage = () => {
     ReaderTextLocation | ReaderTextRange | null
   >(null);
   const [readerToolNavigationError, setReaderToolNavigationError] = useState<string | null>(null);
+  const [readerBookmarksState, setReaderBookmarksState] = useState<ReaderBookmarksState>(() => ({
+    bookId,
+    bookmarks: [],
+    error: null,
+    loading: true,
+  }));
+  const [bookmarkedPage, setBookmarkedPage] = useState<{
+    bookId: string;
+    page: number;
+    sectionHref: string;
+  } | null>(null);
+  const readerBookmarks =
+    readerBookmarksState.bookId === bookId ? readerBookmarksState.bookmarks : [];
+  const readerBookmarksLoading =
+    readerBookmarksState.bookId !== bookId || readerBookmarksState.loading;
+  const readerBookmarksLoadError =
+    readerBookmarksState.bookId === bookId ? readerBookmarksState.error : null;
+  const displayedBookmarkLocations = useMemo(() => {
+    if (!displayedHref) return [];
+    const locations: ReaderTextLocation[] = [];
+    for (const bookmark of readerBookmarks) {
+      if (bookmark.location.sectionHref === displayedHref) {
+        locations.push(bookmark.location);
+      }
+    }
+    return locations;
+  }, [displayedHref, readerBookmarks]);
 
   const selectedHref = searchParams.get("section")?.trim() ?? "";
   const anchorId = searchParams.get("anchor")?.trim() ?? null;
@@ -303,6 +339,51 @@ export const ReaderPage = () => {
     (displayedHref
       ? reader?.sections.find((section) => section.href === displayedHref)
       : null) ?? activeSection;
+
+  useLayoutEffect(() => {
+    const root = readerBodyRef.current;
+    const isBookmarked =
+      root !== null &&
+      displayedHref !== null &&
+      pageSpan > 0 &&
+      !sectionLoading &&
+      !isSwappingSection &&
+      hasReaderTextLocationOnPage(
+        root,
+        pageSpan,
+        currentPage,
+        displayedBookmarkLocations,
+      );
+
+    setBookmarkedPage(
+      isBookmarked
+        ? {
+            bookId,
+            page: currentPage,
+            sectionHref: displayedHref,
+          }
+        : null,
+    );
+  }, [
+    bookId,
+    currentPage,
+    displayedBookmarkLocations,
+    displayedHref,
+    fontFamily,
+    fontScale,
+    isSwappingSection,
+    lineSpacing,
+    pageSpan,
+    sectionDocument,
+    sectionLoading,
+  ]);
+
+  const isCurrentPageBookmarked =
+    !sectionLoading &&
+    !isSwappingSection &&
+    bookmarkedPage?.bookId === bookId &&
+    bookmarkedPage.page === currentPage &&
+    bookmarkedPage.sectionHref === displayedHref;
 
   useEffect(() => {
     if (!isSwappingSection) {
@@ -480,6 +561,76 @@ export const ReaderPage = () => {
     if (open) setReaderPanel(null);
     setReaderToolPanel(open ? "annotations" : null);
   }, []);
+
+  const onReaderBookmarkAdded = useCallback((bookmark: ReaderBookmark) => {
+    setReaderBookmarksState((current) =>
+      current.bookId === bookmark.bookId
+        ? { ...current, bookmarks: [bookmark, ...current.bookmarks] }
+        : current,
+    );
+  }, []);
+
+  const onReaderBookmarkUpdated = useCallback((bookmark: ReaderBookmark) => {
+    setReaderBookmarksState((current) =>
+      current.bookId === bookmark.bookId
+        ? {
+            ...current,
+            bookmarks: current.bookmarks.map((currentBookmark) =>
+              currentBookmark.id === bookmark.id ? bookmark : currentBookmark,
+            ),
+          }
+        : current,
+    );
+  }, []);
+
+  const onReaderBookmarkDeleted = useCallback(
+    (bookmarkId: string) => {
+      setReaderBookmarksState((current) =>
+        current.bookId === bookId
+          ? {
+              ...current,
+              bookmarks: current.bookmarks.filter((bookmark) => bookmark.id !== bookmarkId),
+            }
+          : current,
+      );
+    },
+    [bookId],
+  );
+
+  useEffect(() => {
+    let active = true;
+    setReaderBookmarksState({
+      bookId,
+      bookmarks: [],
+      error: null,
+      loading: true,
+    });
+
+    void api
+      .listReaderBookmarks(bookId)
+      .then((bookmarks) => {
+        if (active) {
+          setReaderBookmarksState({ bookId, bookmarks, error: null, loading: false });
+        }
+      })
+      .catch((requestError) => {
+        if (active) {
+          setReaderBookmarksState({
+            bookId,
+            bookmarks: [],
+            error:
+              requestError instanceof Error
+                ? requestError.message
+                : "Could not load bookmarks.",
+            loading: false,
+          });
+        }
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [bookId]);
 
   const loadReader = useEffectEvent(async () => {
     setLoading(true);
@@ -1375,8 +1526,14 @@ export const ReaderPage = () => {
       />
       <ReaderBookmarks
         bookId={bookId}
+        bookmarks={readerBookmarks}
         getCurrentLocation={getCurrentReaderLocation}
         getSectionLabel={getReaderSectionLabel}
+        loadError={readerBookmarksLoadError}
+        loading={readerBookmarksLoading}
+        onBookmarkAdded={onReaderBookmarkAdded}
+        onBookmarkDeleted={onReaderBookmarkDeleted}
+        onBookmarkUpdated={onReaderBookmarkUpdated}
         onNavigate={navigateToReaderTarget}
         onOpenChange={setReaderBookmarksOpen}
         open={readerToolPanel === "bookmarks"}
@@ -1404,6 +1561,16 @@ export const ReaderPage = () => {
       style={readerStyle}
     >
       <div className="reader-paper">
+        {isCurrentPageBookmarked ? (
+          <span
+            aria-label="This page is bookmarked"
+            className="reader-page-bookmark-indicator"
+            role="img"
+            title="Bookmarked page"
+          >
+            <BookmarkIcon />
+          </span>
+        ) : null}
         {sectionError ? <p className="inline-error">{sectionError}</p> : null}
 
         {!sectionDocument || !displayedSection ? (

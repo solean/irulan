@@ -250,6 +250,7 @@
 }
 
 .reader-paper {
+  position: relative;
   max-width: 720px;
   margin: 0 auto;
   padding: clamp(28px, 5vw, 60px);
@@ -260,6 +261,25 @@
   box-shadow:
     0 10px 30px var(--reader-paper-shadow),
     0 1px 3px color-mix(in srgb, var(--reader-paper-shadow) 60%, transparent);
+}
+
+.reader-page-bookmark-indicator {
+  position: absolute;
+  z-index: 2;
+  top: clamp(12px, 2.5vw, 24px);
+  right: clamp(12px, 2.5vw, 24px);
+  display: inline-flex;
+  color: var(--reader-link);
+  pointer-events: none;
+}
+
+.reader-page-bookmark-indicator svg {
+  width: 18px;
+  height: 18px;
+  fill: currentColor;
+  stroke: currentColor;
+  stroke-linejoin: round;
+  stroke-width: 1;
 }
 
 .reader-loading {

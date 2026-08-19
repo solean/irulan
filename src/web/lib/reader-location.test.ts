@@ -2,10 +2,11 @@
 
 import { beforeEach, describe, expect, test } from "vitest";
 
-import { normalizeReaderText } from "../../shared/reader-text";
+import { createReaderTextLocation, normalizeReaderText } from "../../shared/reader-text";
 import { READER_TEXT_VERSION } from "../../shared/types";
 import {
   getCanonicalReaderText,
+  hasReaderTextLocationOnPage,
   resolveReaderTextLocation,
   resolveReaderTextRange,
   serializeReaderTextLocation,
@@ -194,7 +195,7 @@ describe("reader text locations", () => {
    * collapsed to empty boxes the way line-breaking whitespace is.
    */
   test("captures the first character the paginated viewport shows", () => {
-    const text = "Alpha beta gamma if epsilon a zeta etas.";
+    const text = "Alpha beta gamma if epsilon a zeta etas. Next page words.";
     const root = render(`<article><p>${text}</p></article>`);
     const paragraph = root.querySelector("p") as Element;
     const node = textNode(paragraph);
@@ -218,12 +219,17 @@ describe("reader text locations", () => {
     };
 
     viewport.getBoundingClientRect = () => rect(0, PAGE_WIDTH);
+    root.getBoundingClientRect = () => rect(-PAGE_WIDTH, PAGE_WIDTH * 2);
     Range.prototype.getBoundingClientRect = function boundingRect(this: Range) {
       return this.startContainer === node && this.endOffset - this.startOffset === 1
         ? characterRect(this.startOffset)
         : rect(-PAGE_WIDTH, PAGE_WIDTH);
     };
     Range.prototype.getClientRects = function clientRects(this: Range) {
+      if (this.startContainer === node && this.endOffset - this.startOffset === 1) {
+        const bounds = characterRect(this.startOffset);
+        return (bounds.width > 0 || bounds.height > 0 ? [bounds] : []) as unknown as DOMRectList;
+      }
       return [rect(-PAGE_WIDTH, 0), rect(0, PAGE_WIDTH)] as unknown as DOMRectList;
     };
 
@@ -233,8 +239,22 @@ describe("reader text locations", () => {
         textVersion: READER_TEXT_VERSION,
         offset: 20,
         prefix: "Alpha beta gamma if ",
-        suffix: "epsilon a zeta etas.",
+        suffix: "epsilon a zeta etas. Next page words.",
       });
+
+      const previousPage = createReaderTextLocation(SECTION_HREF, text, 5);
+      const visiblePage = createReaderTextLocation(SECTION_HREF, text, 20);
+      const nextPage = createReaderTextLocation(SECTION_HREF, text, 40);
+      if (!previousPage || !visiblePage || !nextPage) {
+        throw new Error("The test locations were not created.");
+      }
+
+      expect(hasReaderTextLocationOnPage(root, PAGE_WIDTH, 2, [previousPage])).toBe(false);
+      expect(hasReaderTextLocationOnPage(root, PAGE_WIDTH, 2, [visiblePage])).toBe(true);
+      expect(hasReaderTextLocationOnPage(root, PAGE_WIDTH, 2, [nextPage])).toBe(false);
+      expect(
+        hasReaderTextLocationOnPage(root, PAGE_WIDTH, 2, [previousPage, visiblePage]),
+      ).toBe(true);
     } finally {
       Range.prototype.getBoundingClientRect = originalBoundingRect;
       Range.prototype.getClientRects = originalClientRects;

@@ -373,14 +373,13 @@ export const resolveReaderTextRange = (root: Element, stored: ReaderTextRange): 
   }
 };
 
-/** Resolve a stored text point to the current rendered DOM, or fail without guessing. */
-export const resolveReaderTextLocation = (
+const resolveReaderTextLocationFromMap = (
   root: Element,
+  map: ReaderTextMap,
   stored: ReaderTextLocation,
 ): Range | null => {
   if (!isReaderTextLocation(stored)) return null;
 
-  const map = buildReaderTextMap(root);
   const offset = findLocationOffset(map.text, stored);
   if (offset === null) return null;
 
@@ -397,6 +396,59 @@ export const resolveReaderTextLocation = (
   } catch {
     return null;
   }
+};
+
+/** Resolve a stored text point to the current rendered DOM, or fail without guessing. */
+export const resolveReaderTextLocation = (
+  root: Element,
+  stored: ReaderTextLocation,
+): Range | null =>
+  resolveReaderTextLocationFromMap(root, buildReaderTextMap(root), stored);
+
+const locationClientRects = (location: Range) => {
+  const container = location.startContainer;
+  if (container.nodeType === 3) {
+    const text = container as Text;
+    if (location.startOffset < text.data.length) {
+      const character = location.cloneRange();
+      character.setEnd(text, location.startOffset + 1);
+      const characterRects = Array.from(character.getClientRects());
+      if (characterRects.some((bounds) => bounds.width > 0 || bounds.height > 0)) {
+        return characterRects;
+      }
+    }
+  }
+
+  return Array.from(location.getClientRects());
+};
+
+/** Whether at least one stored text point belongs to the requested paginated page. */
+export const hasReaderTextLocationOnPage = (
+  root: Element,
+  pageSpan: number,
+  page: number,
+  locations: readonly ReaderTextLocation[],
+) => {
+  if (
+    locations.length === 0 ||
+    !Number.isFinite(pageSpan) ||
+    pageSpan <= 0 ||
+    !Number.isSafeInteger(page) ||
+    page < 1
+  ) {
+    return false;
+  }
+
+  const map = buildReaderTextMap(root);
+  const rootBounds = root.getBoundingClientRect();
+  return locations.some((stored) => {
+    const resolved = resolveReaderTextLocationFromMap(root, map, stored);
+    const targetBounds = resolved ? locationClientRects(resolved)[0] : undefined;
+    if (!targetBounds) return false;
+
+    const absoluteLeft = Math.max(0, targetBounds.left - rootBounds.left);
+    return Math.floor(absoluteLeft / pageSpan) + 1 === page;
+  });
 };
 
 /**

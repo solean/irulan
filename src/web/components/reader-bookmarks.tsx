@@ -9,8 +9,14 @@ import { api } from "../lib/api";
 
 type ReaderBookmarksProps = {
   bookId: string;
+  bookmarks: ReaderBookmark[];
   getCurrentLocation: () => ReaderTextLocation | null;
   getSectionLabel: (href: string) => string;
+  loadError: string | null;
+  loading: boolean;
+  onBookmarkAdded: (bookmark: ReaderBookmark) => void;
+  onBookmarkDeleted: (bookmarkId: string) => void;
+  onBookmarkUpdated: (bookmark: ReaderBookmark) => void;
   onNavigate: (location: ReaderTextLocation) => void;
   onOpenChange: (open: boolean) => void;
   open: boolean;
@@ -18,18 +24,20 @@ type ReaderBookmarksProps = {
 
 export const ReaderBookmarks = ({
   bookId,
+  bookmarks,
   getCurrentLocation,
   getSectionLabel,
+  loadError,
+  loading,
+  onBookmarkAdded,
+  onBookmarkDeleted,
+  onBookmarkUpdated,
   onNavigate,
   onOpenChange,
   open,
 }: ReaderBookmarksProps) => {
   const panelRef = useRef<HTMLElement | null>(null);
-  const latestRequest = useRef(0);
   const renameInputRef = useRef<HTMLInputElement | null>(null);
-  const [bookmarks, setBookmarks] = useState<ReaderBookmark[]>([]);
-  const [loadedBookId, setLoadedBookId] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [labelDraft, setLabelDraft] = useState("");
@@ -37,34 +45,11 @@ export const ReaderBookmarks = ({
   const [status, setStatus] = useState<string | null>(null);
 
   useEffect(() => {
-    setBookmarks([]);
-    setLoadedBookId(null);
     setEditingId(null);
     setError(null);
     setStatus(null);
   }, [bookId]);
 
-  useEffect(() => {
-    if (!open || loadedBookId === bookId) return;
-    const requestId = latestRequest.current + 1;
-    latestRequest.current = requestId;
-    setLoading(true);
-    setError(null);
-    void api
-      .listReaderBookmarks(bookId)
-      .then((nextBookmarks) => {
-        if (latestRequest.current !== requestId) return;
-        setBookmarks(nextBookmarks);
-        setLoadedBookId(bookId);
-      })
-      .catch((requestError) => {
-        if (latestRequest.current !== requestId) return;
-        setError(requestError instanceof Error ? requestError.message : "Could not load bookmarks.");
-      })
-      .finally(() => {
-        if (latestRequest.current === requestId) setLoading(false);
-      });
-  }, [bookId, loadedBookId, open]);
 
   useEffect(() => {
     if (!open) return;
@@ -99,15 +84,14 @@ export const ReaderBookmarks = ({
     setStatus(null);
     try {
       const bookmark = await api.createReaderBookmark(bookId, { location });
-      setBookmarks((current) => [bookmark, ...current]);
-      setLoadedBookId(bookId);
+      onBookmarkAdded(bookmark);
       setStatus("Bookmark added at the current position.");
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : "Could not add the bookmark.");
     } finally {
       setSaving(false);
     }
-  }, [bookId, getCurrentLocation]);
+  }, [bookId, getCurrentLocation, onBookmarkAdded]);
 
   const beginRename = useCallback((bookmark: ReaderBookmark) => {
     setEditingId(bookmark.id);
@@ -126,9 +110,7 @@ export const ReaderBookmarks = ({
         const updated = await api.updateReaderBookmark(bookId, editingId, {
           label: labelDraft.trim() || null,
         });
-        setBookmarks((current) =>
-          current.map((bookmark) => (bookmark.id === updated.id ? updated : bookmark)),
-        );
+        onBookmarkUpdated(updated);
         setEditingId(null);
         setStatus("Bookmark name updated.");
       } catch (requestError) {
@@ -137,7 +119,7 @@ export const ReaderBookmarks = ({
         setSaving(false);
       }
     },
-    [bookId, editingId, labelDraft],
+    [bookId, editingId, labelDraft, onBookmarkUpdated],
   );
 
   const deleteBookmark = useCallback(
@@ -147,7 +129,7 @@ export const ReaderBookmarks = ({
       setStatus(null);
       try {
         await api.deleteReaderBookmark(bookId, bookmarkId);
-        setBookmarks((current) => current.filter((bookmark) => bookmark.id !== bookmarkId));
+        onBookmarkDeleted(bookmarkId);
         setStatus("Bookmark deleted.");
       } catch (requestError) {
         setError(requestError instanceof Error ? requestError.message : "Could not delete the bookmark.");
@@ -155,8 +137,10 @@ export const ReaderBookmarks = ({
         setSaving(false);
       }
     },
-    [bookId],
+    [bookId, onBookmarkDeleted],
   );
+
+  const visibleError = error ?? loadError;
 
   useDismissOnOutsidePress(panelRef, open, () => onOpenChange(false));
 
@@ -174,16 +158,16 @@ export const ReaderBookmarks = ({
         </Button>
       </div>
 
-      <Button disabled={saving} onClick={() => void addBookmark()} type="button">
+      <Button disabled={loading || saving} onClick={() => void addBookmark()} type="button">
         {saving ? "Saving…" : "Add bookmark here"}
       </Button>
 
       <div aria-live="polite" className="reader-tool-status">
         {loading ? "Loading bookmarks…" : status}
       </div>
-      {error ? <p className="inline-error">{error}</p> : null}
+      {visibleError ? <p className="inline-error">{visibleError}</p> : null}
 
-      {!loading && bookmarks.length === 0 ? (
+      {!loading && !visibleError && bookmarks.length === 0 ? (
         <div className="reader-tool-empty">
           <strong>No bookmarks yet</strong>
           <span>Add one at the text currently on screen.</span>
