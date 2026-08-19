@@ -184,6 +184,7 @@
    shared buttons, inputs, and portalled selects. */
 .reader-tone-scope {
   color-scheme: light;
+  color: var(--reader-ink);
   --reader-paper: #faf6ef;
   --reader-ink: #241d17;
   --reader-muted: #7a6858;
