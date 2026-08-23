@@ -23,7 +23,11 @@
     "node": ">=24"
   },
   "dependencies": {
+    "@fontsource-variable/atkinson-hyperlegible-next": "^5.3.0",
+    "@fontsource-variable/bitter": "^5.3.0",
     "@fontsource-variable/geist": "^5.2.8",
+    "@fontsource-variable/lexend": "^5.3.0",
+    "@fontsource-variable/literata": "^5.3.0",
     "@fontsource-variable/source-serif-4": "^5.2.9",
     "@hono/node-server": "^2.0.0",
     "better-sqlite3": "^13.0.3",

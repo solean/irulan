@@ -3,10 +3,11 @@
 import { afterAll, beforeEach, describe, expect, test, vi } from "vitest";
 
 import { READER_TEXT_VERSION, type ReaderTextLocation } from "../../shared/types";
-import { getStoredReaderProgress, setStoredReaderProgress } from "./storage";
+import { getStoredReaderFont, getStoredReaderProgress, setStoredReaderProgress } from "./storage";
 
 const BOOK_ID = "reader-progress-book";
 const STORAGE_KEY = `ebook-manager-reader-progress:${BOOK_ID}`;
+const READER_FONT_KEY = "ebook-manager-reader-font";
 const LOCATION: ReaderTextLocation = {
   sectionHref: "OEBPS/chapter-2.xhtml",
   textVersion: READER_TEXT_VERSION,
@@ -38,6 +39,15 @@ beforeEach(() => {
 
 afterAll(() => {
   vi.unstubAllGlobals();
+});
+
+describe("reader font storage", () => {
+  test("migrates the removed Palatino option to Iowan", () => {
+    localStorage.setItem(READER_FONT_KEY, "palatino");
+
+    expect(getStoredReaderFont()).toBe("iowan");
+    expect(localStorage.getItem(READER_FONT_KEY)).toBe("iowan");
+  });
 });
 
 describe("reader progress storage", () => {

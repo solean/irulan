@@ -10,7 +10,18 @@ import {
 export type BookshelfView = "grid" | "list";
 export type BookshelfDensity = "comfortable" | "compact";
 export type ReaderTone = "paper" | "sepia" | "night";
-export type ReaderFontId = "original" | "iowan" | "georgia" | "palatino" | "charter" | "sans";
+export type ReaderFontId =
+  | "original"
+  | "iowan"
+  | "georgia"
+  | "charter"
+  | "source-serif"
+  | "literata"
+  | "bitter"
+  | "geist"
+  | "atkinson"
+  | "lexend"
+  | "sans";
 export type ReaderSpacingId = "compact" | "cozy" | "roomy";
 export type StoredReaderProgress = ReaderTextLocation;
 
@@ -35,28 +46,55 @@ export const READER_FONTS: ReadonlyArray<{
 }> = [
   {
     id: "original",
-    label: "Original",
-    stack: 'ui-serif, "New York", "Iowan Old Style", "Palatino Linotype", Georgia, serif',
+    label: "Default",
+    stack: 'ui-serif, "New York", "Iowan Old Style", "Source Serif 4 Variable", Georgia, serif',
   },
   {
     id: "iowan",
     label: "Iowan",
-    stack: '"Iowan Old Style", "Palatino Linotype", "Book Antiqua", Georgia, serif',
+    stack:
+      '"Iowan Old Style", "Palatino Linotype", "Book Antiqua", "Source Serif 4 Variable", Georgia, serif',
   },
   { id: "georgia", label: "Georgia", stack: 'Georgia, "Times New Roman", serif' },
   {
-    id: "palatino",
-    label: "Palatino",
-    stack: '"Palatino Linotype", "Book Antiqua", Palatino, Georgia, serif',
-  },
-  {
     id: "charter",
     label: "Charter",
-    stack: 'Charter, "Bitstream Charter", "Sitka Text", Georgia, serif',
+    stack: 'Charter, "Bitstream Charter", "Sitka Text", "Source Serif 4 Variable", Georgia, serif',
+  },
+  {
+    id: "source-serif",
+    label: "Source Serif",
+    stack: '"Source Serif 4 Variable", "Iowan Old Style", Georgia, serif',
+  },
+  {
+    id: "literata",
+    label: "Literata",
+    stack: '"Literata Variable", "Source Serif 4 Variable", Georgia, serif',
+  },
+  {
+    id: "bitter",
+    label: "Bitter",
+    stack: '"Bitter Variable", "Source Serif 4 Variable", Georgia, serif',
+  },
+  {
+    id: "geist",
+    label: "Geist",
+    stack: '"Geist Variable", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif',
+  },
+  {
+    id: "atkinson",
+    label: "Atkinson Hyperlegible",
+    stack:
+      '"Atkinson Hyperlegible Next Variable", "Geist Variable", system-ui, sans-serif',
+  },
+  {
+    id: "lexend",
+    label: "Lexend",
+    stack: '"Lexend Variable", "Geist Variable", system-ui, sans-serif',
   },
   {
     id: "sans",
-    label: "Sans",
+    label: "System Sans",
     stack: '-apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif',
   },
 ];
@@ -211,6 +249,10 @@ export function setStoredReaderFontScale(value: number) {
 export function getStoredReaderFont(): ReaderFontId | null {
   try {
     const stored = localStorage.getItem(READER_FONT_KEY);
+    if (stored === "palatino") {
+      setStoredReaderFont("iowan");
+      return "iowan";
+    }
     if (READER_FONTS.some((font) => font.id === stored)) return stored as ReaderFontId;
   } catch {
     /* localStorage unavailable */

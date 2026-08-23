@@ -743,7 +743,7 @@
    inside the immersive appearance panel. */
 .reader-font-trigger {
   min-height: 36px;
-  width: 9.5rem;
+  width: 11.5rem;
   justify-content: space-between;
   background: var(--bg-surface);
 }
