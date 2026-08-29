@@ -3,7 +3,18 @@
 import { afterAll, beforeEach, describe, expect, test, vi } from "vitest";
 
 import { READER_TEXT_VERSION, type ReaderTextLocation } from "../../shared/types";
-import { getStoredReaderFont, getStoredReaderProgress, setStoredReaderProgress } from "./storage";
+import {
+  getStoredReaderFont,
+  getStoredReaderFontScale,
+  getStoredReaderProgress,
+  getStoredReaderSpacing,
+  getStoredReaderTone,
+  setStoredReaderFont,
+  setStoredReaderFontScale,
+  setStoredReaderProgress,
+  setStoredReaderSpacing,
+  setStoredReaderTone,
+} from "./storage";
 
 const BOOK_ID = "reader-progress-book";
 const STORAGE_KEY = `ebook-manager-reader-progress:${BOOK_ID}`;
@@ -35,9 +46,11 @@ const storage: Storage = {
 beforeEach(() => {
   storage.clear();
   vi.stubGlobal("localStorage", storage);
+  delete window.irulan;
 });
 
 afterAll(() => {
+  delete window.irulan;
   vi.unstubAllGlobals();
 });
 
@@ -47,6 +60,45 @@ describe("reader font storage", () => {
 
     expect(getStoredReaderFont()).toBe("iowan");
     expect(localStorage.getItem(READER_FONT_KEY)).toBe("iowan");
+  });
+});
+
+describe("reader appearance storage", () => {
+  test("restores preferences injected by the Electron shell when local storage is empty", () => {
+    window.irulan = {
+      readerPreferences: {
+        tone: "night",
+        fontScale: 1.15,
+        fontFamily: "literata",
+        lineSpacing: "roomy",
+      },
+    } as IrulanBridge;
+
+    expect(getStoredReaderTone()).toBe("night");
+    expect(getStoredReaderFontScale()).toBe(1.15);
+    expect(getStoredReaderFont()).toBe("literata");
+    expect(getStoredReaderSpacing()).toBe("roomy");
+  });
+
+  test("mirrors preference changes to local storage and the Electron shell", () => {
+    const setReaderPreferences = vi.fn(() => Promise.resolve());
+    window.irulan = { setReaderPreferences } as unknown as IrulanBridge;
+
+    setStoredReaderTone("sepia");
+    setStoredReaderFontScale(1.05);
+    setStoredReaderFont("atkinson");
+    setStoredReaderSpacing("compact");
+
+    expect(setReaderPreferences.mock.calls).toEqual([
+      [{ tone: "sepia" }],
+      [{ fontScale: 1.05 }],
+      [{ fontFamily: "atkinson" }],
+      [{ lineSpacing: "compact" }],
+    ]);
+    expect(localStorage.getItem("ebook-manager-reader-tone")).toBe("sepia");
+    expect(localStorage.getItem("ebook-manager-reader-font-scale")).toBe("1.05");
+    expect(localStorage.getItem(READER_FONT_KEY)).toBe("atkinson");
+    expect(localStorage.getItem("ebook-manager-reader-spacing")).toBe("compact");
   });
 });
 

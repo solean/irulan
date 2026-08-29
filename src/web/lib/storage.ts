@@ -23,6 +23,13 @@ export type ReaderFontId =
   | "lexend"
   | "sans";
 export type ReaderSpacingId = "compact" | "cozy" | "roomy";
+export type ReaderPreferences = {
+  tone: ReaderTone;
+  fontScale: number;
+  fontFamily: ReaderFontId;
+  lineSpacing: ReaderSpacingId;
+};
+
 export type StoredReaderProgress = ReaderTextLocation;
 
 const BOOKSHELF_VIEW_KEY = "ebook-manager-bookshelf-view";
@@ -34,6 +41,15 @@ const READER_FONT_SCALE_KEY = "ebook-manager-reader-font-scale";
 const READER_FONT_KEY = "ebook-manager-reader-font";
 const READER_SPACING_KEY = "ebook-manager-reader-spacing";
 const READER_PROGRESS_KEY_PREFIX = "ebook-manager-reader-progress";
+const getShellReaderPreferences = () =>
+  typeof window === "undefined" ? undefined : window.irulan?.readerPreferences;
+
+const persistReaderPreferencesToShell = (preferences: Partial<ReaderPreferences>) => {
+  if (typeof window !== "undefined") {
+    void window.irulan?.setReaderPreferences?.(preferences);
+  }
+};
+
 
 export const READER_MIN_FONT_SCALE = 0.95;
 export const READER_MAX_FONT_SCALE = 1.25;
@@ -211,7 +227,9 @@ export function getStoredReaderTone(): ReaderTone | null {
   } catch {
     /* localStorage unavailable */
   }
-  return null;
+
+  const stored = getShellReaderPreferences()?.tone;
+  return stored === "paper" || stored === "sepia" || stored === "night" ? stored : null;
 }
 
 export function setStoredReaderTone(value: ReaderTone) {
@@ -220,6 +238,7 @@ export function setStoredReaderTone(value: ReaderTone) {
   } catch {
     /* localStorage unavailable */
   }
+  persistReaderPreferencesToShell({ tone: value });
 }
 
 export function getStoredReaderFontScale(): number | null {
@@ -235,7 +254,14 @@ export function getStoredReaderFontScale(): number | null {
   } catch {
     /* localStorage unavailable */
   }
-  return null;
+
+  const stored = getShellReaderPreferences()?.fontScale;
+  return stored !== undefined &&
+    Number.isFinite(stored) &&
+    stored >= READER_MIN_FONT_SCALE &&
+    stored <= READER_MAX_FONT_SCALE
+    ? stored
+    : null;
 }
 
 export function setStoredReaderFontScale(value: number) {
@@ -244,6 +270,7 @@ export function setStoredReaderFontScale(value: number) {
   } catch {
     /* localStorage unavailable */
   }
+  persistReaderPreferencesToShell({ fontScale: value });
 }
 
 export function getStoredReaderFont(): ReaderFontId | null {
@@ -257,7 +284,9 @@ export function getStoredReaderFont(): ReaderFontId | null {
   } catch {
     /* localStorage unavailable */
   }
-  return null;
+
+  const stored = getShellReaderPreferences()?.fontFamily;
+  return READER_FONTS.some((font) => font.id === stored) ? (stored as ReaderFontId) : null;
 }
 
 export function setStoredReaderFont(value: ReaderFontId) {
@@ -266,6 +295,7 @@ export function setStoredReaderFont(value: ReaderFontId) {
   } catch {
     /* localStorage unavailable */
   }
+  persistReaderPreferencesToShell({ fontFamily: value });
 }
 
 export function getStoredReaderSpacing(): ReaderSpacingId | null {
@@ -277,7 +307,11 @@ export function getStoredReaderSpacing(): ReaderSpacingId | null {
   } catch {
     /* localStorage unavailable */
   }
-  return null;
+
+  const stored = getShellReaderPreferences()?.lineSpacing;
+  return READER_SPACINGS.some((spacing) => spacing.id === stored)
+    ? (stored as ReaderSpacingId)
+    : null;
 }
 
 export function setStoredReaderSpacing(value: ReaderSpacingId) {
@@ -286,6 +320,7 @@ export function setStoredReaderSpacing(value: ReaderSpacingId) {
   } catch {
     /* localStorage unavailable */
   }
+  persistReaderPreferencesToShell({ lineSpacing: value });
 }
 
 export function getStoredReaderProgress(bookId: string): StoredReaderProgress | null {

@@ -397,21 +397,6 @@ export const ReaderPage = () => {
       : "Reader \u2022 Irulan",
   );
 
-  useEffect(() => {
-    setStoredReaderTone(tone);
-  }, [tone]);
-
-  useEffect(() => {
-    setStoredReaderFontScale(fontScale);
-  }, [fontScale]);
-
-  useEffect(() => {
-    setStoredReaderFont(fontFamily);
-  }, [fontFamily]);
-
-  useEffect(() => {
-    setStoredReaderSpacing(lineSpacing);
-  }, [lineSpacing]);
 
 
   const goToSection = useCallback(
@@ -1020,11 +1005,31 @@ export const ReaderPage = () => {
     [activeSection?.href, goToSection],
   );
 
-  const onAdjustFontScale = useCallback((delta: number) => {
-    setFontScale((current) => {
-      const next = Number((current + delta).toFixed(2));
-      return Math.max(READER_MIN_FONT_SCALE, Math.min(READER_MAX_FONT_SCALE, next));
-    });
+  const onToneChange = useCallback((next: ReaderTone) => {
+    setStoredReaderTone(next);
+    setTone(next);
+  }, []);
+
+  const onAdjustFontScale = useCallback(
+    (delta: number) => {
+      const next = Math.max(
+        READER_MIN_FONT_SCALE,
+        Math.min(READER_MAX_FONT_SCALE, Number((fontScale + delta).toFixed(2))),
+      );
+      setStoredReaderFontScale(next);
+      setFontScale(next);
+    },
+    [fontScale],
+  );
+
+  const onFontFamilyChange = useCallback((next: ReaderFontId) => {
+    setStoredReaderFont(next);
+    setFontFamily(next);
+  }, []);
+
+  const onLineSpacingChange = useCallback((next: ReaderSpacingId) => {
+    setStoredReaderSpacing(next);
+    setLineSpacing(next);
   }, []);
 
   const onTurnPage = useCallback(
@@ -1505,15 +1510,15 @@ export const ReaderPage = () => {
     </nav>
   );
 
-  const toneToggle = <ReaderToneToggle onChange={setTone} tone={tone} />;
+  const toneToggle = <ReaderToneToggle onChange={onToneChange} tone={tone} />;
   const fontToggle = (
     <ReaderFontSizeToggle fontScale={fontScale} onAdjust={onAdjustFontScale} />
   );
   const fontFamilySelect = (
-    <ReaderFontSelect fontFamily={fontFamily} onChange={setFontFamily} tone={tone} />
+    <ReaderFontSelect fontFamily={fontFamily} onChange={onFontFamilyChange} tone={tone} />
   );
   const spacingToggle = (
-    <ReaderSpacingToggle onChange={setLineSpacing} spacing={lineSpacing} />
+    <ReaderSpacingToggle onChange={onLineSpacingChange} spacing={lineSpacing} />
   );
 
   const readerTools = (
