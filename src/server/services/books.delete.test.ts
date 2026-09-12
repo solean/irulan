@@ -23,6 +23,8 @@ const rowCounts = () => ({
   books: client.db.select().from(schema.books).all().length,
   shelves: client.db.select().from(schema.bookShelves).all().length,
   deliveries: client.db.select().from(schema.deliveries).all().length,
+  bookmarks: client.db.select().from(schema.readerBookmarks).all().length,
+  annotations: client.db.select().from(schema.readerAnnotations).all().length,
   searchSections: client.db.select().from(schema.readerSectionText).all().length,
   searchIndex:
     client.db.get<{ count: number }>(sql`SELECT count(*) AS count FROM reader_section_fts`)
@@ -60,6 +62,8 @@ beforeEach(() => {
   client.db.run(sql.raw("DROP TRIGGER IF EXISTS block_book_deletes;"));
   client.db.run(sql.raw("DROP TRIGGER IF EXISTS block_delivery_inserts;"));
   client.db.delete(schema.deliveries).run();
+  client.db.delete(schema.readerAnnotations).run();
+  client.db.delete(schema.readerBookmarks).run();
   client.db.delete(schema.bookShelves).run();
   client.db.delete(schema.books).run();
   client.db.delete(schema.bookshelves).run();
@@ -108,6 +112,41 @@ beforeEach(() => {
     .run();
 
   client.db
+    .insert(schema.readerBookmarks)
+    .values({
+      id: "bookmark-1",
+      bookId: BOOK_ID,
+      label: null,
+      sectionHref: "chapter.xhtml",
+      textVersion: 1,
+      offset: 0,
+      prefix: "",
+      suffix: "Searchable text",
+      createdAt: now,
+      updatedAt: now,
+    })
+    .run();
+
+  client.db
+    .insert(schema.readerAnnotations)
+    .values({
+      id: "annotation-1",
+      bookId: BOOK_ID,
+      sectionHref: "chapter.xhtml",
+      textVersion: 1,
+      offset: 0,
+      endOffset: 10,
+      exact: "Searchable",
+      prefix: "",
+      suffix: " text",
+      color: "yellow",
+      note: "Remember this",
+      createdAt: now,
+      updatedAt: now,
+    })
+    .run();
+
+  client.db
     .insert(schema.bookShelves)
     .values(SHELF_IDS.map((bookshelfId) => ({ bookId: BOOK_ID, bookshelfId, addedAt: now })))
     .run();
@@ -146,6 +185,8 @@ describe("deleteBook", () => {
       books: 1,
       shelves: SHELF_IDS.length,
       deliveries: 1,
+      bookmarks: 1,
+      annotations: 1,
       searchSections: 1,
       searchIndex: 1,
     });
@@ -178,6 +219,8 @@ describe("deleteBook", () => {
       books: 1,
       shelves: SHELF_IDS.length,
       deliveries: 1,
+      bookmarks: 1,
+      annotations: 1,
       searchSections: 1,
       searchIndex: 1,
     });
@@ -191,6 +234,8 @@ describe("deleteBook", () => {
       books: 0,
       shelves: 0,
       deliveries: 0,
+      bookmarks: 0,
+      annotations: 0,
       searchSections: 0,
       searchIndex: 0,
     });

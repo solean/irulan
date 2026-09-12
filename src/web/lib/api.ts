@@ -6,12 +6,19 @@ import type {
   BookSearchPage,
   BookshelvesPayload,
   BookshelfSummary,
+  CreateReaderAnnotationPayload,
+  CreateReaderBookmarkPayload,
   DeleteBookResult,
   DeleteBookshelfResult,
   DeliveryRecord,
   ImportResult,
+  LibraryRestoreResult,
+  ReaderAnnotation,
+  ReaderBookmark,
   SettingsPayload,
   UpdateBookMetadataPayload,
+  UpdateReaderAnnotationPayload,
+  UpdateReaderBookmarkPayload,
   UpdateSmtpSettingsPayload,
 } from "../../shared/types";
 
@@ -106,6 +113,90 @@ export const api = {
     return request<BookSearchPage>(`/api/books/${bookId}/search?${params.toString()}`);
   },
 
+  async listReaderBookmarks(bookId: string) {
+    const payload = await request<{ bookmarks: ReaderBookmark[] }>(
+      `/api/books/${bookId}/bookmarks`,
+    );
+    return payload.bookmarks;
+  },
+
+  async createReaderBookmark(bookId: string, bookmark: CreateReaderBookmarkPayload) {
+    const payload = await request<{ bookmark: ReaderBookmark }>(
+      `/api/books/${bookId}/bookmarks`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(bookmark),
+      },
+    );
+    return payload.bookmark;
+  },
+
+  async updateReaderBookmark(
+    bookId: string,
+    bookmarkId: string,
+    bookmark: UpdateReaderBookmarkPayload,
+  ) {
+    const payload = await request<{ bookmark: ReaderBookmark }>(
+      `/api/books/${bookId}/bookmarks/${bookmarkId}`,
+      {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(bookmark),
+      },
+    );
+    return payload.bookmark;
+  },
+
+  async deleteReaderBookmark(bookId: string, bookmarkId: string) {
+    await request<{ deletion: { id: string } }>(
+      `/api/books/${bookId}/bookmarks/${bookmarkId}`,
+      { method: "DELETE" },
+    );
+  },
+
+  async listReaderAnnotations(bookId: string) {
+    const payload = await request<{ annotations: ReaderAnnotation[] }>(
+      `/api/books/${bookId}/annotations`,
+    );
+    return payload.annotations;
+  },
+
+  async createReaderAnnotation(bookId: string, annotation: CreateReaderAnnotationPayload) {
+    const payload = await request<{ annotation: ReaderAnnotation }>(
+      `/api/books/${bookId}/annotations`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(annotation),
+      },
+    );
+    return payload.annotation;
+  },
+
+  async updateReaderAnnotation(
+    bookId: string,
+    annotationId: string,
+    annotation: UpdateReaderAnnotationPayload,
+  ) {
+    const payload = await request<{ annotation: ReaderAnnotation }>(
+      `/api/books/${bookId}/annotations/${annotationId}`,
+      {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(annotation),
+      },
+    );
+    return payload.annotation;
+  },
+
+  async deleteReaderAnnotation(bookId: string, annotationId: string) {
+    await request<{ deletion: { id: string } }>(
+      `/api/books/${bookId}/annotations/${annotationId}`,
+      { method: "DELETE" },
+    );
+  },
+
   async saveBookBookshelves(bookId: string, bookshelfIds: string[]) {
     const payload = await request<{ book: BookDetail }>(`/api/books/${bookId}/bookshelves`, {
       method: "PUT",
@@ -187,6 +278,30 @@ export const api = {
       },
     );
     return payload.deletion;
+  },
+
+  async downloadLibraryBackup() {
+    const response = await fetch("/api/library/backup");
+    if (!response.ok) {
+      const payload = await response.json().catch(() => null);
+      throw new Error(
+        payload && typeof payload.error === "string"
+          ? payload.error
+          : `Request failed with ${response.status}.`,
+      );
+    }
+    const disposition = response.headers.get("Content-Disposition") ?? "";
+    const fileName = disposition.match(/filename="([^"]+)"/)?.[1] ?? "irulan-library-backup.zip";
+    return { blob: await response.blob(), fileName };
+  },
+
+  async restoreLibraryBackup(file: File) {
+    const payload = await request<{ restore: LibraryRestoreResult }>("/api/library/restore", {
+      method: "POST",
+      headers: { "Content-Type": "application/zip" },
+      body: file,
+    });
+    return payload.restore;
   },
 
   async getSettings() {

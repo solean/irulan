@@ -62,6 +62,8 @@ export const ensureSchema = () => {
 };
 
 export const backupDatabase = () => refreshDatabaseBackup(requireSqlite(), appConfig.dbPath);
+export const snapshotDatabase = (destinationPath: string) =>
+  requireSqlite().backup(destinationPath);
 
 /**
  * WAL leaves a `-wal` sidecar that only a clean close folds back into the

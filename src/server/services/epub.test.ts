@@ -397,6 +397,7 @@ describe("prepareEpubReader", () => {
     expect(manifest.author).toBe("Test Author");
     expect(manifest.sections).toHaveLength(1);
     expect(manifest.sections[0]?.href).toBe("OEBPS/chapter1.xhtml");
+    expect(manifest.sections[0]?.textLength).toBe(5);
 
     // The whole point of serving from the zip: the reader directory holds the
     // manifest and nothing else, so a book costs its EPUB and a few hundred bytes.

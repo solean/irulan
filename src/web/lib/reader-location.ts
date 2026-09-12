@@ -1,10 +1,13 @@
 import {
+  createReaderTextLocation,
   createReaderTextRange,
   isReaderTextWhitespace,
   normalizeReaderText,
+  READER_TEXT_CONTEXT_LENGTH,
 } from "../../shared/reader-text";
 import {
   READER_TEXT_VERSION,
+  type ReaderTextLocation,
   type ReaderTextRange,
 } from "../../shared/types";
 
@@ -147,6 +150,25 @@ const getDomBoundary = (
   return null;
 };
 
+export const isReaderTextLocation = (value: unknown): value is ReaderTextLocation => {
+  if (!value || typeof value !== "object") return false;
+  const location = value as Partial<ReaderTextLocation>;
+  return (
+    location.textVersion === READER_TEXT_VERSION &&
+    typeof location.sectionHref === "string" &&
+    location.sectionHref.trim().length > 0 &&
+    Number.isSafeInteger(location.offset) &&
+    (location.offset ?? -1) >= 0 &&
+    typeof location.prefix === "string" &&
+    location.prefix.length <= READER_TEXT_CONTEXT_LENGTH &&
+    typeof location.suffix === "string" &&
+    location.suffix.length <= READER_TEXT_CONTEXT_LENGTH &&
+    location.prefix.length + location.suffix.length > 0 &&
+    normalizeReaderText(location.prefix) === location.prefix &&
+    normalizeReaderText(location.suffix) === location.suffix
+  );
+};
+
 const isReaderTextRange = (value: ReaderTextRange) =>
   value.textVersion === READER_TEXT_VERSION &&
   value.sectionHref.trim().length > 0 &&
@@ -175,6 +197,63 @@ const commonSuffixLength = (left: string, right: string) => {
   }
   return length;
 };
+const findLocationOffset = (text: string, location: ReaderTextLocation) => {
+  const preceding = text.slice(
+    Math.max(0, location.offset - location.prefix.length),
+    location.offset,
+  );
+  const following = text.slice(location.offset, location.offset + location.suffix.length);
+  if (preceding === location.prefix && following === location.suffix) {
+    return location.offset;
+  }
+
+  const offsets = new Set<number>();
+  const addOccurrences = (context: string, toOffset: (index: number) => number) => {
+    if (!context) return;
+    let index = text.indexOf(context);
+    while (index >= 0) {
+      offsets.add(toOffset(index));
+      index = text.indexOf(context, index + 1);
+    }
+  };
+
+  addOccurrences(location.prefix, (index) => index + location.prefix.length);
+  addOccurrences(location.suffix, (index) => index);
+  if (location.offset <= text.length) offsets.add(location.offset);
+
+  const candidates = Array.from(offsets)
+    .filter((offset) => offset >= 0 && offset <= text.length)
+    .map((offset) => ({
+      offset,
+      score:
+        commonSuffixLength(
+          location.prefix,
+          text.slice(Math.max(0, offset - location.prefix.length), offset),
+        ) +
+        commonPrefixLength(
+          location.suffix,
+          text.slice(offset, offset + location.suffix.length),
+        ),
+      distance: Math.abs(location.offset - offset),
+    }))
+    .sort((left, right) => right.score - left.score || left.distance - right.distance);
+
+  const best = candidates[0];
+  const runnerUp = candidates[1];
+  const minimumScore = Math.min(
+    12,
+    Math.max(location.prefix.length, location.suffix.length),
+  );
+  if (
+    !best ||
+    best.score < minimumScore ||
+    (runnerUp && runnerUp.score === best.score && runnerUp.distance === best.distance)
+  ) {
+    return null;
+  }
+  return best.offset;
+};
+
 
 const findQuoteOffset = (text: string, range: ReaderTextRange) => {
   const candidates: Array<{ offset: number; score: number; distance: number }> = [];
@@ -204,6 +283,30 @@ const findQuoteOffset = (text: string, range: ReaderTextRange) => {
 };
 
 export const getCanonicalReaderText = (root: Element) => buildReaderTextMap(root).text;
+/** Serialize one DOM boundary as a pagination-independent text point. */
+export const serializeReaderTextLocation = (
+  sectionHref: string,
+  root: Element,
+  boundary: Range,
+): ReaderTextLocation | null => {
+  if (
+    !sectionHref.trim() ||
+    boundary.startContainer.ownerDocument !== root.ownerDocument ||
+    !containsBoundary(root, boundary.startContainer)
+  ) {
+    return null;
+  }
+
+  const map = buildReaderTextMap(root);
+  const offset = getCanonicalBoundaryOffset(
+    root,
+    map,
+    boundary.startContainer,
+    boundary.startOffset,
+  );
+  return offset === null ? null : createReaderTextLocation(sectionHref, map.text, offset);
+};
+
 
 /** Serialize a non-empty DOM selection without retaining pagination or node paths. */
 export const serializeReaderTextRange = (
@@ -268,4 +371,178 @@ export const resolveReaderTextRange = (root: Element, stored: ReaderTextRange): 
   } catch {
     return null;
   }
+};
+
+const resolveReaderTextLocationFromMap = (
+  root: Element,
+  map: ReaderTextMap,
+  stored: ReaderTextLocation,
+): Range | null => {
+  if (!isReaderTextLocation(stored)) return null;
+
+  const offset = findLocationOffset(map.text, stored);
+  if (offset === null) return null;
+
+  const rawOffset = getRawOffsetForCanonicalBoundary(map, offset);
+  if (rawOffset === null) return null;
+  const boundary = getDomBoundary(map, rawOffset, "start");
+  if (!boundary) return null;
+
+  try {
+    const resolved = root.ownerDocument.createRange();
+    resolved.setStart(boundary.node, boundary.offset);
+    resolved.collapse(true);
+    return resolved;
+  } catch {
+    return null;
+  }
+};
+
+/** Resolve a stored text point to the current rendered DOM, or fail without guessing. */
+export const resolveReaderTextLocation = (
+  root: Element,
+  stored: ReaderTextLocation,
+): Range | null =>
+  resolveReaderTextLocationFromMap(root, buildReaderTextMap(root), stored);
+
+const locationClientRects = (location: Range) => {
+  const container = location.startContainer;
+  if (container.nodeType === 3) {
+    const text = container as Text;
+    if (location.startOffset < text.data.length) {
+      const character = location.cloneRange();
+      character.setEnd(text, location.startOffset + 1);
+      const characterRects = Array.from(character.getClientRects());
+      if (characterRects.some((bounds) => bounds.width > 0 || bounds.height > 0)) {
+        return characterRects;
+      }
+    }
+  }
+
+  return Array.from(location.getClientRects());
+};
+
+/** Whether at least one stored text point belongs to the requested paginated page. */
+export const hasReaderTextLocationOnPage = (
+  root: Element,
+  pageSpan: number,
+  page: number,
+  locations: readonly ReaderTextLocation[],
+) => {
+  if (
+    locations.length === 0 ||
+    !Number.isFinite(pageSpan) ||
+    pageSpan <= 0 ||
+    !Number.isSafeInteger(page) ||
+    page < 1
+  ) {
+    return false;
+  }
+
+  const map = buildReaderTextMap(root);
+  const rootBounds = root.getBoundingClientRect();
+  return locations.some((stored) => {
+    const resolved = resolveReaderTextLocationFromMap(root, map, stored);
+    const targetBounds = resolved ? locationClientRects(resolved)[0] : undefined;
+    if (!targetBounds) return false;
+
+    const absoluteLeft = Math.max(0, targetBounds.left - rootBounds.left);
+    return Math.floor(absoluteLeft / pageSpan) + 1 === page;
+  });
+};
+
+/**
+ * Whether the character at `offset` is laid out at or after the top-left corner
+ * of the visible page. Collapsed characters carry no box, so they answer
+ * `null` and the caller probes the next one.
+ */
+const isCharacterVisible = (measure: Range, node: Text, offset: number, viewport: DOMRect) => {
+  measure.setStart(node, offset);
+  measure.setEnd(node, offset + 1);
+  const bounds = measure.getBoundingClientRect();
+  if (bounds.width === 0 && bounds.height === 0) return null;
+  return bounds.right > viewport.left + 0.5 && bounds.bottom > viewport.top + 0.5;
+};
+
+/**
+ * First character of `node` that the viewport shows. Text order follows column
+ * and line order, so the visible run starts at a single boundary a binary
+ * search can find. The boundary is measured inside the node instead of hit
+ * testing the document, which would answer with whatever panel or toolbar sits
+ * above the text.
+ */
+const findFirstVisibleOffset = (node: Text, viewport: DOMRect) => {
+  const measure = node.ownerDocument.createRange();
+  let low = 0;
+  let high = node.data.length - 1;
+  let found: number | null = null;
+
+  while (low <= high) {
+    const middle = (low + high) >> 1;
+    let probe = middle;
+    let visible = isCharacterVisible(measure, node, probe, viewport);
+    while (visible === null && probe < high) {
+      probe += 1;
+      visible = isCharacterVisible(measure, node, probe, viewport);
+    }
+
+    if (visible === true) {
+      found = probe;
+      high = middle - 1;
+    } else {
+      low = probe + 1;
+    }
+  }
+
+  return found;
+};
+
+/**
+ * Capture the first visible text point in the current paginated viewport.
+ * Layout is consulted only to choose the point; the returned value contains no
+ * page or geometry data.
+ */
+export const serializeReaderViewportLocation = (
+  sectionHref: string,
+  root: Element,
+  viewport: Element,
+): ReaderTextLocation | null => {
+  const viewportBounds = viewport.getBoundingClientRect();
+  const walker = root.ownerDocument.createTreeWalker(root, SHOW_TEXT);
+  let best: { left: number; node: Text; top: number } | null = null;
+  let current = walker.nextNode();
+
+  while (current) {
+    const node = current as Text;
+    if (node.data.length > 0) {
+      const contents = root.ownerDocument.createRange();
+      contents.selectNodeContents(node);
+      for (const bounds of contents.getClientRects()) {
+        const left = Math.max(bounds.left, viewportBounds.left);
+        const right = Math.min(bounds.right, viewportBounds.right);
+        const top = Math.max(bounds.top, viewportBounds.top);
+        const bottom = Math.min(bounds.bottom, viewportBounds.bottom);
+        if (right > left && bottom > top) {
+          const candidate = { left, node, top };
+          if (
+            !best ||
+            candidate.top < best.top - 0.5 ||
+            (Math.abs(candidate.top - best.top) <= 0.5 && candidate.left < best.left)
+          ) {
+            best = candidate;
+          }
+        }
+      }
+    }
+    current = walker.nextNode();
+  }
+
+  if (!best) return null;
+  const offset = findFirstVisibleOffset(best.node, viewportBounds);
+  if (offset === null) return null;
+
+  const boundary = root.ownerDocument.createRange();
+  boundary.setStart(best.node, offset);
+  boundary.collapse(true);
+  return serializeReaderTextLocation(sectionHref, root, boundary);
 };

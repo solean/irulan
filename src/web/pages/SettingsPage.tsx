@@ -1,4 +1,4 @@
-import type { FormEvent } from "react";
+import type { ChangeEvent, FormEvent } from "react";
 import {
   useEffect,
   useEffectEvent,
@@ -57,6 +57,7 @@ export const SettingsPage = () => {
   useDocumentTitle("Settings \u2014 Irulan");
   const toast = useToast();
   const passwordInputRef = useRef<HTMLInputElement | null>(null);
+  const restoreInputRef = useRef<HTMLInputElement | null>(null);
 
   const [settings, setSettings] = useState<SettingsPayload | null>(null);
   const [bookshelves, setBookshelves] = useState<BookshelfSummary[]>([]);
@@ -73,6 +74,8 @@ export const SettingsPage = () => {
   const [loading, setLoading] = useState(true);
   const [savingSmtp, setSavingSmtp] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [backingUp, setBackingUp] = useState(false);
+  const [restoring, setRestoring] = useState(false);
 
   const loadSettings = useEffectEvent(async () => {
     setLoading(true);
@@ -153,6 +156,67 @@ export const SettingsPage = () => {
     }
   };
 
+  const onDownloadBackup = async () => {
+    setBackingUp(true);
+    try {
+      const backup = await api.downloadLibraryBackup();
+      const href = URL.createObjectURL(backup.blob);
+      const link = document.createElement("a");
+      link.href = href;
+      link.download = backup.fileName;
+      link.click();
+      URL.revokeObjectURL(href);
+      toast({
+        title: "Library backup created",
+        description: "The complete library backup was downloaded.",
+        variant: "success",
+      });
+    } catch (requestError) {
+      toast({
+        title: "Could not create backup",
+        description:
+          requestError instanceof Error ? requestError.message : "The library backup failed.",
+        variant: "error",
+      });
+    } finally {
+      setBackingUp(false);
+    }
+  };
+
+  const onRestoreBackup = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.currentTarget.files?.[0];
+    event.currentTarget.value = "";
+    if (!file) return;
+    if (
+      !window.confirm(
+        "Restore this backup? It will replace the current library, including books, shelves, settings, bookmarks, highlights, and notes.",
+      )
+    ) {
+      return;
+    }
+
+    setRestoring(true);
+    try {
+      const result = await api.restoreLibraryBackup(file);
+      toast({
+        title: "Library restored",
+        description: `${numberFormatter.format(result.bookCount)} ${result.bookCount === 1 ? "book was" : "books were"} restored. Reloading the library…`,
+        variant: "success",
+      });
+      window.setTimeout(() => window.location.assign("/"), 400);
+    } catch (requestError) {
+      toast({
+        title: "Could not restore backup",
+        description:
+          requestError instanceof Error
+            ? requestError.message
+            : "The current library was left unchanged.",
+        variant: "error",
+      });
+      setRestoring(false);
+    }
+  };
+
   if (loading && !settings) {
     return <SettingsSkeleton />;
   }
@@ -182,6 +246,43 @@ export const SettingsPage = () => {
       </Button>
 
       {loadError ? <p className="inline-error">{loadError}</p> : null}
+
+      <Card className="panel stack-md">
+        <div className="stack-xs">
+          <h2>Library backup</h2>
+          <p className="lede">
+            Download a complete backup of the database, original EPUBs, covers, bookmarks,
+            highlights, and notes. Restoring validates the archive before replacing the current
+            library.
+          </p>
+        </div>
+        <div className="inline-actions">
+          <Button disabled={backingUp || restoring} onClick={() => void onDownloadBackup()} type="button">
+            {backingUp ? "Creating backup…" : "Download backup"}
+          </Button>
+          <Button
+            disabled={backingUp || restoring}
+            onClick={() => restoreInputRef.current?.click()}
+            type="button"
+            variant="outline"
+          >
+            {restoring ? "Restoring…" : "Restore backup"}
+          </Button>
+          <input
+            accept=".zip,application/zip"
+            aria-label="Choose library backup"
+            className="sr-only"
+            disabled={backingUp || restoring}
+            onChange={(event) => void onRestoreBackup(event)}
+            ref={restoreInputRef}
+            type="file"
+          />
+        </div>
+        <p className="smtp-onboarding-step-meta">
+          Restore is a full replacement, not a merge. If validation fails, the current library is
+          kept.
+        </p>
+      </Card>
 
       <Card className="panel stack-md">
         <div className="stack-xs">

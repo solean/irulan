@@ -1,5 +1,6 @@
 import {
   READER_TEXT_VERSION,
+  type ReaderTextLocation,
   type ReaderTextRange,
 } from "./types";
 
@@ -19,6 +20,32 @@ export const isReaderTextWhitespace = (value: string) => READER_WHITESPACE_PATTE
  */
 export const normalizeReaderText = (value: string) =>
   value.replace(READER_WHITESPACE_RUN_PATTERN, " ");
+export const createReaderTextLocation = (
+  sectionHref: string,
+  text: string,
+  offset: number,
+): ReaderTextLocation | null => {
+  const normalizedHref = sectionHref.trim();
+  if (
+    !normalizedHref ||
+    !text.trim() ||
+    normalizeReaderText(text) !== text ||
+    !Number.isSafeInteger(offset) ||
+    offset < 0 ||
+    offset > text.length
+  ) {
+    return null;
+  }
+
+  return {
+    sectionHref: normalizedHref,
+    textVersion: READER_TEXT_VERSION,
+    offset,
+    prefix: text.slice(Math.max(0, offset - READER_TEXT_CONTEXT_LENGTH), offset),
+    suffix: text.slice(offset, offset + READER_TEXT_CONTEXT_LENGTH),
+  };
+};
+
 
 export const createReaderTextRange = (
   sectionHref: string,

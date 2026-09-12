@@ -21,20 +21,29 @@ import { Card } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import type {
   BookReader,
+  ReaderBookmark,
   BookReaderSection,
+  ReaderTextLocation,
+  ReaderTextRange,
 } from "../../shared/types";
 import { SkeletonLine } from "../components/bookshelf";
+import { ReaderAnnotations } from "../components/reader-annotations";
+import { ReaderBookmarks } from "../components/reader-bookmarks";
 import {
   ReaderFontSelect,
   ReaderFontSizeToggle,
   ReaderSpacingToggle,
   ReaderToneToggle,
 } from "../components/reader-appearance-controls";
+import { ReaderSearch } from "../components/reader-search";
 import {
   ArrowLeftIcon,
+  BookmarkIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
   ContentsIcon,
+  HighlightIcon,
+  SearchIcon,
 } from "../components/icons";
 import { useDocumentTitle } from "../hooks/use-document-title";
 import { api } from "../lib/api";
@@ -43,11 +52,18 @@ import { getBookHref } from "../lib/navigation";
 import {
   createReaderAssetSection,
   getReaderDocumentTitle,
+  getReaderBookPagePosition,
   parseReaderMarkup,
   renderReaderDocument,
   resolveReaderSectionLabels,
   type ReaderLinkTarget,
 } from "../lib/reader";
+import {
+  hasReaderTextLocationOnPage,
+  resolveReaderTextLocation,
+  resolveReaderTextRange,
+  serializeReaderViewportLocation,
+} from "../lib/reader-location";
 import {
   DEFAULT_READER_FONT,
   DEFAULT_READER_SPACING,
@@ -74,6 +90,85 @@ import {
 // chapter length is unknown until it loads and is measured, so the target is
 // clamped to the real final page after measurement.
 const READER_LAST_PAGE = Number.MAX_SAFE_INTEGER;
+const DEFAULT_READER_CHARACTERS_PER_PAGE = 1_100;
+const MIN_READER_CALIBRATION_PAGES = 4;
+const READER_TEXT_FLOW_EFFICIENCY = 0.82;
+
+type ReaderBookPagination = Readonly<{
+  bookId: string;
+  charactersPerPage: number;
+  sectionPageCounts: ReadonlyMap<string, number>;
+  signature: string;
+}>;
+
+type ReaderBookmarksState = Readonly<{
+  bookId: string;
+  bookmarks: ReaderBookmark[];
+  error: string | null;
+  loading: boolean;
+}>;
+
+const getReaderSectionMarkup = async (
+  section: BookReaderSection,
+  markupCache: Map<string, string>,
+) => {
+  const cachedMarkup = markupCache.get(section.href);
+  if (cachedMarkup) return cachedMarkup;
+
+  const response = await fetch(section.url, {
+    headers: {
+      Accept: "application/xhtml+xml, text/html;q=0.9",
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error(`Request failed with ${response.status}.`);
+  }
+
+  const markup = await response.text();
+  markupCache.set(section.href, markup);
+  return markup;
+};
+
+const measureReaderSectionPagination = (body: HTMLElement, pageWidth: number) => {
+  const columnGap = Number.parseFloat(window.getComputedStyle(body).columnGap || "0");
+  const stride = pageWidth + columnGap;
+  if (stride <= 0) return null;
+
+  // scrollWidth spans whole column boxes, so total / stride rounds to the exact
+  // column count. Deriving the span back out keeps every page edge aligned.
+  const total = body.scrollWidth + columnGap;
+  const pageCount = Math.max(1, Math.round(total / stride));
+  return {
+    pageCount,
+    pageSpan: total / pageCount,
+  };
+};
+const estimateReaderCharactersPerPage = (body: HTMLElement, bounds: DOMRect) => {
+  const style = window.getComputedStyle(body);
+  const fontSize = Number.parseFloat(style.fontSize) || 16;
+  const lineHeight = Number.parseFloat(style.lineHeight) || fontSize * 1.5;
+  const letterSpacing = Number.parseFloat(style.letterSpacing) || 0;
+  const context = document.createElement("canvas").getContext("2d");
+  if (!context) return DEFAULT_READER_CHARACTERS_PER_PAGE;
+
+  context.font = `${style.fontStyle} ${style.fontWeight} ${fontSize}px ${style.fontFamily}`;
+  const sample = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz 0123456789";
+  const averageCharacterWidth = context.measureText(sample).width / sample.length + letterSpacing;
+  if (averageCharacterWidth <= 0 || lineHeight <= 0) {
+    return DEFAULT_READER_CHARACTERS_PER_PAGE;
+  }
+
+  const charactersPerLine = bounds.width / averageCharacterWidth;
+  const linesPerPage = bounds.height / lineHeight;
+  return Math.max(
+    1,
+    Math.round(charactersPerLine * linesPerPage * READER_TEXT_FLOW_EFFICIENCY),
+  );
+};
+
+
+
 
 export const ReaderPage = () => {
   const { bookId = "" } = useParams();
@@ -111,6 +206,7 @@ export const ReaderPage = () => {
   const [sectionError, setSectionError] = useState<string | null>(null);
   const [pageCount, setPageCount] = useState(1);
   const [pageSpan, setPageSpan] = useState(0);
+  const [bookPagination, setBookPagination] = useState<ReaderBookPagination | null>(null);
   // Transform of the on-screen chapter, held steady while a new chapter loads
   // so the outgoing one doesn't snap back to its start mid-fetch.
   const frozenOffsetRef = useRef(0);
@@ -127,6 +223,41 @@ export const ReaderPage = () => {
   // True while a pointer drag is actively moving the page (suppresses text
   // selection and switches the cursor).
   const [isDraggingPage, setIsDraggingPage] = useState(false);
+  const [readerToolPanel, setReaderToolPanel] = useState<
+    null | "search" | "bookmarks" | "annotations"
+  >(null);
+  const [activeSearchRange, setActiveSearchRange] = useState<ReaderTextRange | null>(null);
+  const [pendingReaderTarget, setPendingReaderTarget] = useState<
+    ReaderTextLocation | ReaderTextRange | null
+  >(null);
+  const [readerToolNavigationError, setReaderToolNavigationError] = useState<string | null>(null);
+  const [readerBookmarksState, setReaderBookmarksState] = useState<ReaderBookmarksState>(() => ({
+    bookId,
+    bookmarks: [],
+    error: null,
+    loading: true,
+  }));
+  const [bookmarkedPage, setBookmarkedPage] = useState<{
+    bookId: string;
+    page: number;
+    sectionHref: string;
+  } | null>(null);
+  const readerBookmarks =
+    readerBookmarksState.bookId === bookId ? readerBookmarksState.bookmarks : [];
+  const readerBookmarksLoading =
+    readerBookmarksState.bookId !== bookId || readerBookmarksState.loading;
+  const readerBookmarksLoadError =
+    readerBookmarksState.bookId === bookId ? readerBookmarksState.error : null;
+  const displayedBookmarkLocations = useMemo(() => {
+    if (!displayedHref) return [];
+    const locations: ReaderTextLocation[] = [];
+    for (const bookmark of readerBookmarks) {
+      if (bookmark.location.sectionHref === displayedHref) {
+        locations.push(bookmark.location);
+      }
+    }
+    return locations;
+  }, [displayedHref, readerBookmarks]);
 
   const selectedHref = searchParams.get("section")?.trim() ?? "";
   const anchorId = searchParams.get("anchor")?.trim() ?? null;
@@ -179,6 +310,23 @@ export const ReaderPage = () => {
   } as CSSProperties;
   const currentPageIndex = Math.min(Math.max(0, currentPage - 1), Math.max(0, pageCount - 1));
   const pageOffset = pageSpan > 0 ? currentPageIndex * pageSpan : 0;
+  const currentBookPagination = bookPagination?.bookId === bookId ? bookPagination : null;
+  const bookPagePosition = useMemo(() => {
+    if (!reader || !activeSection) return null;
+
+    return getReaderBookPagePosition(
+      reader.sections,
+      currentBookPagination?.sectionPageCounts ?? null,
+      activeSection.href,
+      currentPageIndex + 1,
+      currentBookPagination?.charactersPerPage ?? DEFAULT_READER_CHARACTERS_PER_PAGE,
+    );
+  }, [activeSection, currentBookPagination, currentPageIndex, reader]);
+  const readerPageStatus = bookPagePosition
+    ? `Page ${numberFormatter.format(bookPagePosition.currentPage)} of ${numberFormatter.format(bookPagePosition.totalPages)}`
+    : !activeSection
+      ? "No readable pages"
+      : "Linked section";
 
   // While a new (uncached) chapter is fetching, the displayed document still
   // belongs to the previous section. Hold it steady at its last offset so it
@@ -192,6 +340,51 @@ export const ReaderPage = () => {
       ? reader?.sections.find((section) => section.href === displayedHref)
       : null) ?? activeSection;
 
+  useLayoutEffect(() => {
+    const root = readerBodyRef.current;
+    const isBookmarked =
+      root !== null &&
+      displayedHref !== null &&
+      pageSpan > 0 &&
+      !sectionLoading &&
+      !isSwappingSection &&
+      hasReaderTextLocationOnPage(
+        root,
+        pageSpan,
+        currentPage,
+        displayedBookmarkLocations,
+      );
+
+    setBookmarkedPage(
+      isBookmarked
+        ? {
+            bookId,
+            page: currentPage,
+            sectionHref: displayedHref,
+          }
+        : null,
+    );
+  }, [
+    bookId,
+    currentPage,
+    displayedBookmarkLocations,
+    displayedHref,
+    fontFamily,
+    fontScale,
+    isSwappingSection,
+    lineSpacing,
+    pageSpan,
+    sectionDocument,
+    sectionLoading,
+  ]);
+
+  const isCurrentPageBookmarked =
+    !sectionLoading &&
+    !isSwappingSection &&
+    bookmarkedPage?.bookId === bookId &&
+    bookmarkedPage.page === currentPage &&
+    bookmarkedPage.sectionHref === displayedHref;
+
   useEffect(() => {
     if (!isSwappingSection) {
       frozenOffsetRef.current = pageOffset;
@@ -204,28 +397,7 @@ export const ReaderPage = () => {
       : "Reader \u2022 Irulan",
   );
 
-  useEffect(() => {
-    setStoredReaderTone(tone);
-  }, [tone]);
 
-  useEffect(() => {
-    setStoredReaderFontScale(fontScale);
-  }, [fontScale]);
-
-  useEffect(() => {
-    setStoredReaderFont(fontFamily);
-  }, [fontFamily]);
-
-  useEffect(() => {
-    setStoredReaderSpacing(lineSpacing);
-  }, [lineSpacing]);
-
-  // Remember where the reader is so reopening this book resumes here. Only once
-  // a section is in the URL — before that the position is still being restored.
-  useEffect(() => {
-    if (!reader || !selectedHref) return;
-    setStoredReaderProgress(bookId, { section: selectedHref, page: currentPage });
-  }, [bookId, currentPage, reader, selectedHref]);
 
   const goToSection = useCallback(
     (
@@ -295,6 +467,156 @@ export const ReaderPage = () => {
     [activeSection?.href, anchorId, isPopout, readerBookshelfId, setSearchParams],
   );
 
+  const navigateToReaderTarget = useCallback(
+    (target: ReaderTextLocation | ReaderTextRange) => {
+      setPendingReaderTarget(target);
+      setReaderToolNavigationError(null);
+      goToSection(target.sectionHref, {
+        replace: target.sectionHref === activeSection?.href,
+      });
+    },
+    [activeSection?.href, goToSection],
+  );
+
+  const navigateToSearchRange = useCallback(
+    (range: ReaderTextRange) => {
+      setActiveSearchRange(range);
+      navigateToReaderTarget(range);
+    },
+    [navigateToReaderTarget],
+  );
+
+  const getCurrentReaderLocation = useCallback(() => {
+    const root = readerBodyRef.current;
+    const viewport = readerViewportRef.current;
+    if (
+      !root ||
+      !viewport ||
+      !displayedHref ||
+      displayedHref !== activeSection?.href ||
+      sectionLoading ||
+      isSwappingSection
+    ) {
+      return null;
+    }
+    return serializeReaderViewportLocation(displayedHref, root, viewport);
+  }, [activeSection?.href, displayedHref, isSwappingSection, sectionLoading]);
+
+  const persistReaderProgress = useEffectEvent(() => {
+    if (!reader || !selectedHref || pendingReaderTarget || pageSpan <= 0) return;
+    const location = getCurrentReaderLocation();
+    if (location) setStoredReaderProgress(bookId, location);
+  });
+
+  useEffect(() => {
+    const animationFrame = window.requestAnimationFrame(persistReaderProgress);
+    return () => window.cancelAnimationFrame(animationFrame);
+  }, [
+    bookId,
+    currentPage,
+    displayedHref,
+    isSwappingSection,
+    pageSpan,
+    pendingReaderTarget,
+    reader,
+    sectionDocument,
+    sectionLoading,
+    selectedHref,
+  ]);
+
+  const getReaderSectionLabel = useCallback(
+    (href: string) => {
+      const index = reader?.sections.findIndex((section) => section.href === href) ?? -1;
+      return index >= 0 ? (sectionLabels[index] ?? reader?.sections[index]?.label ?? href) : href;
+    },
+    [reader, sectionLabels],
+  );
+
+  const setReaderSearchOpen = useCallback((open: boolean) => {
+    if (open) setReaderPanel(null);
+    setReaderToolPanel(open ? "search" : null);
+  }, []);
+
+  const setReaderBookmarksOpen = useCallback((open: boolean) => {
+    if (open) setReaderPanel(null);
+    setReaderToolPanel(open ? "bookmarks" : null);
+  }, []);
+
+  const setReaderAnnotationsOpen = useCallback((open: boolean) => {
+    if (open) setReaderPanel(null);
+    setReaderToolPanel(open ? "annotations" : null);
+  }, []);
+
+  const onReaderBookmarkAdded = useCallback((bookmark: ReaderBookmark) => {
+    setReaderBookmarksState((current) =>
+      current.bookId === bookmark.bookId
+        ? { ...current, bookmarks: [bookmark, ...current.bookmarks] }
+        : current,
+    );
+  }, []);
+
+  const onReaderBookmarkUpdated = useCallback((bookmark: ReaderBookmark) => {
+    setReaderBookmarksState((current) =>
+      current.bookId === bookmark.bookId
+        ? {
+            ...current,
+            bookmarks: current.bookmarks.map((currentBookmark) =>
+              currentBookmark.id === bookmark.id ? bookmark : currentBookmark,
+            ),
+          }
+        : current,
+    );
+  }, []);
+
+  const onReaderBookmarkDeleted = useCallback(
+    (bookmarkId: string) => {
+      setReaderBookmarksState((current) =>
+        current.bookId === bookId
+          ? {
+              ...current,
+              bookmarks: current.bookmarks.filter((bookmark) => bookmark.id !== bookmarkId),
+            }
+          : current,
+      );
+    },
+    [bookId],
+  );
+
+  useEffect(() => {
+    let active = true;
+    setReaderBookmarksState({
+      bookId,
+      bookmarks: [],
+      error: null,
+      loading: true,
+    });
+
+    void api
+      .listReaderBookmarks(bookId)
+      .then((bookmarks) => {
+        if (active) {
+          setReaderBookmarksState({ bookId, bookmarks, error: null, loading: false });
+        }
+      })
+      .catch((requestError) => {
+        if (active) {
+          setReaderBookmarksState({
+            bookId,
+            bookmarks: [],
+            error:
+              requestError instanceof Error
+                ? requestError.message
+                : "Could not load bookmarks.",
+            loading: false,
+          });
+        }
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [bookId]);
+
   const loadReader = useEffectEvent(async () => {
     setLoading(true);
     setError(null);
@@ -316,22 +638,7 @@ export const ReaderPage = () => {
     setSectionError(null);
 
     try {
-      let markup = sectionMarkupCache.current.get(section.href) ?? null;
-
-      if (!markup) {
-        const response = await fetch(section.url, {
-          headers: {
-            Accept: "application/xhtml+xml, text/html;q=0.9",
-          },
-        });
-
-        if (!response.ok) {
-          throw new Error(`Request failed with ${response.status}.`);
-        }
-
-        markup = await response.text();
-        sectionMarkupCache.current.set(section.href, markup);
-      }
+      const markup = await getReaderSectionMarkup(section, sectionMarkupCache.current);
 
       const nextDocument = parseReaderMarkup(markup);
 
@@ -367,6 +674,7 @@ export const ReaderPage = () => {
     setSectionDocument(null);
     setSectionTitle(null);
     setSectionError(null);
+    setBookPagination(null);
     void loadReader();
   }, [bookId]);
 
@@ -378,8 +686,9 @@ export const ReaderPage = () => {
     // No section in the URL means the reader was just opened: resume the saved
     // position if one belongs to this book's spine, otherwise start at the top.
     const saved = getStoredReaderProgress(bookId);
-    if (saved && reader.sections.some((section) => section.href === saved.section)) {
-      goToSection(saved.section, { page: saved.page, replace: true });
+    if (saved && reader.sections.some((section) => section.href === saved.sectionHref)) {
+      setPendingReaderTarget(saved);
+      goToSection(saved.sectionHref, { replace: true });
       return;
     }
 
@@ -433,26 +742,72 @@ export const ReaderPage = () => {
     // Use the fractional content width, not the integer clientWidth: a sub-pixel
     // gap between the CSS column width and our page stride accumulates across a
     // chapter and eventually clips a few px of text at the viewport edge.
-    const pageWidth = viewport.getBoundingClientRect().width;
+    const viewportBounds = viewport.getBoundingClientRect();
+    const pageWidth = viewportBounds.width;
     body.style.setProperty("--reader-page-width", `${pageWidth}px`);
 
-    const columnGap = Number.parseFloat(window.getComputedStyle(body).columnGap || "0");
-    const stride = pageWidth + columnGap;
-    if (stride <= 0) {
+    const pagination = measureReaderSectionPagination(body, pageWidth);
+    if (!pagination || viewportBounds.height <= 0) {
       setPageCount(1);
       setPageSpan(0);
       return;
     }
 
-    // scrollWidth spans whole column boxes, so total / stride rounds to the exact
-    // column count; deriving the stride back out keeps every page edge aligned
-    // (and avoids the spurious trailing page that `ceil` produced).
-    const total = body.scrollWidth + columnGap;
-    const nextPageCount = Math.max(1, Math.round(total / stride));
-    const nextPageSpan = total / nextPageCount;
+    const signature = [
+      bookId,
+      isPopout ? "immersive" : "windowed",
+      fontFamily,
+      fontScale,
+      lineSpacing,
+      viewportBounds.width.toFixed(3),
+      viewportBounds.height.toFixed(3),
+    ].join(":");
+    const measuredSection = reader?.sections.find((section) => section.href === displayedHref);
+    const typographyEstimate = estimateReaderCharactersPerPage(body, viewportBounds);
 
-    setPageSpan(nextPageSpan);
-    setPageCount(nextPageCount);
+    setBookPagination((current) => {
+      const sameLayout = current?.bookId === bookId && current.signature === signature;
+      const sectionPageCounts = new Map(
+        sameLayout ? current.sectionPageCounts : undefined,
+      );
+      if (measuredSection) {
+        sectionPageCounts.set(measuredSection.href, pagination.pageCount);
+      }
+
+      let calibratedCharacters = 0;
+      let calibratedPages = 0;
+      for (const section of reader?.sections ?? []) {
+        const measuredPages = sectionPageCounts.get(section.href);
+        if (
+          measuredPages !== undefined &&
+          measuredPages >= MIN_READER_CALIBRATION_PAGES &&
+          section.textLength > 0
+        ) {
+          calibratedCharacters += section.textLength;
+          calibratedPages += measuredPages;
+        }
+      }
+      const charactersPerPage =
+        calibratedPages > 0 ? calibratedCharacters / calibratedPages : typographyEstimate;
+
+      if (
+        sameLayout &&
+        current.charactersPerPage === charactersPerPage &&
+        (!measuredSection ||
+          current.sectionPageCounts.get(measuredSection.href) === pagination.pageCount)
+      ) {
+        return current;
+      }
+
+      return {
+        bookId,
+        charactersPerPage,
+        sectionPageCounts,
+        signature,
+      };
+    });
+    setPageSpan(pagination.pageSpan);
+    setPageCount(pagination.pageCount);
   });
 
   // Measure synchronously before the browser paints the new section so the
@@ -478,8 +833,14 @@ export const ReaderPage = () => {
 
     observer.observe(viewport);
     observer.observe(body);
+    let cancelled = false;
+    void document.fonts.ready.then(() => {
+      if (!cancelled) measurePagination();
+    });
+
 
     return () => {
+      cancelled = true;
       observer.disconnect();
     };
   }, [fontFamily, fontScale, lineSpacing, sectionDocument, sectionLoading]);
@@ -557,6 +918,79 @@ export const ReaderPage = () => {
     };
   }, [anchorId, currentPage, goToPage, pageOffset, pageSpan, sectionDocument, sectionLoading]);
 
+  useLayoutEffect(() => {
+    if (
+      !pendingReaderTarget ||
+      pendingReaderTarget.sectionHref !== displayedHref ||
+      sectionLoading ||
+      isSwappingSection ||
+      pageSpan <= 0
+    ) {
+      return;
+    }
+
+    const root = readerBodyRef.current;
+    if (!root) return;
+
+    const animationFrame = window.requestAnimationFrame(() => {
+      const resolved =
+        "endOffset" in pendingReaderTarget
+          ? resolveReaderTextRange(root, pendingReaderTarget)
+          : resolveReaderTextLocation(root, pendingReaderTarget);
+      if (!resolved) {
+        setPendingReaderTarget(null);
+        setReaderToolNavigationError("The saved text could not be located in this section.");
+        return;
+      }
+
+      const targetBounds = resolved.getClientRects()[0] ?? resolved.getBoundingClientRect();
+      const rootBounds = root.getBoundingClientRect();
+      const absoluteLeft = Math.max(0, targetBounds.left - rootBounds.left);
+      const nextPage = Math.max(1, Math.min(pageCount, Math.floor(absoluteLeft / pageSpan) + 1));
+
+      setPendingReaderTarget(null);
+      if (nextPage !== currentPage) {
+        goToPage(nextPage, { replace: true });
+      }
+    });
+
+    return () => window.cancelAnimationFrame(animationFrame);
+  }, [
+    currentPage,
+    displayedHref,
+    goToPage,
+    isSwappingSection,
+    pageCount,
+    pageSpan,
+    pendingReaderTarget,
+    sectionLoading,
+  ]);
+
+  useLayoutEffect(() => {
+    const highlightName = "reader-search-result";
+    if (
+      typeof CSS === "undefined" ||
+      !CSS.highlights ||
+      typeof Highlight === "undefined"
+    ) {
+      return;
+    }
+
+    CSS.highlights.delete(highlightName);
+    const root = readerBodyRef.current;
+    if (!root || !activeSearchRange || activeSearchRange.sectionHref !== displayedHref) {
+      return;
+    }
+
+    const resolved = resolveReaderTextRange(root, activeSearchRange);
+    if (!resolved) return;
+    CSS.highlights.set(highlightName, new Highlight(resolved));
+
+    return () => {
+      CSS.highlights.delete(highlightName);
+    };
+  }, [activeSearchRange, displayedHref, sectionDocument]);
+
   const onInternalReaderLinkClick = useCallback(
     (
       event: MouseEvent<HTMLAnchorElement>,
@@ -571,11 +1005,31 @@ export const ReaderPage = () => {
     [activeSection?.href, goToSection],
   );
 
-  const onAdjustFontScale = useCallback((delta: number) => {
-    setFontScale((current) => {
-      const next = Number((current + delta).toFixed(2));
-      return Math.max(READER_MIN_FONT_SCALE, Math.min(READER_MAX_FONT_SCALE, next));
-    });
+  const onToneChange = useCallback((next: ReaderTone) => {
+    setStoredReaderTone(next);
+    setTone(next);
+  }, []);
+
+  const onAdjustFontScale = useCallback(
+    (delta: number) => {
+      const next = Math.max(
+        READER_MIN_FONT_SCALE,
+        Math.min(READER_MAX_FONT_SCALE, Number((fontScale + delta).toFixed(2))),
+      );
+      setStoredReaderFontScale(next);
+      setFontScale(next);
+    },
+    [fontScale],
+  );
+
+  const onFontFamilyChange = useCallback((next: ReaderFontId) => {
+    setStoredReaderFont(next);
+    setFontFamily(next);
+  }, []);
+
+  const onLineSpacingChange = useCallback((next: ReaderSpacingId) => {
+    setStoredReaderSpacing(next);
+    setLineSpacing(next);
   }, []);
 
   const onTurnPage = useCallback(
@@ -634,7 +1088,13 @@ export const ReaderPage = () => {
 
   useEffect(() => {
     const onWindowKeyDown = (event: KeyboardEvent) => {
-      if (event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey) {
+      if (
+        event.defaultPrevented ||
+        event.altKey ||
+        event.ctrlKey ||
+        event.metaKey ||
+        event.shiftKey
+      ) {
         return;
       }
 
@@ -680,7 +1140,7 @@ export const ReaderPage = () => {
 
   const onReaderViewportKeyDown = useCallback(
     (event: ReactKeyboardEvent<HTMLDivElement>) => {
-      if (event.altKey || event.ctrlKey || event.metaKey) {
+      if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) {
         return;
       }
 
@@ -889,6 +1349,32 @@ export const ReaderPage = () => {
     event.stopPropagation();
   }, []);
 
+  // The popped-out window has no title bar, and the immersive bar cannot be a
+  // native drag region: Electron drag regions swallow every pointer event, so
+  // the toolbar's hover-revealed controls would go dead. Press-and-hold on the
+  // bar's own chrome asks the shell to move the window instead.
+  const onImmersiveBarPointerDown = useCallback((event: ReactPointerEvent<HTMLElement>) => {
+    const shell = window.irulan;
+    if (!shell || !event.isPrimary || event.pointerType !== "mouse" || event.button !== 0) {
+      return;
+    }
+    // Controls own their own presses; only the bare bar moves the window.
+    if ((event.target as HTMLElement).closest("button, a, input, [role='button']")) {
+      return;
+    }
+
+    shell.beginWindowDrag();
+    const endDrag = () => {
+      window.removeEventListener("pointerup", endDrag);
+      window.removeEventListener("pointercancel", endDrag);
+      shell.endWindowDrag();
+    };
+    // The release can land outside the window once it is pinned against the
+    // menu bar, so listen where the event is guaranteed to bubble.
+    window.addEventListener("pointerup", endDrag);
+    window.addEventListener("pointercancel", endDrag);
+  }, []);
+
   // Trackpad two-finger swipe (horizontal wheel) turns pages, Apple
   // Books-style. Attached manually: React wheel listeners are passive, and
   // preventDefault is needed to stop the browser's history-swipe gesture.
@@ -1050,15 +1536,51 @@ export const ReaderPage = () => {
     </nav>
   );
 
-  const toneToggle = <ReaderToneToggle onChange={setTone} tone={tone} />;
+  const toneToggle = <ReaderToneToggle onChange={onToneChange} tone={tone} />;
   const fontToggle = (
     <ReaderFontSizeToggle fontScale={fontScale} onAdjust={onAdjustFontScale} />
   );
   const fontFamilySelect = (
-    <ReaderFontSelect fontFamily={fontFamily} onChange={setFontFamily} />
+    <ReaderFontSelect fontFamily={fontFamily} onChange={onFontFamilyChange} tone={tone} />
   );
   const spacingToggle = (
-    <ReaderSpacingToggle onChange={setLineSpacing} spacing={lineSpacing} />
+    <ReaderSpacingToggle onChange={onLineSpacingChange} spacing={lineSpacing} />
+  );
+
+  const readerTools = (
+    <div className="reader-tone-scope reader-tools" data-reader-tone={tone}>
+      <ReaderSearch
+        bookId={bookId}
+        onNavigate={navigateToSearchRange}
+        onOpenChange={setReaderSearchOpen}
+        open={readerToolPanel === "search"}
+      />
+      <ReaderBookmarks
+        bookId={bookId}
+        bookmarks={readerBookmarks}
+        getCurrentLocation={getCurrentReaderLocation}
+        getSectionLabel={getReaderSectionLabel}
+        loadError={readerBookmarksLoadError}
+        loading={readerBookmarksLoading}
+        onBookmarkAdded={onReaderBookmarkAdded}
+        onBookmarkDeleted={onReaderBookmarkDeleted}
+        onBookmarkUpdated={onReaderBookmarkUpdated}
+        onNavigate={navigateToReaderTarget}
+        onOpenChange={setReaderBookmarksOpen}
+        open={readerToolPanel === "bookmarks"}
+      />
+      <ReaderAnnotations
+        bookId={bookId}
+        contentRevision={sectionDocument}
+        getSectionLabel={getReaderSectionLabel}
+        onNavigate={navigateToReaderTarget}
+        onOpenChange={setReaderAnnotationsOpen}
+        open={readerToolPanel === "annotations"}
+        readerRootRef={readerBodyRef}
+        sectionHref={displayedHref}
+        viewportRef={readerViewportRef}
+      />
+    </div>
   );
 
   // The reading surface (tinted ground + floating page + paginated body) is
@@ -1070,6 +1592,16 @@ export const ReaderPage = () => {
       style={readerStyle}
     >
       <div className="reader-paper">
+        {isCurrentPageBookmarked ? (
+          <span
+            aria-label="This page is bookmarked"
+            className="reader-page-bookmark-indicator"
+            role="img"
+            title="Bookmarked page"
+          >
+            <BookmarkIcon />
+          </span>
+        ) : null}
         {sectionError ? <p className="inline-error">{sectionError}</p> : null}
 
         {!sectionDocument || !displayedSection ? (
@@ -1093,7 +1625,7 @@ export const ReaderPage = () => {
           // The viewport is a labelled region that also takes focus, so arrow
           // keys and swipes can turn pages without first clicking a control.
           <div
-            aria-label={`Reading viewport, page ${currentPageIndex + 1} of ${pageCount}`}
+            aria-label={`Reading viewport, ${readerPageStatus}`}
             className={cn(
               "reader-page-window",
               isSwappingSection && "reader-page-window-loading",
@@ -1139,8 +1671,13 @@ export const ReaderPage = () => {
   // turns happen at the edges, and progress sits quietly at the bottom.
   if (isPopout) {
     return (
-      <div className="reader-immersive" data-reader-tone={tone}>
-        <header className="reader-immersive-bar">
+      <div className="reader-immersive reader-tone-scope" data-reader-tone={tone}>
+        <header
+          className="reader-immersive-bar"
+          onPointerDown={onImmersiveBarPointerDown}
+          onPointerEnter={() => window.irulan?.setReaderWindowButtonsVisible(true)}
+          onPointerLeave={() => window.irulan?.setReaderWindowButtonsVisible(false)}
+        >
           <div className="reader-immersive-bar-group">
             <button
               aria-expanded={readerPanel === "contents"}
@@ -1151,6 +1688,44 @@ export const ReaderPage = () => {
               type="button"
             >
               <ContentsIcon />
+            </button>
+            <button
+              aria-expanded={readerToolPanel === "search"}
+              aria-keyshortcuts="Meta+F Control+F"
+              aria-label="Search this book"
+              className={cn(
+                "reader-immersive-control",
+                readerToolPanel === "search" && "active",
+              )}
+              onClick={() => setReaderSearchOpen(readerToolPanel !== "search")}
+              title="Search this book (Cmd/Ctrl+F)"
+              type="button"
+            >
+              <SearchIcon />
+            </button>
+            <button
+              aria-expanded={readerToolPanel === "bookmarks"}
+              aria-label="Bookmarks"
+              className={cn(
+                "reader-immersive-control",
+                readerToolPanel === "bookmarks" && "active",
+              )}
+              onClick={() => setReaderBookmarksOpen(readerToolPanel !== "bookmarks")}
+              type="button"
+            >
+              <BookmarkIcon />
+            </button>
+            <button
+              aria-expanded={readerToolPanel === "annotations"}
+              aria-label="Highlights and notes"
+              className={cn(
+                "reader-immersive-control",
+                readerToolPanel === "annotations" && "active",
+              )}
+              onClick={() => setReaderAnnotationsOpen(readerToolPanel !== "annotations")}
+              type="button"
+            >
+              <HighlightIcon />
             </button>
           </div>
 
@@ -1200,12 +1775,17 @@ export const ReaderPage = () => {
         </div>
 
         <footer className="reader-immersive-footer">
-          <span className="reader-immersive-page">
-            Page {numberFormatter.format(currentPageIndex + 1)} of {numberFormatter.format(pageCount)}
+          <span aria-live="polite" className="reader-immersive-page">
+            {readerPageStatus}
           </span>
         </footer>
 
         {error ? <p className="inline-error reader-immersive-error">{error}</p> : null}
+        {readerToolNavigationError ? (
+          <p aria-live="polite" className="inline-error reader-immersive-error">
+            {readerToolNavigationError}
+          </p>
+        ) : null}
 
         {readerPanel ? (
           <>
@@ -1254,6 +1834,7 @@ export const ReaderPage = () => {
             )}
           </>
         ) : null}
+        {readerTools}
       </div>
     );
   }
@@ -1269,6 +1850,11 @@ export const ReaderPage = () => {
       </Button>
 
       {error ? <p className="inline-error">{error}</p> : null}
+      {readerToolNavigationError ? (
+        <p aria-live="polite" className="inline-error">
+          {readerToolNavigationError}
+        </p>
+      ) : null}
 
       <section className="reader-shell">
         <Card className="panel reader-sidebar stack-sm">
@@ -1321,13 +1907,41 @@ export const ReaderPage = () => {
 
             <div className="reader-toolbar-status">
               <strong className="reader-current-label">{activeSectionLabel}</strong>
-              <span className="reader-page-status">
-                Page {numberFormatter.format(currentPageIndex + 1)} of{" "}
-                {numberFormatter.format(pageCount)}
+              <span aria-live="polite" className="reader-page-status">
+                {readerPageStatus}
               </span>
             </div>
 
             <div className="reader-toolbar-controls">
+              <Button
+                aria-expanded={readerToolPanel === "search"}
+                aria-keyshortcuts="Meta+F Control+F"
+                onClick={() => setReaderSearchOpen(readerToolPanel !== "search")}
+                title="Search this book (Cmd/Ctrl+F)"
+                type="button"
+                variant="outline"
+              >
+                <SearchIcon />
+                Search
+              </Button>
+              <Button
+                aria-expanded={readerToolPanel === "bookmarks"}
+                onClick={() => setReaderBookmarksOpen(readerToolPanel !== "bookmarks")}
+                type="button"
+                variant="outline"
+              >
+                <BookmarkIcon />
+                Bookmarks
+              </Button>
+              <Button
+                aria-expanded={readerToolPanel === "annotations"}
+                onClick={() => setReaderAnnotationsOpen(readerToolPanel !== "annotations")}
+                type="button"
+                variant="outline"
+              >
+                <HighlightIcon />
+                Highlights
+              </Button>
               {toneToggle}
               {fontFamilySelect}
               {fontToggle}
@@ -1338,6 +1952,7 @@ export const ReaderPage = () => {
           {readingSurface}
         </section>
       </section>
+      {readerTools}
     </div>
   );
 };

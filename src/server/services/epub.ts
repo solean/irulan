@@ -573,7 +573,37 @@ const inferSectionLabel = async (parsed: ParsedEpub, sectionPath: string, fallba
   }
 };
 
-const buildReaderSpineSections = async (parsed: ParsedEpub): Promise<ReaderSpineSection[]> => {
+const getReaderSectionTextLength = async (
+  parsed: ParsedEpub,
+  sectionPath: string,
+  sectionTextByHref?: Map<string, string>,
+) => {
+  const entry = parsed.entries.get(sectionPath);
+  if (!entry) return 0;
+
+  try {
+    const markup = (
+      await readZipEntry(
+        parsed.zip,
+        entry,
+        MAX_EPUB_READER_TEXT_BYTES,
+        `reader section "${sectionPath}"`,
+      )
+    ).toString("utf8");
+    const text = extractCanonicalReaderText(markup);
+    sectionTextByHref?.set(sectionPath, text);
+    return text.length;
+  } catch {
+    // Pagination only needs a relative section weight. Keep a readable but
+    // malformed section available and fall back to its uncompressed size.
+    return entry.uncompressedSize;
+  }
+};
+
+const buildReaderSpineSections = async (
+  parsed: ParsedEpub,
+  sectionTextByHref?: Map<string, string>,
+): Promise<ReaderSpineSection[]> => {
   const sections: ReaderSpineSection[] = [];
   const seen = new Set<string>();
   const navLabels = await extractTocLabelsFromNav(parsed);
@@ -595,11 +625,13 @@ const buildReaderSpineSections = async (parsed: ParsedEpub): Promise<ReaderSpine
       tocLabels.get(zipPath) ??
       (await inferSectionLabel(parsed, zipPath, index)) ??
       `Section ${index + 1}`;
+    const textLength = await getReaderSectionTextLength(parsed, zipPath, sectionTextByHref);
 
     sections.push({
       id: idref ?? `section-${index + 1}`,
       href: zipPath,
       label,
+      textLength,
     });
   }
 
@@ -660,6 +692,8 @@ const readCachedReaderManifest = async (readerDir: string): Promise<ReaderManife
           typeof section?.id === "string" &&
           typeof section?.href === "string" &&
           typeof section?.label === "string" &&
+          Number.isSafeInteger(section?.textLength) &&
+          (section?.textLength ?? -1) >= 0 &&
           typeof section?.url === "string",
       )
     ) {
@@ -821,31 +855,27 @@ export const extractEpubReaderTextSections = async (
   const parsed = await openEpub(filePath);
 
   try {
-    const sections = await buildReaderSpineSections(parsed);
+    const sectionTextByHref = new Map<string, string>();
+    const sections = await buildReaderSpineSections(parsed, sectionTextByHref);
     if (sections.length === 0) {
       throw new AppError(400, "This EPUB does not expose readable spine sections.");
     }
     const textSections: EpubReaderTextSection[] = [];
 
     for (const [spineIndex, section] of sections.entries()) {
-      const entry = parsed.entries.get(section.href);
-      if (!entry) {
-        throw new AppError(400, `The EPUB reader section "${section.href}" is missing.`);
+      const text = sectionTextByHref.get(section.href);
+      if (text === undefined) {
+        if (!parsed.entries.has(section.href)) {
+          throw new AppError(400, `The EPUB reader section "${section.href}" is missing.`);
+        }
+        throw new Error(`The EPUB reader section "${section.href}" could not be indexed.`);
       }
-      const markup = (
-        await readZipEntry(
-          parsed.zip,
-          entry,
-          MAX_EPUB_READER_TEXT_BYTES,
-          `reader section "${section.href}"`,
-        )
-      ).toString("utf8");
 
       textSections.push({
         ...section,
         spineIndex,
         textVersion: READER_TEXT_VERSION,
-        text: extractCanonicalReaderText(markup),
+        text,
       });
     }
 

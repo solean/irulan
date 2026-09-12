@@ -82,15 +82,17 @@ export const ReaderFontSizeToggle = ({
 export const ReaderFontSelect = ({
   fontFamily,
   onChange,
+  tone,
 }: {
   fontFamily: ReaderFontId;
   onChange: (font: ReaderFontId) => void;
+  tone: ReaderTone;
 }) => (
   <Select onValueChange={(value) => onChange(value as ReaderFontId)} value={fontFamily}>
     <SelectTrigger aria-label="Reading font" className="reader-font-trigger">
       <SelectValue />
     </SelectTrigger>
-    <SelectContent>
+    <SelectContent className="reader-tone-scope" data-reader-tone={tone}>
       {READER_FONTS.map((font) => (
         <SelectItem key={font.id} value={font.id}>
           <span style={{ fontFamily: font.stack }}>{font.label}</span>

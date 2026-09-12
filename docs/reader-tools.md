@@ -14,34 +14,44 @@ Reader tools depend on the stable-location work in Phase 2 of the product plan. 
 
 Offsets provide fast lookup; quote context can re-anchor a location if text normalization changes. Never persist page numbers.
 
-## Status
+## Status — 🟢 complete
 
-The stable-location primitive is implemented: shared versioned types, canonical whitespace
-normalization, DOM selection serialization, and quote-context range resolution. Canonical
-server-side text extraction walks every linear spine section in reading order and mirrors the
-web renderer. SQLite stores that derived text and keeps an FTS5 index synchronized. New imports
-queue indexing without delaying import responses; existing books index lazily on first search.
-The search API returns counts, chapter labels, bounded snippets, and stable ranges. Reader UI,
-bookmarks, highlights, and notes remain.
+🟢 `done` / `met` means shipped and verified. The word is kept alongside the colour so the
+plan remains readable without colour.
+
+Complete. Stable, versioned text locations are shared by reading progress, search results,
+bookmarks, and annotations. Canonical extraction covers every linear spine section and keeps
+SQLite source rows and FTS5 search data synchronized. The reader exposes full-book search,
+bookmark management, and selection actions for highlights, notes, and copying text. Saved
+ranges re-anchor from quote context, and CSS Highlight painting does not alter document layout.
+
+Reader-tool rows cascade with book deletion and are included with the database, original EPUBs,
+and covers in validated library backup and restore. Query, pagination, snippet, label, note,
+quote, upload, archive, and extraction limits are enforced. The multi-section EPUB fixture
+covers extraction, search, stable navigation, deletion, backup, and restore.
 
 ## Delivery
 
-1. **Stable locations — done.** Shared location types, deterministic EPUB text normalization,
-   and DOM-range serialization and resolution are implemented and verified independently of
-   font, spacing, viewport, and pagination changes.
-2. **In-book search — server complete.** Canonical extraction, transactional SQLite storage,
-   FTS5 indexing, import indexing, lazy backfill, plain-text query handling, pagination, and
-   stable result ranges are implemented. Next, add the reader search panel with `Cmd/Ctrl+F`,
-   arrow-key navigation, `Escape`, and direct navigation to the resolved result range.
-3. **Bookmarks** — persist an optional label and stable location. Add actions to create a bookmark at the current position, rename it, jump to it, and delete it.
-4. **Highlights and notes** — add a text-selection toolbar for highlight, note, and copy. Persist the stable range, selected quote, colour, and optional note. Paint resolved DOM ranges without changing document layout.
-5. **Hardening** — cascade reader-tool records when a book is deleted, include them in library backups, limit search queries and snippets, and cover the flows with a multi-section EPUB fixture.
-
-Start with search as the first vertical slice. It proves text normalization, indexing, stable navigation, the API, and reader UI before the more complex selection interactions.
+1. **Stable locations — 🟢 done.** Shared point and range types, deterministic text
+   normalization, viewport-position serialization, DOM selection serialization, and
+   quote-context resolution are implemented independently of pagination.
+2. **In-book search — 🟢 done.** Canonical extraction, transactional SQLite storage, FTS5
+   indexing, lazy backfill, bounded plain-text queries and snippets, pagination, the reader
+   search panel, keyboard controls, and direct stable-range navigation are implemented.
+3. **Bookmarks — 🟢 done.** Named and unnamed bookmarks persist stable locations and can be
+   created at the current reading position, renamed, opened, and deleted. A filled corner marker
+   identifies the page containing a bookmark.
+4. **Highlights and notes — 🟢 done.** The selection toolbar supports colour highlights,
+   notes, and copying. A range carries one annotation: highlighting an already highlighted
+   passage recolours it instead of stacking a second highlight, enforced by a unique range
+   index. Saved annotations can be opened, recoloured, edited, and deleted, and resolved
+   ranges are painted without changing pagination.
+5. **Hardening — 🟢 done.** Reader-tool records cascade on book deletion, survive full-library
+   backup and restore, enforce bounded inputs, and are covered with a multi-section EPUB.
 
 ## Exit Criteria
 
-- Search covers the complete linear spine and opens the matched text.
-- Search results and saved locations survive repagination.
-- Bookmarks, highlights, and notes survive reload and library restore.
-- All reader tools are usable by keyboard.
+- 🟢 Search covers the complete linear spine and opens the matched text — met.
+- 🟢 Search results and saved locations survive repagination — met.
+- 🟢 Bookmarks, highlights, and notes survive reload and library restore — met.
+- 🟢 All reader tools are usable by keyboard — met.

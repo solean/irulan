@@ -138,11 +138,23 @@ const matchedRange = (row: SearchRow) => {
 };
 
 const searchSnippet = (text: string, result: BookSearchResult["range"]) => {
-  const contextLength = Math.max(0, MAX_SEARCH_SNIPPET_LENGTH - result.exact.length);
+  if (result.exact.length > MAX_SEARCH_SNIPPET_LENGTH - 2) {
+    return `${result.exact.slice(0, MAX_SEARCH_SNIPPET_LENGTH - 2)} …`;
+  }
+
+  const leadingMarker = result.offset > 0 ? "… " : "";
+  const trailingMarker = result.endOffset < text.length ? " …" : "";
+  const contextLength = Math.max(
+    0,
+    MAX_SEARCH_SNIPPET_LENGTH -
+      leadingMarker.length -
+      trailingMarker.length -
+      result.exact.length,
+  );
   const beforeLength = Math.floor(contextLength / 2);
   const start = Math.max(0, result.offset - beforeLength);
   const end = Math.min(text.length, result.endOffset + contextLength - (result.offset - start));
-  return `${start > 0 ? "… " : ""}${text.slice(start, end)}${end < text.length ? " …" : ""}`;
+  return `${start > 0 ? leadingMarker : ""}${text.slice(start, end)}${end < text.length ? trailingMarker : ""}`;
 };
 
 export const searchBook = async (

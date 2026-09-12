@@ -119,6 +119,7 @@ describe("extractEpubReaderTextSections", () => {
         id: section.id,
         href: section.href,
         label: section.label,
+        textLength: section.textLength,
         url: `/api/books/book-search/read/${section.href}`,
       };
       expect(section.text).toBe(canonicalRenderedText(markup, readerSection));

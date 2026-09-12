@@ -2,7 +2,7 @@ const path = require("node:path");
 const { access } = require("node:fs/promises");
 const { readFileSync, writeFileSync } = require("node:fs");
 
-const { app, BrowserWindow, ipcMain, nativeTheme, safeStorage, shell } = require("electron");
+const { app, BrowserWindow, ipcMain, nativeTheme, safeStorage, screen, shell } = require("electron");
 
 const { isExternallyOpenable, isSameOrigin } = require("./url-policy.cjs");
 
@@ -43,8 +43,27 @@ const preloadEntry = path.join(__dirname, "preload.cjs");
 const THEME_BACKGROUNDS = { dark: "#15100B", light: "#F6F4EE" };
 const THEME_PREFERENCES = new Set(["system", "light", "dark"]);
 const THEME_PREFERENCE_SWITCH = "--irulan-theme-preference=";
+const READER_PREFERENCES_SWITCH = "--irulan-reader-preferences=";
+const READER_TONES = new Set(["paper", "sepia", "night"]);
+const READER_FONTS = new Set([
+  "original",
+  "iowan",
+  "georgia",
+  "charter",
+  "source-serif",
+  "literata",
+  "bitter",
+  "geist",
+  "atkinson",
+  "lexend",
+  "sans",
+]);
+const READER_SPACINGS = new Set(["compact", "cozy", "roomy"]);
+
 
 const themePreferenceFile = () => path.join(app.getPath("userData"), "theme.json");
+const readerPreferencesFile = () => path.join(app.getPath("userData"), "reader.json");
+
 
 const loadThemePreference = () => {
   try {
@@ -55,6 +74,46 @@ const loadThemePreference = () => {
   }
   return "system";
 };
+const normalizeReaderPreferences = (value) => {
+  if (!value || typeof value !== "object") return {};
+
+  const preferences = {};
+  if (READER_TONES.has(value.tone)) preferences.tone = value.tone;
+  if (
+    typeof value.fontScale === "number" &&
+    Number.isFinite(value.fontScale) &&
+    value.fontScale >= 0.95 &&
+    value.fontScale <= 1.25
+  ) {
+    preferences.fontScale = value.fontScale;
+  }
+  if (READER_FONTS.has(value.fontFamily)) preferences.fontFamily = value.fontFamily;
+  if (READER_SPACINGS.has(value.lineSpacing)) preferences.lineSpacing = value.lineSpacing;
+  return preferences;
+};
+
+const loadReaderPreferences = () => {
+  try {
+    return normalizeReaderPreferences(JSON.parse(readFileSync(readerPreferencesFile(), "utf8")));
+  } catch {
+    return {};
+  }
+};
+
+const setReaderPreferences = (value) => {
+  const changes = normalizeReaderPreferences(value);
+  if (Object.keys(changes).length === 0) return;
+
+  try {
+    writeFileSync(
+      readerPreferencesFile(),
+      JSON.stringify({ ...loadReaderPreferences(), ...changes }),
+    );
+  } catch (error) {
+    console.error("Failed to persist the reader preferences.", error);
+  }
+};
+
 
 const windowBackgroundColor = () =>
   nativeTheme.shouldUseDarkColors ? THEME_BACKGROUNDS.dark : THEME_BACKGROUNDS.light;
@@ -117,9 +176,12 @@ const buildWindow = (overrides = {}) => {
       preload: preloadEntry,
       sandbox: true,
       // The local server binds an ephemeral port, so every launch is a new
-      // origin with empty localStorage. Hand the renderer the persisted
-      // preference instead of letting it fall back to "system".
-      additionalArguments: [`${THEME_PREFERENCE_SWITCH}${nativeTheme.themeSource}`],
+      // origin with empty localStorage. Seed renderer preferences from durable
+      // shell storage instead of silently resetting them on every restart.
+      additionalArguments: [
+        `${THEME_PREFERENCE_SWITCH}${nativeTheme.themeSource}`,
+        `${READER_PREFERENCES_SWITCH}${encodeURIComponent(JSON.stringify(loadReaderPreferences()))}`,
+      ],
     },
     ...overrides,
   });
@@ -179,6 +241,9 @@ const openReaderWindow = (bookId, search) => {
     minWidth: 480,
     minHeight: 600,
   });
+  if (process.platform === "darwin") {
+    readerWindow.setWindowButtonVisibility(false);
+  }
 
   readerWindows.set(normalizedId, readerWindow);
   readerWindow.on("closed", () => {
@@ -188,6 +253,60 @@ const openReaderWindow = (bookId, search) => {
   });
 
   void readerWindow.loadURL(url);
+};
+
+// Frameless windows normally move through a native drag region, but Chromium
+// swallows every pointer event inside one — a reader bar marked `drag` would
+// lose the hover reveal for its controls and the traffic lights. The bar stays
+// interactive and the shell walks the window with the cursor for as long as
+// the renderer reports a press instead.
+const DRAG_INTERVAL_MS = 8;
+
+let windowDrag = null;
+
+const endWindowDrag = () => {
+  if (!windowDrag) return;
+
+  const { interval, onInterrupt, window } = windowDrag;
+  windowDrag = null;
+  clearInterval(interval);
+  if (!window.isDestroyed()) {
+    window.off("blur", onInterrupt);
+  }
+};
+
+const beginWindowDrag = (window) => {
+  endWindowDrag();
+  if (!window || window.isDestroyed() || window.isFullScreen()) return;
+
+  // The window follows the cursor exactly, so the pointer holds its position
+  // inside the window for the whole drag and this grab offset stays true.
+  const grab = screen.getCursorScreenPoint();
+  const bounds = window.getBounds();
+  const offsetX = grab.x - bounds.x;
+  const offsetY = grab.y - bounds.y;
+
+  const onInterrupt = () => {
+    endWindowDrag();
+  };
+
+  windowDrag = {
+    interval: setInterval(() => {
+      if (window.isDestroyed()) {
+        endWindowDrag();
+        return;
+      }
+
+      const cursor = screen.getCursorScreenPoint();
+      window.setPosition(cursor.x - offsetX, cursor.y - offsetY);
+    }, DRAG_INTERVAL_MS),
+    onInterrupt,
+    window,
+  };
+
+  // Losing focus mid-drag — Mission Control, another app taking the press —
+  // means no pointerup is coming, so stop chasing the cursor.
+  window.on("blur", onInterrupt);
 };
 
 const getStoredBookFilePath = (bookId) => {
@@ -209,8 +328,30 @@ ipcMain.handle("reader:popout", (_event, payload) => {
   openReaderWindow(payload?.bookId, payload?.search);
 });
 
+ipcMain.on("reader:windowButtons", (event, payload) => {
+  if (process.platform !== "darwin") return;
+
+  for (const readerWindow of readerWindows.values()) {
+    if (readerWindow.isDestroyed() || readerWindow.webContents !== event.sender) continue;
+    readerWindow.setWindowButtonVisibility(payload?.visible === true);
+    return;
+  }
+});
+
+ipcMain.on("window:dragStart", (event) => {
+  beginWindowDrag(BrowserWindow.fromWebContents(event.sender));
+});
+
+ipcMain.on("window:dragEnd", () => {
+  endWindowDrag();
+});
+
 ipcMain.handle("theme:preference", (_event, payload) => {
   setThemePreference(payload?.preference);
+});
+
+ipcMain.handle("reader:preferences", (_event, payload) => {
+  setReaderPreferences(payload);
 });
 
 ipcMain.handle("book:showFile", async (_event, payload) => {

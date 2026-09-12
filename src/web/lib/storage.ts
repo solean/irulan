@@ -1,3 +1,6 @@
+import type { ReaderTextLocation } from "../../shared/types";
+import { isReaderTextLocation } from "./reader-location";
+
 import {
   parseThemePreference,
   THEME_STORAGE_KEY,
@@ -7,9 +10,27 @@ import {
 export type BookshelfView = "grid" | "list";
 export type BookshelfDensity = "comfortable" | "compact";
 export type ReaderTone = "paper" | "sepia" | "night";
-export type ReaderFontId = "original" | "iowan" | "georgia" | "palatino" | "charter" | "sans";
+export type ReaderFontId =
+  | "original"
+  | "iowan"
+  | "georgia"
+  | "charter"
+  | "source-serif"
+  | "literata"
+  | "bitter"
+  | "geist"
+  | "atkinson"
+  | "lexend"
+  | "sans";
 export type ReaderSpacingId = "compact" | "cozy" | "roomy";
-export type StoredReaderProgress = { section: string; page: number };
+export type ReaderPreferences = {
+  tone: ReaderTone;
+  fontScale: number;
+  fontFamily: ReaderFontId;
+  lineSpacing: ReaderSpacingId;
+};
+
+export type StoredReaderProgress = ReaderTextLocation;
 
 const BOOKSHELF_VIEW_KEY = "ebook-manager-bookshelf-view";
 const BOOKSHELF_DENSITY_KEY = "ebook-manager-bookshelf-density";
@@ -20,6 +41,15 @@ const READER_FONT_SCALE_KEY = "ebook-manager-reader-font-scale";
 const READER_FONT_KEY = "ebook-manager-reader-font";
 const READER_SPACING_KEY = "ebook-manager-reader-spacing";
 const READER_PROGRESS_KEY_PREFIX = "ebook-manager-reader-progress";
+const getShellReaderPreferences = () =>
+  typeof window === "undefined" ? undefined : window.irulan?.readerPreferences;
+
+const persistReaderPreferencesToShell = (preferences: Partial<ReaderPreferences>) => {
+  if (typeof window !== "undefined") {
+    void window.irulan?.setReaderPreferences?.(preferences);
+  }
+};
+
 
 export const READER_MIN_FONT_SCALE = 0.95;
 export const READER_MAX_FONT_SCALE = 1.25;
@@ -32,28 +62,55 @@ export const READER_FONTS: ReadonlyArray<{
 }> = [
   {
     id: "original",
-    label: "Original",
-    stack: 'ui-serif, "New York", "Iowan Old Style", "Palatino Linotype", Georgia, serif',
+    label: "Default",
+    stack: 'ui-serif, "New York", "Iowan Old Style", "Source Serif 4 Variable", Georgia, serif',
   },
   {
     id: "iowan",
     label: "Iowan",
-    stack: '"Iowan Old Style", "Palatino Linotype", "Book Antiqua", Georgia, serif',
+    stack:
+      '"Iowan Old Style", "Palatino Linotype", "Book Antiqua", "Source Serif 4 Variable", Georgia, serif',
   },
   { id: "georgia", label: "Georgia", stack: 'Georgia, "Times New Roman", serif' },
   {
-    id: "palatino",
-    label: "Palatino",
-    stack: '"Palatino Linotype", "Book Antiqua", Palatino, Georgia, serif',
-  },
-  {
     id: "charter",
     label: "Charter",
-    stack: 'Charter, "Bitstream Charter", "Sitka Text", Georgia, serif',
+    stack: 'Charter, "Bitstream Charter", "Sitka Text", "Source Serif 4 Variable", Georgia, serif',
+  },
+  {
+    id: "source-serif",
+    label: "Source Serif",
+    stack: '"Source Serif 4 Variable", "Iowan Old Style", Georgia, serif',
+  },
+  {
+    id: "literata",
+    label: "Literata",
+    stack: '"Literata Variable", "Source Serif 4 Variable", Georgia, serif',
+  },
+  {
+    id: "bitter",
+    label: "Bitter",
+    stack: '"Bitter Variable", "Source Serif 4 Variable", Georgia, serif',
+  },
+  {
+    id: "geist",
+    label: "Geist",
+    stack: '"Geist Variable", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif',
+  },
+  {
+    id: "atkinson",
+    label: "Atkinson Hyperlegible",
+    stack:
+      '"Atkinson Hyperlegible Next Variable", "Geist Variable", system-ui, sans-serif',
+  },
+  {
+    id: "lexend",
+    label: "Lexend",
+    stack: '"Lexend Variable", "Geist Variable", system-ui, sans-serif',
   },
   {
     id: "sans",
-    label: "Sans",
+    label: "System Sans",
     stack: '-apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif',
   },
 ];
@@ -170,7 +227,9 @@ export function getStoredReaderTone(): ReaderTone | null {
   } catch {
     /* localStorage unavailable */
   }
-  return null;
+
+  const stored = getShellReaderPreferences()?.tone;
+  return stored === "paper" || stored === "sepia" || stored === "night" ? stored : null;
 }
 
 export function setStoredReaderTone(value: ReaderTone) {
@@ -179,6 +238,7 @@ export function setStoredReaderTone(value: ReaderTone) {
   } catch {
     /* localStorage unavailable */
   }
+  persistReaderPreferencesToShell({ tone: value });
 }
 
 export function getStoredReaderFontScale(): number | null {
@@ -194,7 +254,14 @@ export function getStoredReaderFontScale(): number | null {
   } catch {
     /* localStorage unavailable */
   }
-  return null;
+
+  const stored = getShellReaderPreferences()?.fontScale;
+  return stored !== undefined &&
+    Number.isFinite(stored) &&
+    stored >= READER_MIN_FONT_SCALE &&
+    stored <= READER_MAX_FONT_SCALE
+    ? stored
+    : null;
 }
 
 export function setStoredReaderFontScale(value: number) {
@@ -203,16 +270,23 @@ export function setStoredReaderFontScale(value: number) {
   } catch {
     /* localStorage unavailable */
   }
+  persistReaderPreferencesToShell({ fontScale: value });
 }
 
 export function getStoredReaderFont(): ReaderFontId | null {
   try {
     const stored = localStorage.getItem(READER_FONT_KEY);
+    if (stored === "palatino") {
+      setStoredReaderFont("iowan");
+      return "iowan";
+    }
     if (READER_FONTS.some((font) => font.id === stored)) return stored as ReaderFontId;
   } catch {
     /* localStorage unavailable */
   }
-  return null;
+
+  const stored = getShellReaderPreferences()?.fontFamily;
+  return READER_FONTS.some((font) => font.id === stored) ? (stored as ReaderFontId) : null;
 }
 
 export function setStoredReaderFont(value: ReaderFontId) {
@@ -221,6 +295,7 @@ export function setStoredReaderFont(value: ReaderFontId) {
   } catch {
     /* localStorage unavailable */
   }
+  persistReaderPreferencesToShell({ fontFamily: value });
 }
 
 export function getStoredReaderSpacing(): ReaderSpacingId | null {
@@ -232,7 +307,11 @@ export function getStoredReaderSpacing(): ReaderSpacingId | null {
   } catch {
     /* localStorage unavailable */
   }
-  return null;
+
+  const stored = getShellReaderPreferences()?.lineSpacing;
+  return READER_SPACINGS.some((spacing) => spacing.id === stored)
+    ? (stored as ReaderSpacingId)
+    : null;
 }
 
 export function setStoredReaderSpacing(value: ReaderSpacingId) {
@@ -241,6 +320,7 @@ export function setStoredReaderSpacing(value: ReaderSpacingId) {
   } catch {
     /* localStorage unavailable */
   }
+  persistReaderPreferencesToShell({ lineSpacing: value });
 }
 
 export function getStoredReaderProgress(bookId: string): StoredReaderProgress | null {
@@ -248,14 +328,8 @@ export function getStoredReaderProgress(bookId: string): StoredReaderProgress | 
   try {
     const raw = localStorage.getItem(getReaderProgressKey(bookId));
     if (!raw) return null;
-    const parsed = JSON.parse(raw) as Partial<StoredReaderProgress> | null;
-    if (parsed && typeof parsed.section === "string" && parsed.section.length > 0) {
-      const page = Number(parsed.page);
-      return {
-        section: parsed.section,
-        page: Number.isFinite(page) && page >= 1 ? Math.round(page) : 1,
-      };
-    }
+    const parsed: unknown = JSON.parse(raw);
+    return isReaderTextLocation(parsed) ? parsed : null;
   } catch {
     /* localStorage unavailable or malformed */
   }
