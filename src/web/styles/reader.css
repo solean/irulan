@@ -386,8 +386,9 @@
 }
 
 .electron-shell .reader-immersive-bar {
-  /* Electron drag regions discard pointer movement. Keep the toolbar interactive
-     across its full width so its controls can reveal from any point in the bar. */
+  /* Electron drag regions discard every pointer event, so the toolbar keeps
+     hover reveal and the traffic-light toggle by staying interactive across its
+     full width. ReaderPage moves the window from a press instead. */
   -webkit-app-region: no-drag;
 }
 

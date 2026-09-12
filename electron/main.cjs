@@ -2,7 +2,7 @@ const path = require("node:path");
 const { access } = require("node:fs/promises");
 const { readFileSync, writeFileSync } = require("node:fs");
 
-const { app, BrowserWindow, ipcMain, nativeTheme, safeStorage, shell } = require("electron");
+const { app, BrowserWindow, ipcMain, nativeTheme, safeStorage, screen, shell } = require("electron");
 
 const { isExternallyOpenable, isSameOrigin } = require("./url-policy.cjs");
 
@@ -255,6 +255,60 @@ const openReaderWindow = (bookId, search) => {
   void readerWindow.loadURL(url);
 };
 
+// Frameless windows normally move through a native drag region, but Chromium
+// swallows every pointer event inside one — a reader bar marked `drag` would
+// lose the hover reveal for its controls and the traffic lights. The bar stays
+// interactive and the shell walks the window with the cursor for as long as
+// the renderer reports a press instead.
+const DRAG_INTERVAL_MS = 8;
+
+let windowDrag = null;
+
+const endWindowDrag = () => {
+  if (!windowDrag) return;
+
+  const { interval, onInterrupt, window } = windowDrag;
+  windowDrag = null;
+  clearInterval(interval);
+  if (!window.isDestroyed()) {
+    window.off("blur", onInterrupt);
+  }
+};
+
+const beginWindowDrag = (window) => {
+  endWindowDrag();
+  if (!window || window.isDestroyed() || window.isFullScreen()) return;
+
+  // The window follows the cursor exactly, so the pointer holds its position
+  // inside the window for the whole drag and this grab offset stays true.
+  const grab = screen.getCursorScreenPoint();
+  const bounds = window.getBounds();
+  const offsetX = grab.x - bounds.x;
+  const offsetY = grab.y - bounds.y;
+
+  const onInterrupt = () => {
+    endWindowDrag();
+  };
+
+  windowDrag = {
+    interval: setInterval(() => {
+      if (window.isDestroyed()) {
+        endWindowDrag();
+        return;
+      }
+
+      const cursor = screen.getCursorScreenPoint();
+      window.setPosition(cursor.x - offsetX, cursor.y - offsetY);
+    }, DRAG_INTERVAL_MS),
+    onInterrupt,
+    window,
+  };
+
+  // Losing focus mid-drag — Mission Control, another app taking the press —
+  // means no pointerup is coming, so stop chasing the cursor.
+  window.on("blur", onInterrupt);
+};
+
 const getStoredBookFilePath = (bookId) => {
   const normalizedId = String(bookId ?? "").trim();
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(normalizedId)) {
@@ -282,6 +336,14 @@ ipcMain.on("reader:windowButtons", (event, payload) => {
     readerWindow.setWindowButtonVisibility(payload?.visible === true);
     return;
   }
+});
+
+ipcMain.on("window:dragStart", (event) => {
+  beginWindowDrag(BrowserWindow.fromWebContents(event.sender));
+});
+
+ipcMain.on("window:dragEnd", () => {
+  endWindowDrag();
 });
 
 ipcMain.handle("theme:preference", (_event, payload) => {

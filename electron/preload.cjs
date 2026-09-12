@@ -29,6 +29,11 @@ contextBridge.exposeInMainWorld("irulan", {
     ipcRenderer.invoke("reader:popout", { bookId, search }),
   setReaderWindowButtonsVisible: (visible) =>
     ipcRenderer.send("reader:windowButtons", { visible }),
+  // The reader bar cannot be a native drag region without killing the pointer
+  // events its hover-revealed controls need, so it hands window movement to
+  // the shell for the length of a press.
+  beginWindowDrag: () => ipcRenderer.send("window:dragStart"),
+  endWindowDrag: () => ipcRenderer.send("window:dragEnd"),
   showBookFile: (bookId) =>
     ipcRenderer.invoke("book:showFile", { bookId }),
   // The shell's persisted preference, injected at window creation. Every

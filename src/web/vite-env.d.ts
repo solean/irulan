@@ -9,6 +9,8 @@ interface ReaderPreferencesBridge {
 
 interface IrulanBridge {
   openReader: (bookId: string, search: string) => Promise<void>;
+  beginWindowDrag: () => void;
+  endWindowDrag: () => void;
   setReaderWindowButtonsVisible: (visible: boolean) => void;
   showBookFile: (bookId: string) => Promise<void>;
   readerPreferences?: ReaderPreferencesBridge;

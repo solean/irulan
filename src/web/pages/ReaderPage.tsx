@@ -1349,6 +1349,32 @@ export const ReaderPage = () => {
     event.stopPropagation();
   }, []);
 
+  // The popped-out window has no title bar, and the immersive bar cannot be a
+  // native drag region: Electron drag regions swallow every pointer event, so
+  // the toolbar's hover-revealed controls would go dead. Press-and-hold on the
+  // bar's own chrome asks the shell to move the window instead.
+  const onImmersiveBarPointerDown = useCallback((event: ReactPointerEvent<HTMLElement>) => {
+    const shell = window.irulan;
+    if (!shell || !event.isPrimary || event.pointerType !== "mouse" || event.button !== 0) {
+      return;
+    }
+    // Controls own their own presses; only the bare bar moves the window.
+    if ((event.target as HTMLElement).closest("button, a, input, [role='button']")) {
+      return;
+    }
+
+    shell.beginWindowDrag();
+    const endDrag = () => {
+      window.removeEventListener("pointerup", endDrag);
+      window.removeEventListener("pointercancel", endDrag);
+      shell.endWindowDrag();
+    };
+    // The release can land outside the window once it is pinned against the
+    // menu bar, so listen where the event is guaranteed to bubble.
+    window.addEventListener("pointerup", endDrag);
+    window.addEventListener("pointercancel", endDrag);
+  }, []);
+
   // Trackpad two-finger swipe (horizontal wheel) turns pages, Apple
   // Books-style. Attached manually: React wheel listeners are passive, and
   // preventDefault is needed to stop the browser's history-swipe gesture.
@@ -1648,6 +1674,7 @@ export const ReaderPage = () => {
       <div className="reader-immersive reader-tone-scope" data-reader-tone={tone}>
         <header
           className="reader-immersive-bar"
+          onPointerDown={onImmersiveBarPointerDown}
           onPointerEnter={() => window.irulan?.setReaderWindowButtonsVisible(true)}
           onPointerLeave={() => window.irulan?.setReaderWindowButtonsVisible(false)}
         >
