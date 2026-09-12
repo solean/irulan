@@ -48,12 +48,14 @@ type ReaderAnnotationsProps = {
 
 type SelectedText = {
   below: boolean;
+  bottom: number;
   copyText: string;
   left: number;
   range: ReaderTextRange;
   top: number;
 };
 
+const SELECTION_TOOLBAR_GAP = 10;
 const SELECTION_TOOLBAR_VIEWPORT_GUTTER = 8;
 
 const highlightName = (color: ReaderAnnotationColor) => `reader-annotation-${color}`;
@@ -75,6 +77,7 @@ export const ReaderAnnotations = ({
   const panelRef = useRef<HTMLElement | null>(null);
   const latestRequest = useRef(0);
   const selectionFrame = useRef<number | null>(null);
+  const selectionPointerId = useRef<number | null>(null);
   const selectionToolbarRef = useRef<HTMLDivElement | null>(null);
   const [annotations, setAnnotations] = useState<ReaderAnnotation[]>([]);
   const [selectedText, setSelectedText] = useState<SelectedText | null>(null);
@@ -148,6 +151,11 @@ export const ReaderAnnotations = ({
   }, []);
 
   const updateSelection = useEffectEvent(() => {
+    if (selectionPointerId.current !== null) {
+      setSelectedText(null);
+      return;
+    }
+
     const root = readerRootRef.current;
     const viewport = viewportRef.current;
     if (!root || !viewport || !sectionHref || !contentRevision) {
@@ -181,21 +189,36 @@ export const ReaderAnnotations = ({
         bounds.bottom > viewportBounds.top &&
         bounds.top < viewportBounds.bottom,
     );
-    const bounds = visibleBounds.at(-1) ?? domRange.getBoundingClientRect();
-    const left = Math.max(20, Math.min(window.innerWidth - 20, bounds.left + bounds.width / 2));
-    const below = bounds.top < 72;
+    const anchorBounds = visibleBounds.at(-1) ?? domRange.getBoundingClientRect();
+    const selectionTop = Math.min(...visibleBounds.map((bounds) => bounds.top), anchorBounds.top);
+    const selectionBottom = Math.max(...visibleBounds.map((bounds) => bounds.bottom), anchorBounds.bottom);
+    const left = Math.max(
+      20,
+      Math.min(window.innerWidth - 20, anchorBounds.left + anchorBounds.width / 2),
+    );
     setSelectedText({
-      below,
+      below: false,
+      bottom: selectionBottom,
       copyText: selection.toString(),
       left,
       range,
-      top: below ? bounds.bottom + 10 : bounds.top - 10,
+      top: selectionTop,
     });
   });
 
   useLayoutEffect(() => {
     const toolbar = selectionToolbarRef.current;
     if (!toolbar || !selectedText) return;
+
+    const shouldPlaceBelow =
+      selectedText.top - SELECTION_TOOLBAR_GAP - toolbar.offsetHeight <
+      SELECTION_TOOLBAR_VIEWPORT_GUTTER;
+    if (selectedText.below !== shouldPlaceBelow) {
+      setSelectedText((current) =>
+        current === selectedText ? { ...current, below: shouldPlaceBelow } : current,
+      );
+      return;
+    }
 
     toolbar.style.setProperty("--reader-selection-toolbar-shift-x", "0px");
     const bounds = toolbar.getBoundingClientRect();
@@ -210,7 +233,6 @@ export const ReaderAnnotations = ({
   }, [selectedText]);
 
   useEffect(() => {
-
     const scheduleSelectionUpdate = () => {
       if (selectionFrame.current !== null) window.cancelAnimationFrame(selectionFrame.current);
       selectionFrame.current = window.requestAnimationFrame(() => {
@@ -219,15 +241,51 @@ export const ReaderAnnotations = ({
       });
     };
 
+    const onPointerDown = (event: PointerEvent) => {
+      const root = readerRootRef.current;
+      if (
+        event.button !== 0 ||
+        selectionPointerId.current !== null ||
+        !(event.target instanceof Node) ||
+        !root?.contains(event.target)
+      ) {
+        return;
+      }
+
+      selectionPointerId.current = event.pointerId;
+      setSelectedText(null);
+    };
+
+    const onPointerEnd = (event: PointerEvent) => {
+      if (selectionPointerId.current !== event.pointerId) return;
+      selectionPointerId.current = null;
+      scheduleSelectionUpdate();
+    };
+
+    const onWindowBlur = () => {
+      if (selectionPointerId.current === null) return;
+      selectionPointerId.current = null;
+      scheduleSelectionUpdate();
+    };
+
+    document.addEventListener("pointerdown", onPointerDown, true);
+    document.addEventListener("pointerup", onPointerEnd, true);
+    document.addEventListener("pointercancel", onPointerEnd, true);
     document.addEventListener("selectionchange", scheduleSelectionUpdate);
+    window.addEventListener("blur", onWindowBlur);
     window.addEventListener("resize", scheduleSelectionUpdate);
     return () => {
+      document.removeEventListener("pointerdown", onPointerDown, true);
+      document.removeEventListener("pointerup", onPointerEnd, true);
+      document.removeEventListener("pointercancel", onPointerEnd, true);
       document.removeEventListener("selectionchange", scheduleSelectionUpdate);
+      window.removeEventListener("blur", onWindowBlur);
       window.removeEventListener("resize", scheduleSelectionUpdate);
       if (selectionFrame.current !== null) window.cancelAnimationFrame(selectionFrame.current);
       selectionFrame.current = null;
+      selectionPointerId.current = null;
     };
-  }, []);
+  }, [readerRootRef]);
 
   useEffect(() => {
     if (!open && !selectedText) return;
@@ -368,7 +426,9 @@ export const ReaderAnnotations = ({
   const selectionToolbarStyle = selectedText
     ? ({
         left: selectedText.left,
-        top: selectedText.top,
+        top: selectedText.below
+          ? selectedText.bottom + SELECTION_TOOLBAR_GAP
+          : selectedText.top - SELECTION_TOOLBAR_GAP,
         transform: selectedText.below
           ? "translate(calc(-50% + var(--reader-selection-toolbar-shift-x, 0px)), 0)"
           : "translate(calc(-50% + var(--reader-selection-toolbar-shift-x, 0px)), -100%)",
