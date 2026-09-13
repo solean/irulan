@@ -1,3 +1,4 @@
+import { BookOpen, Download, ExternalLink, Mail, RotateCcw } from "lucide-react";
 import type { ChangeEvent, FormEvent } from "react";
 import {
   useEffect,
@@ -223,7 +224,7 @@ export const SettingsPage = () => {
 
   const smtpConfigured = Boolean(settings?.smtp.configured);
   const smtpSender = settings?.smtp.from.trim() || null;
-  const hasAnyKindleEmail = bookshelves.some((bookshelf) => bookshelf.kindleEmail?.trim());
+  const kindleDestinationCount = bookshelves.filter((bookshelf) => bookshelf.kindleEmail?.trim()).length;
   const normalizedSmtpPort = Number.parseInt(smtpForm.port.trim(), 10);
   const smtpDirty = Boolean(
     settings &&
@@ -237,7 +238,7 @@ export const SettingsPage = () => {
   );
 
   return (
-    <div className="page page-narrow stack-lg">
+    <div className="page page-narrow settings-page">
       <Button asChild className="backlink" variant="ghost">
         <Link to="/">
           <ArrowLeftIcon />
@@ -247,180 +248,15 @@ export const SettingsPage = () => {
 
       {loadError ? <p className="inline-error">{loadError}</p> : null}
 
-      <Card className="panel stack-md">
-        <div className="stack-xs">
-          <h2>Library backup</h2>
-          <p className="lede">
-            Download a complete backup of the database, original EPUBs, covers, bookmarks,
-            highlights, and notes. Restoring validates the archive before replacing the current
-            library.
-          </p>
-        </div>
-        <div className="inline-actions">
-          <Button disabled={backingUp || restoring} onClick={() => void onDownloadBackup()} type="button">
-            {backingUp ? "Creating backup…" : "Download backup"}
-          </Button>
-          <Button
-            disabled={backingUp || restoring}
-            onClick={() => restoreInputRef.current?.click()}
-            type="button"
-            variant="outline"
-          >
-            {restoring ? "Restoring…" : "Restore backup"}
-          </Button>
-          <input
-            accept=".zip,application/zip"
-            aria-label="Choose library backup"
-            className="sr-only"
-            disabled={backingUp || restoring}
-            onChange={(event) => void onRestoreBackup(event)}
-            ref={restoreInputRef}
-            type="file"
-          />
-        </div>
-        <p className="smtp-onboarding-step-meta">
-          Restore is a full replacement, not a merge. If validation fails, the current library is
-          kept.
-        </p>
-      </Card>
+      <section className="settings-intro" aria-labelledby="kindle-settings-title">
+        <h2 id="kindle-settings-title">Send to Kindle</h2>
+        <p>Configure email delivery so you can send EPUBs to your Kindle.</p>
+      </section>
 
-      <Card className="panel stack-md">
-        <div className="stack-xs">
-          <h2>Send to Kindle setup</h2>
-          <p className="lede">
-            Irulan emails EPUBs through your SMTP provider, then Amazon decides whether the
-            message is allowed to reach your Kindle library.
-          </p>
-        </div>
-
-        <div className="smtp-onboarding-grid">
-          <div className="smtp-onboarding-callout stack-xs">
-            <p className="smtp-onboarding-eyebrow">What Amazon checks</p>
-            <p className="smtp-onboarding-copy">
-              Amazon must see the exact sender address from <code>SMTP_FROM</code>. Add that
-              address to your approved personal document sender list before you test delivery.
-            </p>
-          </div>
-        </div>
-
-        <section aria-labelledby="amazon-kindle-email-guide" className="smtp-amazon-guide stack-sm">
-          <div className="section-heading">
-            <h3 id="amazon-kindle-email-guide">Amazon Kindle email setup</h3>
-            <a
-              href="https://www.amazon.com/sendtokindle/email"
-              rel="noreferrer"
-              target="_blank"
-            >
-              Open Amazon&apos;s guide
-            </a>
-          </div>
-          <ol className="smtp-amazon-guide-list">
-            <li>
-              Find your Kindle email address in{" "}
-              <strong>Manage Your Content and Devices &gt; Preferences &gt; Personal Document
-              Settings</strong>
-              .
-            </li>
-            <li>
-              Add the sender address shown above to Amazon&apos;s{" "}
-              <strong>Approved Personal Document E-mail List</strong>.
-            </li>
-            <li>
-              Send to Kindle by attaching the EPUB to that Kindle email address. No subject line is
-              required.
-            </li>
-          </ol>
-          <p className="smtp-onboarding-step-meta">
-            Amazon lists EPUB as a supported Send to Kindle file type. Amazon can reject a message
-            even after your SMTP server accepts it.
-          </p>
-        </section>
-
-        <ol className="smtp-onboarding-steps">
-          <li className="smtp-onboarding-step">
-            <span aria-hidden="true" className="smtp-onboarding-step-number">
-              1
-            </span>
-            <div className="stack-xs">
-              <div className="smtp-onboarding-step-heading">
-                <p className="smtp-onboarding-step-title">Save your SMTP connection in Irulan</p>
-                <Badge
-                  className={cn("status-pill", smtpConfigured ? "status-sent" : "status-failed")}
-                  variant={getStatusBadgeVariant(smtpConfigured ? "configured" : "missing")}
-                >
-                  {smtpConfigured ? "Ready" : "Needs SMTP"}
-                </Badge>
-              </div>
-              <p className="smtp-onboarding-step-copy">
-                Use the SMTP form below to set the server, port, security mode, optional auth, and
-                sender address. Irulan uses the saved values immediately after you press save.
-              </p>
-            </div>
-          </li>
-          <li className="smtp-onboarding-step">
-            <span aria-hidden="true" className="smtp-onboarding-step-number">
-              2
-            </span>
-            <div className="stack-xs">
-              <div className="smtp-onboarding-step-heading">
-                <p className="smtp-onboarding-step-title">Approve the sender in Amazon</p>
-                <Badge className="status-pill status-pending" variant="outline">
-                  Manual step
-                </Badge>
-              </div>
-              <p className="smtp-onboarding-step-copy">
-                In Amazon Kindle settings, add{" "}
-                <code>{smtpSender ?? "the address from SMTP_FROM"}</code> to the Approved Personal
-                Document E-mail List. SMTP success only means your mail server accepted the
-                message. Amazon can still reject it after that.
-              </p>
-            </div>
-          </li>
-          <li className="smtp-onboarding-step">
-            <span aria-hidden="true" className="smtp-onboarding-step-number">
-              3
-            </span>
-            <div className="stack-xs">
-              <div className="smtp-onboarding-step-heading">
-                <p className="smtp-onboarding-step-title">Create bookshelves and send tests</p>
-                <Badge
-                  className={cn(
-                    "status-pill",
-                    hasAnyKindleEmail ? "status-sent" : "status-pending",
-                  )}
-                  variant={getStatusBadgeVariant(hasAnyKindleEmail ? "configured" : "pending")}
-                >
-                  {hasAnyKindleEmail ? "Ready" : "Needs address"}
-                </Badge>
-              </div>
-              <p className="smtp-onboarding-step-copy">
-                Save a Kindle destination on each bookshelf that should send books to a device,
-                then send a test email from the bookshelf page.
-              </p>
-              {hasAnyKindleEmail ? (
-                <p className="smtp-onboarding-step-meta">
-                  {numberFormatter.format(bookshelves.filter((bookshelf) => bookshelf.kindleEmail).length)}{" "}
-                  shelves have Kindle destinations.
-                </p>
-              ) : null}
-              <Button asChild size="sm" variant="outline">
-                <Link to="/bookshelves">Open bookshelves</Link>
-              </Button>
-            </div>
-          </li>
-        </ol>
-
-        <p className="smtp-onboarding-note">
-          If saving works but sending still fails, the usual causes are the wrong port, the wrong
-          TLS mode, or a provider that expects an app password instead of your normal mailbox
-          password.
-        </p>
-      </Card>
-
-      <Card className="panel stack-md">
+      <Card className="panel settings-mail-panel">
         <div className="stack-xs">
           <div className="section-heading">
-            <h2>SMTP connection</h2>
+            <h2>Mail connection</h2>
             <Badge
               className={cn("status-pill", smtpConfigured ? "status-sent" : "status-failed")}
               variant={getStatusBadgeVariant(smtpConfigured ? "configured" : "missing")}
@@ -429,12 +265,11 @@ export const SettingsPage = () => {
             </Badge>
           </div>
           <p className="lede">
-            Store the mail server Irulan should use for Send to Kindle. If these values are
-            currently coming from the environment, saving here overrides them for this library.
+            Use the SMTP settings from your mail provider.
           </p>
         </div>
 
-        <form className="stack-md" onSubmit={onSaveSmtp}>
+        <form className="settings-mail-form" onSubmit={onSaveSmtp}>
           <div className="settings-form-grid">
             <div className="stack-xs">
               <Label className="field-label" htmlFor="smtp-host">
@@ -508,6 +343,26 @@ export const SettingsPage = () => {
                 type="text"
                 value={smtpForm.user}
               />
+            </div>
+            <div className="stack-xs">
+              <Label className="field-label" htmlFor="smtp-from">
+                Sender address
+              </Label>
+              <Input
+                autoComplete="email"
+                aria-describedby="smtp-from-help"
+                id="smtp-from"
+                name="smtp_from"
+                onChange={(event) => {
+                  const value = event.currentTarget.value;
+                  setSmtpForm((current) => ({ ...current, from: value }));
+                }}
+                placeholder="sender@example.com"
+                spellCheck={false}
+                type="email"
+                value={smtpForm.from}
+              />
+              <p className="settings-help" id="smtp-from-help">This is the address Amazon must approve.</p>
             </div>
             <div className="stack-xs">
               <Label className="field-label" htmlFor="smtp-password">
@@ -623,38 +478,78 @@ export const SettingsPage = () => {
                 </div>
               ) : null}
             </div>
-            <div className="stack-xs">
-              <Label className="field-label" htmlFor="smtp-from">
-                Sender address
-              </Label>
-              <Input
-                autoComplete="email"
-                id="smtp-from"
-                name="smtp_from"
-                onChange={(event) => {
-                  const value = event.currentTarget.value;
-                  setSmtpForm((current) => ({ ...current, from: value }));
-                }}
-                placeholder="sender@example.com"
-                spellCheck={false}
-                type="email"
-                value={smtpForm.from}
-              />
-            </div>
           </div>
 
-          <p className="smtp-onboarding-step-meta">
-            Leave the password blank to keep the existing credential. Environment credentials are
-            managed outside this form.
-          </p>
-
-          <div className="inline-actions">
-            <Button disabled={savingSmtp || !smtpDirty} type="submit">
-              {savingSmtp ? "Saving\u2026" : "Save SMTP"}
+          <div className="settings-form-footer">
+            <p className="settings-help">
+              Leave the password blank to keep the existing credential.
+              Saving overrides environment settings for this library.
+            </p>
+            <Button disabled={savingSmtp || restoring || !settings || !smtpDirty} type="submit">
+              {savingSmtp ? "Saving…" : "Save changes"}
             </Button>
           </div>
         </form>
       </Card>
+
+      <section aria-labelledby="amazon-sender-title" className="settings-action-row settings-amazon-row">
+        <Mail aria-hidden="true" className="settings-row-icon" />
+        <div className="settings-row-copy">
+          <h2 id="amazon-sender-title">Approve your sender in Amazon</h2>
+          <p>
+            {smtpSender ? <>Add <code>{smtpSender}</code> to your approved senders.</> : "Save a sender address above, then add it to your approved senders in Amazon."}
+          </p>
+          <details className="settings-disclosure">
+            <summary>View instructions</summary>
+            <ol className="smtp-amazon-guide-list">
+              <li>In Amazon, open <strong>Manage Your Content and Devices &gt; Preferences &gt; Personal Document Settings</strong>.</li>
+              <li>Add your saved sender address to the <strong>Approved Personal Document E-mail List</strong>.</li>
+              <li>Find your Kindle email address and save it on a bookshelf, then send a test from that bookshelf.</li>
+            </ol>
+            <p className="settings-help">Approval happens in Amazon. A saved mail connection does not verify approval or guarantee delivery.</p>
+          </details>
+        </div>
+        <Button asChild variant="outline">
+          <a href="https://www.amazon.com/sendtokindle/email" rel="noreferrer" target="_blank">
+            Open Amazon’s guide <ExternalLink aria-hidden="true" />
+          </a>
+        </Button>
+      </section>
+
+      <section aria-labelledby="kindle-destinations-title" className="settings-action-row">
+        <BookOpen aria-hidden="true" className="settings-row-icon" />
+        <div className="settings-row-copy">
+          <h2 id="kindle-destinations-title">Kindle destinations</h2>
+          <p>{kindleDestinationCount > 0
+            ? `${numberFormatter.format(kindleDestinationCount)} ${kindleDestinationCount === 1 ? "bookshelf has" : "bookshelves have"} a Kindle address.`
+            : "Add a Kindle address to a bookshelf to start sending books."}</p>
+        </div>
+        <Button asChild variant="outline"><Link to="/bookshelves">Manage bookshelves</Link></Button>
+      </section>
+
+      <details className="settings-disclosure settings-troubleshooting">
+        <summary>Having trouble with delivery?</summary>
+        <p>Check your SMTP port and security mode, and whether your provider requires an app password. Confirm your sender is approved in Amazon and the bookshelf has the correct Kindle address. Your mail server accepting a message does not guarantee Amazon will deliver it.</p>
+      </details>
+
+      <section aria-labelledby="library-backup-title" className="settings-backup">
+        <div className="settings-row-copy">
+          <h2 id="library-backup-title">Library backup</h2>
+          <p>Export your books, covers, notes, and library data.</p>
+        </div>
+        <div className="settings-backup-controls">
+          <div className="settings-backup-actions">
+            <Button disabled={backingUp || restoring} onClick={() => void onDownloadBackup()} type="button">
+              <Download aria-hidden="true" />{backingUp ? "Creating backup…" : "Download backup"}
+            </Button>
+            <Button disabled={backingUp || restoring || savingSmtp} onClick={() => restoreInputRef.current?.click()} type="button" variant="outline">
+              <RotateCcw aria-hidden="true" />{restoring ? "Restoring…" : "Restore backup"}
+            </Button>
+          </div>
+          <p className="settings-help">Restoring replaces your current library. If validation fails, your library is kept.</p>
+          <input accept=".zip,application/zip" aria-label="Choose library backup" className="sr-only" disabled={backingUp || restoring || savingSmtp} onChange={(event) => void onRestoreBackup(event)} ref={restoreInputRef} type="file" />
+        </div>
+      </section>
     </div>
   );
 };
