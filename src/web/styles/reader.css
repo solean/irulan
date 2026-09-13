@@ -793,8 +793,20 @@
   }
 }
 
-.reader-body ::selection {
-  background: color-mix(in srgb, var(--reader-mark) 75%, transparent);
+.reader-body[data-reader-selection-color="yellow"] ::selection {
+  background: rgba(243, 207, 98, 0.52);
+}
+
+.reader-body[data-reader-selection-color="green"] ::selection {
+  background: rgba(111, 201, 133, 0.46);
+}
+
+.reader-body[data-reader-selection-color="blue"] ::selection {
+  background: rgba(100, 181, 232, 0.46);
+}
+
+.reader-body[data-reader-selection-color="pink"] ::selection {
+  background: rgba(226, 126, 168, 0.44);
 }
 
 .reader-body :is(h1, h2, h3, h4, h5, h6, [id]) {

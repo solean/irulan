@@ -145,6 +145,16 @@ export const ReaderAnnotations = ({
     };
   }, [annotations, bookId, contentRevision, readerRootRef, sectionHref]);
 
+  useLayoutEffect(() => {
+    const root = readerRootRef.current;
+    if (!root) return;
+
+    root.dataset.readerSelectionColor = selectedColor;
+    return () => {
+      delete root.dataset.readerSelectionColor;
+    };
+  }, [contentRevision, readerRootRef, selectedColor]);
+
   const clearSelection = useCallback(() => {
     setSelectedText(null);
     window.getSelection()?.removeAllRanges();
@@ -364,12 +374,14 @@ export const ReaderAnnotations = ({
     async (annotation: ReaderAnnotation, color: ReaderAnnotationColor) => {
       setSaving(true);
       setError(null);
+      setAnnotations((current) => replaceAnnotation(current, { ...annotation, color }));
       try {
         const updated = await api.updateReaderAnnotation(bookId, annotation.id, { color });
         setAnnotations((current) => replaceAnnotation(current, updated));
         setStatus("Highlight colour updated.");
       } catch (requestError) {
         setError(requestError instanceof Error ? requestError.message : "Could not update the colour.");
+        setAnnotations((current) => replaceAnnotation(current, annotation));
       } finally {
         setSaving(false);
       }
