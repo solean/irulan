@@ -44,6 +44,7 @@
   --duration-small: 180ms;
   --duration-enter: 220ms;
   --duration-exit: 140ms;
+  --duration-morph: 260ms;
 
   --button-primary: #7B5A33;
   --button-primary-hover: #6C4F2E;

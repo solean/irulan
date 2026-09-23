@@ -340,6 +340,17 @@
   animation: fade-in 160ms ease;
 }
 
+/* ─── Cover shared-element transition (lib/view-transition.ts) ─── */
+
+::view-transition-group(root) {
+  animation-duration: var(--duration-small);
+}
+
+::view-transition-group(book-cover) {
+  animation-duration: var(--duration-morph);
+  animation-timing-function: var(--ease-in-out);
+}
+
 .stack-xs > * + * { margin-top: 4px; }
 .stack-sm > * + * { margin-top: 8px; }
 .stack-md > * + * { margin-top: 16px; }

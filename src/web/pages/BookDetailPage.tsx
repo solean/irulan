@@ -43,6 +43,7 @@ import {
   openReaderWindow,
 } from "../lib/navigation";
 import { getStatusBadgeVariant } from "../lib/status";
+import { navigateWithCoverTransition } from "../lib/view-transition";
 
 export const BookDetailPage = () => {
   const { bookId = "" } = useParams();
@@ -425,7 +426,12 @@ export const BookDetailPage = () => {
 
         <div className="detail-page-header">
         <Button asChild className="backlink" variant="ghost">
-          <Link to={backHref}>
+          <Link
+            onClick={(event) =>
+              navigateWithCoverTransition(event, book.id, () => navigate(backHref))
+            }
+            to={backHref}
+          >
             <ArrowLeftIcon />
             Bookshelf
           </Link>
@@ -439,7 +445,7 @@ export const BookDetailPage = () => {
           onClick={() => openReaderWindow(book.id, getReaderSearch(navigationBookshelfId))}
           type="button"
         >
-          <BookCover book={book} large />
+          <BookCover book={book} large transitionId={book.id} />
           <span className="detail-cover-overlay" aria-hidden="true">
             <span className="detail-cover-overlay-icon">
               <PlayIcon />

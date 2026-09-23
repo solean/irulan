@@ -277,8 +277,17 @@ const PlaceholderCover = ({ title }: { title: string }) => (
   </div>
 );
 
-export const BookCover = ({ book, large = false }: { book: BookSummary; large?: boolean }) => (
-  <div className={`book-cover ${large ? "book-cover-large" : ""}`}>
+export const BookCover = ({
+  book,
+  large = false,
+  transitionId,
+}: {
+  book: BookSummary;
+  large?: boolean;
+  /** Marks this cover as a shared-element target; see lib/view-transition. */
+  transitionId?: string;
+}) => (
+  <div className={`book-cover ${large ? "book-cover-large" : ""}`} data-cover-transition={transitionId}>
     {book.coverUrl ? (
       <img
         alt=""

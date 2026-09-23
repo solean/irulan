@@ -36,6 +36,7 @@ import {
   numberFormatter,
 } from "../lib/format";
 import { getBookHref } from "../lib/navigation";
+import { navigateWithCoverTransition } from "../lib/view-transition";
 import { BookCover, BookMetadataStrip } from "./book";
 import {
   PanelLeftClose,
@@ -230,7 +231,10 @@ export const BookshelfGrid = ({
   onBookContextKeyDown,
   onBookContextMenu,
   onOpenActionMenu,
-}: BookshelfGridProps) => (
+}: BookshelfGridProps) => {
+  const navigate = useNavigate();
+
+  return (
   <section
     aria-label="Bookshelf grid"
     className={cn("books-grid", `books-grid-${density}`)}
@@ -245,13 +249,17 @@ export const BookshelfGrid = ({
           <Link
             aria-label={`Open ${book.title} by ${book.author}`}
             className="book-card"
+            onClick={(event) => {
+              const href = getBookHref(book.id, bookshelfId);
+              navigateWithCoverTransition(event, book.id, () => navigate(href));
+            }}
             onContextMenu={(event) => onBookContextMenu(book, event)}
             onKeyDown={(event) => onBookContextKeyDown(book, event)}
             to={getBookHref(book.id, bookshelfId)}
             title={book.title}
           >
             <div className="book-cover-wrap">
-              <BookCover book={book} />
+              <BookCover book={book} transitionId={book.id} />
               {book.readStatus === "reading" ? (
                 <span aria-hidden="true" className="book-cover-progress" />
               ) : null}
@@ -288,7 +296,8 @@ export const BookshelfGrid = ({
       );
     })}
   </section>
-);
+  );
+};
 
 type BookshelfListProps = {
   books: BookSummary[];
