@@ -81,6 +81,30 @@
   color: var(--success);
 }
 
+/* ─── Drawn check (DrawnCheck) ─── */
+
+.drawn-check {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.drawn-check-draw path {
+  stroke-dasharray: 1;
+  animation: drawn-check 320ms var(--ease-out) var(--drawn-check-delay, 0ms) both;
+}
+
+@keyframes drawn-check {
+  from {
+    stroke-dashoffset: 1;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
 /* ─── Toasts ─── */
 
 .toast-viewport {

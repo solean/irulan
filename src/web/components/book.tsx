@@ -47,6 +47,27 @@ export const ReadStatusBadge = ({ status }: { status: ReadStatus }) => (
   </span>
 )
 
+/** Check mark whose stroke draws in when `draw` is set (see .drawn-check). */
+export const DrawnCheck = ({ draw = false }: { draw?: boolean }) => (
+  <svg aria-hidden="true" className={cn("drawn-check", draw && "drawn-check-draw")} viewBox="0 0 24 24">
+    <path d="M5 12.5l4.5 4.5L19 7.5" pathLength={1} />
+  </svg>
+);
+
+/**
+ * One-shot overlay for a cover when a book is marked finished: a gold sheen
+ * sweeps across, then a seal with a drawn check pops in and fades. Mount it
+ * with a fresh `key` per celebration; it is inert and ends fully transparent.
+ */
+export const FinishCelebration = () => (
+  <span aria-hidden="true" className="finish-celebration">
+    <span className="finish-sheen" />
+    <span className="finish-seal">
+      <DrawnCheck draw />
+    </span>
+  </span>
+);
+
 export const RatingStars = ({
   compact = false,
   rating,

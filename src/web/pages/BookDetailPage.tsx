@@ -20,6 +20,7 @@ import type {
 import {
   BookCover,
   BookMetadataEditor,
+  FinishCelebration,
   RatingStars,
   ReadStatusBadge,
 } from "../components/book";
@@ -62,6 +63,9 @@ export const BookDetailPage = () => {
   const [sending, setSending] = useState(false);
   const [savingBookShelves, setSavingBookShelves] = useState(false);
   const [savingMetadata, setSavingMetadata] = useState(false);
+  // Bumped when a save confirms the move into "finished"; keys the one-shot
+  // cover celebration so each confirmation replays it.
+  const [finishCelebration, setFinishCelebration] = useState(0);
   const [deleting, setDeleting] = useState(false);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -294,7 +298,11 @@ export const BookDetailPage = () => {
     setMetadataError(null);
 
     try {
-      setBook(await api.saveBookMetadata(book.id, metadata));
+      const saved = await api.saveBookMetadata(book.id, metadata);
+      setBook(saved);
+      if (previousBook.readStatus !== "finished" && saved.readStatus === "finished") {
+        setFinishCelebration((count) => count + 1);
+      }
     } catch (requestError) {
       setBook(previousBook);
       const message =
@@ -452,6 +460,7 @@ export const BookDetailPage = () => {
             </span>
             <span className="detail-cover-overlay-label">Read</span>
           </span>
+          {finishCelebration > 0 ? <FinishCelebration key={finishCelebration} /> : null}
         </button>
 
         <div className="detail-identity stack-md">

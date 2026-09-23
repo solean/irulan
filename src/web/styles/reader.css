@@ -283,6 +283,87 @@
   stroke-width: 1;
 }
 
+/* ─── End of book (ReaderEndCard) ─── */
+
+.reader-end-card {
+  position: absolute;
+  z-index: 3;
+  inset-inline: 0;
+  bottom: clamp(12px, 2.5vw, 24px);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: max-content;
+  max-width: calc(100% - 32px);
+  margin-inline: auto;
+  padding: 10px 8px 10px 12px;
+  border: 1px solid var(--reader-paper-edge);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--reader-paper) 94%, var(--reader-ink));
+  color: var(--reader-ink);
+  box-shadow: 0 10px 30px var(--reader-paper-shadow);
+  transition:
+    opacity var(--duration-enter) var(--ease-out),
+    translate var(--duration-enter) var(--ease-out);
+}
+
+@starting-style {
+  .reader-end-card {
+    opacity: 0;
+    translate: 0 6px;
+  }
+}
+
+.reader-end-mark {
+  display: grid;
+  flex-shrink: 0;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border: 1.5px solid color-mix(in srgb, var(--reader-muted) 70%, transparent);
+  border-radius: 999px;
+  transition:
+    background-color var(--duration-small) ease,
+    border-color var(--duration-small) ease,
+    color var(--duration-small) ease;
+}
+
+.reader-end-mark-finished {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--text-on-accent);
+}
+
+.reader-end-mark .drawn-check {
+  width: 16px;
+  height: 16px;
+  stroke-width: 2.5;
+  --drawn-check-delay: 80ms;
+}
+
+.reader-end-copy {
+  display: grid;
+  min-width: 0;
+  line-height: 1.3;
+}
+
+.reader-end-copy strong {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.reader-end-copy span {
+  overflow: hidden;
+  color: var(--reader-muted);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.reader-end-dismiss {
+  color: var(--reader-muted);
+}
+
 .reader-loading {
   min-height: 50vh;
 }

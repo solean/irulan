@@ -35,6 +35,7 @@ import {
   ReaderSpacingToggle,
   ReaderToneToggle,
 } from "../components/reader-appearance-controls";
+import { ReaderEndCard } from "../components/reader-end-card";
 import { ReaderSearch } from "../components/reader-search";
 import {
   ArrowLeftIcon,
@@ -1513,6 +1514,13 @@ export const ReaderPage = () => {
 
   const prevDisabled = currentPage === 1 && !previousSection;
   const nextDisabled = currentPage >= pageCount && !nextSection;
+  // The true end of the book: last page of the last section, fully laid out.
+  const atBookEnd =
+    nextDisabled &&
+    Boolean(sectionDocument && displayedSection) &&
+    !sectionLoading &&
+    !isSwappingSection &&
+    pageSpan > 0;
 
   const renderTocNav = (onAfterSelect?: () => void) => (
     <nav aria-label="Table of contents" className="reader-toc">
@@ -1605,6 +1613,7 @@ export const ReaderPage = () => {
             <BookmarkIcon />
           </span>
         ) : null}
+        {atBookEnd ? <ReaderEndCard bookId={bookId} title={reader.title} /> : null}
         {sectionError ? <p className="inline-error">{sectionError}</p> : null}
 
         {!sectionDocument || !displayedSection ? (

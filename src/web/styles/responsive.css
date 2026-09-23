@@ -313,8 +313,29 @@
     scale: none !important;
   }
 
-  .toast {
+  .toast,
+  .reader-end-card {
     translate: none !important;
+  }
+
+  /* Finished celebration: no sweep, the seal only fades, the check is drawn. */
+  .finish-sheen {
+    display: none;
+  }
+
+  @keyframes finish-seal {
+    0%,
+    100% {
+      opacity: 0;
+    }
+    16%,
+    78% {
+      opacity: 1;
+    }
+  }
+
+  .drawn-check-draw path {
+    animation: none;
   }
 
   /* tw-animate-css dialogs/selects: keep fade, drop zoom and slide. */

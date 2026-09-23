@@ -139,6 +139,83 @@
   font-variant-caps: all-small-caps;
 }
 
+/* ─── Finished celebration (FinishCelebration) ───
+   One-shot sequence, so keyframes are fine: sheen sweeps (0-800ms), the seal
+   pops in at 150ms, its check draws at 350ms, and everything is gone by
+   ~1.55s. `both` fill keeps it invisible before and after. */
+
+.finish-celebration {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  border-radius: var(--radius-md);
+  pointer-events: none;
+}
+
+.finish-sheen {
+  position: absolute;
+  inset: -10% -40%;
+  background: linear-gradient(
+    105deg,
+    transparent 38%,
+    rgba(255, 236, 196, 0.55) 48%,
+    rgba(255, 248, 230, 0.8) 50%,
+    rgba(255, 236, 196, 0.55) 52%,
+    transparent 62%
+  );
+  mix-blend-mode: screen;
+  animation: finish-sheen 800ms var(--ease-in-out) both;
+}
+
+.finish-seal {
+  display: grid;
+  place-items: center;
+  width: 52px;
+  height: 52px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: var(--text-on-accent);
+  box-shadow: 0 12px 24px rgba(0, 0, 0, 0.32);
+  animation: finish-seal 1400ms var(--ease-out) 150ms both;
+}
+
+.finish-seal .drawn-check {
+  width: 26px;
+  height: 26px;
+  stroke-width: 2.5;
+  --drawn-check-delay: 350ms;
+}
+
+@keyframes finish-sheen {
+  from {
+    translate: -70% 0;
+  }
+  to {
+    translate: 70% 0;
+  }
+}
+
+@keyframes finish-seal {
+  0% {
+    opacity: 0;
+    scale: 0.9;
+  }
+  16% {
+    opacity: 1;
+    scale: 1;
+  }
+  78% {
+    opacity: 1;
+    scale: 1;
+  }
+  100% {
+    opacity: 0;
+    scale: 0.98;
+  }
+}
+
 .detail-identity {
   min-width: 0;
 }
