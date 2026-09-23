@@ -5,6 +5,7 @@ import { Input } from "@/components/ui/input";
 import type { ReaderBookmark, ReaderTextLocation } from "../../shared/types";
 import { MAX_READER_BOOKMARK_LABEL_LENGTH } from "../../shared/types";
 import { useDismissOnOutsidePress } from "../hooks/use-dismiss-on-outside-press";
+import { OVERLAY_EXIT_MS, usePresence } from "../hooks/use-presence";
 import { api } from "../lib/api";
 
 type ReaderBookmarksProps = {
@@ -143,11 +144,19 @@ export const ReaderBookmarks = ({
   const visibleError = error ?? loadError;
 
   useDismissOnOutsidePress(panelRef, open, () => onOpenChange(false));
+  const presence = usePresence(open, OVERLAY_EXIT_MS);
 
-  if (!open) return null;
+  if (!presence.value) return null;
 
   return (
-    <aside aria-label="Bookmarks" className="reader-tool-panel" ref={panelRef} role="dialog">
+    <aside
+      aria-label="Bookmarks"
+      className="reader-tool-panel"
+      data-state={presence.closing ? "closed" : "open"}
+      inert={presence.closing}
+      ref={panelRef}
+      role="dialog"
+    >
       <div className="reader-tool-panel-header">
         <div>
           <p className="eyebrow">Reader tools</p>

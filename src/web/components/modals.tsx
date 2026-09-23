@@ -91,8 +91,6 @@ export const ImportBooksModal = ({
     };
   }, [open, reset]);
 
-  if (!open) return null;
-
   return (
     <Dialog
       onOpenChange={(nextOpen) => {
@@ -215,8 +213,6 @@ export const ImportTargetModal = ({
       confirmButtonRef.current?.focus();
     }
   }, [open]);
-
-  if (!open) return null;
 
   return (
     <Dialog

@@ -31,6 +31,7 @@ import { cn } from "@/lib/utils";
 import {
   BOOKS_PAGE_SIZE,
   type BookSummary,
+  type ImportResult,
   type BookshelfSummary,
   type SettingsPayload,
 } from "../../shared/types";
@@ -75,12 +76,12 @@ import {
 import { useDebouncedValue } from "../hooks/use-debounced-value";
 import { useDocumentTitle } from "../hooks/use-document-title";
 import { useFileDropTarget } from "../hooks/use-file-drop-target";
+import { OVERLAY_EXIT_MS, usePresence } from "../hooks/use-presence";
 import { useToast } from "../hooks/use-toast";
 import { api } from "../lib/api";
 import {
   getImportableFiles,
-  getImportToastTitle,
-  getImportToastVariant,
+  getImportSummaryToast,
   IMPORT_BATCH_SIZE,
   INVALID_IMPORT_FILES_MESSAGE,
 } from "../lib/file-import";
@@ -135,6 +136,8 @@ export const BookshelfPage = () => {
   const [hasLoadedBookshelves, setHasLoadedBookshelves] = useState(false);
   const [onboardingDismissed, setOnboardingDismissed] = useState(getStoredOnboardingDismissed);
   const [bookActionMenu, setBookActionMenu] = useState<BookshelfContextMenuState | null>(null);
+  const bookMenuPresence = usePresence(bookActionMenu, OVERLAY_EXIT_MS);
+  const bookMenu = bookMenuPresence.value;
   const [sendingBookId, setSendingBookId] = useState<string | null>(null);
   const [bookPendingSend, setBookPendingSend] = useState<BookSummary | null>(null);
   const [sendError, setSendError] = useState<string | null>(null);
@@ -492,22 +495,21 @@ export const BookshelfPage = () => {
     setUploading(true);
     setError(null);
 
+    const results: ImportResult[] = [];
+    let summarized = false;
     try {
       for (let index = 0; index < files.length; index += IMPORT_BATCH_SIZE) {
         const batch = files.slice(index, index + IMPORT_BATCH_SIZE);
-        const batchResults = await api.importBooks(batch, bookshelfIds);
-        for (const result of batchResults) {
-          toast({
-            title: getImportToastTitle(result.status),
-            description: result.message,
-            variant: getImportToastVariant(result.status),
-          });
-        }
+        results.push(...(await api.importBooks(batch, bookshelfIds)));
       }
 
+      toast(getImportSummaryToast(results));
+      summarized = true;
       await loadBooks();
       await loadBookshelves();
     } catch (requestError) {
+      // A later batch failed: still report what the earlier ones did.
+      if (!summarized && results.length > 0) toast(getImportSummaryToast(results));
       toast({
         title: "Import failed",
         description: requestError instanceof Error ? requestError.message : "Import failed.",
@@ -636,18 +638,18 @@ export const BookshelfPage = () => {
     setStoredOnboardingDismissed(true);
     setOnboardingDismissed(true);
   };
-  const activeBookMenuItems: OverflowMenuItem[] = bookActionMenu
+  const activeBookMenuItems: OverflowMenuItem[] = bookMenu
     ? [
         ...(canSendToKindleFromShelf
           ? [
               {
                 id: "send",
                 label:
-                  sendingBookId === bookActionMenu.book.id ? "Sending\u2026" : "Send to Kindle",
+                  sendingBookId === bookMenu.book.id ? "Sending\u2026" : "Send to Kindle",
                 disabled: sendingBookId !== null || deletingBookId !== null,
                 onSelect: () => {
                   setSendError(null);
-                  setBookPendingSend(bookActionMenu.book);
+                  setBookPendingSend(bookMenu.book);
                 },
               },
             ]
@@ -657,7 +659,7 @@ export const BookshelfPage = () => {
           label: "Read book",
           onSelect: () =>
             openReaderWindow(
-              bookActionMenu.book.id,
+              bookMenu.book.id,
               getReaderSearch(activeBookshelfId),
             ),
         },
@@ -667,7 +669,7 @@ export const BookshelfPage = () => {
           disabled: sendingBookId !== null || deletingBookId !== null,
           onSelect: () => {
             setDeleteError(null);
-            setBookPendingDelete(bookActionMenu.book);
+            setBookPendingDelete(bookMenu.book);
           },
           variant: "destructive",
         },
@@ -689,12 +691,16 @@ export const BookshelfPage = () => {
       onDragOver={bookshelfDropTarget.onDragOver}
       onDrop={bookshelfDropTarget.onDrop}
     >
-      {bookActionMenu ? (
+      {bookMenu ? (
         <BookActionMenu
+          closing={bookMenuPresence.closing}
           items={activeBookMenuItems}
+          key={bookMenu.book.id}
           onClose={() => setBookActionMenu(null)}
-          x={bookActionMenu.x}
-          y={bookActionMenu.y}
+          originX={bookMenu.originX}
+          originY={bookMenu.originY}
+          x={bookMenu.x}
+          y={bookMenu.y}
         />
       ) : null}
 

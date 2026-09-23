@@ -17,6 +17,7 @@ import {
 
 import { cn } from "@/lib/utils";
 
+import { OVERLAY_EXIT_MS, usePresence } from "../hooks/use-presence";
 import { useTheme } from "../hooks/use-theme";
 import { BookIcon } from "../components/icons";
 import { DatabaseRecoveryNotice } from "../components/database-recovery-notice";
@@ -32,6 +33,7 @@ const AppMenu = () => {
   const location = useLocation();
   const { setThemePreference, themePreference } = useTheme();
   const [open, setOpen] = useState(false);
+  const presence = usePresence(open, OVERLAY_EXIT_MS);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const popoverRef = useRef<HTMLDivElement | null>(null);
   const triggerRef = useRef<HTMLButtonElement | null>(null);
@@ -108,10 +110,12 @@ const AppMenu = () => {
         <MoreHorizontal aria-hidden="true" />
       </button>
 
-      {open ? (
+      {presence.value ? (
         <div
           aria-label="App menu"
           className="app-menu-popover"
+          data-state={presence.closing ? "closed" : "open"}
+          inert={presence.closing}
           onKeyDown={onMenuKeyDown}
           ref={popoverRef}
           role="menu"

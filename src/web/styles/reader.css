@@ -675,11 +675,28 @@
   box-shadow:
     0 24px 60px rgba(0, 0, 0, 0.34),
     0 4px 14px rgba(0, 0, 0, 0.2);
-  animation: reader-section-fade 140ms ease;
+  transition:
+    opacity var(--duration-small) var(--ease-out),
+    scale var(--duration-small) var(--ease-out);
+}
+
+@starting-style {
+  .reader-immersive-panel {
+    opacity: 0;
+    scale: 0.97;
+  }
+}
+
+.reader-immersive-panel[data-state="closed"] {
+  opacity: 0;
+  scale: 0.97;
+  pointer-events: none;
+  transition-duration: var(--duration-exit);
 }
 
 .reader-immersive-panel-contents {
   left: 14px;
+  transform-origin: top left;
   width: min(320px, calc(100vw - 28px));
   max-height: calc(100vh - 80px);
   padding: 16px;
@@ -709,6 +726,7 @@
 
 .reader-immersive-panel-appearance {
   right: 14px;
+  transform-origin: top right;
   width: min(280px, calc(100vw - 28px));
   padding: 14px;
   display: flex;
@@ -1061,6 +1079,23 @@
   box-shadow:
     0 24px 70px rgba(0, 0, 0, 0.3),
     0 4px 16px rgba(0, 0, 0, 0.14);
+  transition:
+    opacity var(--duration-small) var(--ease-out),
+    translate var(--duration-small) var(--ease-out);
+}
+
+@starting-style {
+  .reader-tool-panel {
+    opacity: 0;
+    translate: 0 -6px;
+  }
+}
+
+.reader-tool-panel[data-state="closed"] {
+  opacity: 0;
+  translate: 0 -4px;
+  pointer-events: none;
+  transition-duration: var(--duration-exit);
 }
 
 .reader-tool-panel-header {
@@ -1159,6 +1194,17 @@
     left: 8px;
     width: auto;
     max-height: min(78vh, 680px);
+  }
+
+  /* Docked to the bottom edge here, so it rises into place instead. */
+  @starting-style {
+    .reader-tool-panel {
+      translate: 0 6px;
+    }
+  }
+
+  .reader-tool-panel[data-state="closed"] {
+    translate: 0 4px;
   }
 }
 
@@ -1277,6 +1323,20 @@
   box-shadow:
     0 14px 36px rgba(0, 0, 0, 0.25),
     0 2px 8px rgba(0, 0, 0, 0.16);
+  /* The inline transform centres the toolbar on its anchor, which is this
+     box's top-left corner plus the viewport shift, whether it sits above or
+     below the selection; scale grows from that point. */
+  transform-origin: var(--reader-selection-toolbar-shift-x, 0px) 0;
+  transition:
+    opacity var(--duration-small) var(--ease-out),
+    scale var(--duration-small) var(--ease-out);
+}
+
+@starting-style {
+  .reader-selection-toolbar {
+    opacity: 0;
+    scale: 0.97;
+  }
 }
 
 .reader-highlight-colors {
@@ -1430,4 +1490,28 @@
 
 ::highlight(reader-annotation-pink) {
   background-color: rgba(226, 126, 168, 0.44);
+}
+
+/* Reduced motion: overlays keep their fade but no longer scale or travel. */
+@media (prefers-reduced-motion: reduce) {
+  .reader-immersive-panel,
+  .reader-tool-panel,
+  .reader-selection-toolbar {
+    transition-property: opacity;
+  }
+
+  @starting-style {
+    .reader-immersive-panel,
+    .reader-tool-panel,
+    .reader-selection-toolbar {
+      translate: none;
+      scale: none;
+    }
+  }
+
+  .reader-immersive-panel[data-state="closed"],
+  .reader-tool-panel[data-state="closed"] {
+    translate: none;
+    scale: none;
+  }
 }

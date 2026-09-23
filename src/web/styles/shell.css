@@ -197,7 +197,24 @@
   box-shadow:
     0 18px 40px rgba(0, 0, 0, 0.22),
     0 1px 0 color-mix(in srgb, var(--border-default) 65%, transparent) inset;
-  animation: fade-in 120ms ease;
+  transform-origin: top right;
+  transition:
+    opacity var(--duration-small) var(--ease-out),
+    scale var(--duration-small) var(--ease-out);
+}
+
+@starting-style {
+  .app-menu-popover {
+    opacity: 0;
+    scale: 0.97;
+  }
+}
+
+.app-menu-popover[data-state="closed"] {
+  opacity: 0;
+  scale: 0.97;
+  pointer-events: none;
+  transition-duration: var(--duration-exit);
 }
 
 .app-menu-item {

@@ -46,6 +46,7 @@ import {
   SearchIcon,
 } from "../components/icons";
 import { useDocumentTitle } from "../hooks/use-document-title";
+import { OVERLAY_EXIT_MS, usePresence } from "../hooks/use-presence";
 import { api } from "../lib/api";
 import { numberFormatter } from "../lib/format";
 import { getBookHref } from "../lib/navigation";
@@ -220,6 +221,8 @@ export const ReaderPage = () => {
   );
   // Which immersive (popout) popover is open, if any.
   const [readerPanel, setReaderPanel] = useState<null | "contents" | "appearance">(null);
+  // Keeps the last popover mounted while it plays its exit transition.
+  const readerPanelPresence = usePresence(readerPanel, OVERLAY_EXIT_MS);
   // True while a pointer drag is actively moving the page (suppresses text
   // selection and switches the cursor).
   const [isDraggingPage, setIsDraggingPage] = useState(false);
@@ -1788,51 +1791,55 @@ export const ReaderPage = () => {
         ) : null}
 
         {readerPanel ? (
-          <>
-            <button
-              aria-label="Close menu"
-              className="reader-immersive-scrim"
-              onClick={() => setReaderPanel(null)}
-              type="button"
-            />
-            {readerPanel === "contents" ? (
-              <div
-                aria-label="Contents"
-                className="reader-immersive-panel reader-immersive-panel-contents"
-                role="dialog"
-              >
-                <div className="reader-immersive-panel-head stack-xs">
-                  <p className="eyebrow">Contents</p>
-                  <p className="reader-immersive-panel-title">{reader.title}</p>
-                  <p className="detail-author">{reader.author}</p>
-                </div>
-                {renderTocNav(() => setReaderPanel(null))}
-              </div>
-            ) : (
-              <div
-                aria-label="Appearance"
-                className="reader-immersive-panel reader-immersive-panel-appearance"
-                role="dialog"
-              >
-                <div className="reader-immersive-field">
-                  <span className="reader-immersive-field-label">Theme</span>
-                  {toneToggle}
-                </div>
-                <div className="reader-immersive-field">
-                  <span className="reader-immersive-field-label">Font</span>
-                  {fontFamilySelect}
-                </div>
-                <div className="reader-immersive-field">
-                  <span className="reader-immersive-field-label">Text size</span>
-                  {fontToggle}
-                </div>
-                <div className="reader-immersive-field">
-                  <span className="reader-immersive-field-label">Line spacing</span>
-                  {spacingToggle}
-                </div>
-              </div>
-            )}
-          </>
+          <button
+            aria-label="Close menu"
+            className="reader-immersive-scrim"
+            onClick={() => setReaderPanel(null)}
+            type="button"
+          />
+        ) : null}
+        {readerPanelPresence.value === "contents" ? (
+          <div
+            aria-label="Contents"
+            className="reader-immersive-panel reader-immersive-panel-contents"
+            data-state={readerPanelPresence.closing ? "closed" : "open"}
+            inert={readerPanelPresence.closing}
+            key="contents"
+            role="dialog"
+          >
+            <div className="reader-immersive-panel-head stack-xs">
+              <p className="eyebrow">Contents</p>
+              <p className="reader-immersive-panel-title">{reader.title}</p>
+              <p className="detail-author">{reader.author}</p>
+            </div>
+            {renderTocNav(() => setReaderPanel(null))}
+          </div>
+        ) : readerPanelPresence.value === "appearance" ? (
+          <div
+            aria-label="Appearance"
+            className="reader-immersive-panel reader-immersive-panel-appearance"
+            data-state={readerPanelPresence.closing ? "closed" : "open"}
+            inert={readerPanelPresence.closing}
+            key="appearance"
+            role="dialog"
+          >
+            <div className="reader-immersive-field">
+              <span className="reader-immersive-field-label">Theme</span>
+              {toneToggle}
+            </div>
+            <div className="reader-immersive-field">
+              <span className="reader-immersive-field-label">Font</span>
+              {fontFamilySelect}
+            </div>
+            <div className="reader-immersive-field">
+              <span className="reader-immersive-field-label">Text size</span>
+              {fontToggle}
+            </div>
+            <div className="reader-immersive-field">
+              <span className="reader-immersive-field-label">Line spacing</span>
+              {spacingToggle}
+            </div>
+          </div>
         ) : null}
         {readerTools}
       </div>

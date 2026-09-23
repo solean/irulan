@@ -133,12 +133,23 @@
   background: var(--error);
 }
 
-.toast[data-state="open"] {
-  animation: toast-slide-in 160ms ease-out;
+/* Enter is an interruptible transition. Exit stays a keyframe animation:
+   Radix Toast only waits for `animationend` before unmounting. */
+.toast {
+  transition:
+    opacity var(--duration-enter) var(--ease-out),
+    translate var(--duration-enter) var(--ease-out);
+}
+
+@starting-style {
+  .toast {
+    opacity: 0;
+    translate: 16px 0;
+  }
 }
 
 .toast[data-state="closed"] {
-  animation: toast-fade-out 120ms var(--ease-out);
+  animation: toast-fade-out var(--duration-exit) var(--ease-out);
 }
 
 .toast[data-swipe="move"] {
@@ -147,11 +158,11 @@
 
 .toast[data-swipe="cancel"] {
   transform: translateX(0);
-  transition: transform 120ms ease-out;
+  transition: transform var(--duration-exit) var(--ease-out);
 }
 
 .toast[data-swipe="end"] {
-  animation: toast-swipe-out 120ms ease-out;
+  animation: toast-swipe-out var(--duration-exit) var(--ease-out);
 }
 
 .toast-title {
@@ -203,17 +214,6 @@
   height: 14px;
   stroke: currentColor;
   stroke-width: 2;
-}
-
-@keyframes toast-slide-in {
-  from {
-    opacity: 0;
-    transform: translateX(16px);
-  }
-  to {
-    opacity: 1;
-    transform: translateX(0);
-  }
 }
 
 @keyframes toast-fade-out {

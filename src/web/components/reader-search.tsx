@@ -17,6 +17,7 @@ import {
 } from "../../shared/types";
 import { useDebouncedValue } from "../hooks/use-debounced-value";
 import { useDismissOnOutsidePress } from "../hooks/use-dismiss-on-outside-press";
+import { OVERLAY_EXIT_MS, usePresence } from "../hooks/use-presence";
 import { api } from "../lib/api";
 import { numberFormatter } from "../lib/format";
 
@@ -172,13 +173,16 @@ export const ReaderSearch = ({ bookId, onNavigate, onOpenChange, open }: ReaderS
   }, [bookId, loadingMore, requestedQuery, results.length, total]);
 
   useDismissOnOutsidePress(panelRef, open, () => onOpenChange(false));
+  const presence = usePresence(open, OVERLAY_EXIT_MS);
 
-  if (!open) return null;
+  if (!presence.value) return null;
 
   return (
     <aside
       aria-label="Search this book"
       className="reader-tool-panel"
+      data-state={presence.closing ? "closed" : "open"}
+      inert={presence.closing}
       ref={panelRef}
       role="dialog"
     >

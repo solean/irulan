@@ -56,6 +56,9 @@ export type BookshelfContextMenuState = {
   book: BookSummary;
   x: number;
   y: number;
+  /** Requested point relative to the clamped menu, for transform-origin. */
+  originX: number;
+  originY: number;
 };
 
 export const ALL_BOOKSHELVES_ID = "all";
@@ -119,10 +122,14 @@ export const getContextMenuPosition = (x: number, y: number) => {
   const menuHeight = 160;
   const maxX = Math.max(padding, window.innerWidth - menuWidth - padding);
   const maxY = Math.max(padding, window.innerHeight - menuHeight - padding);
+  const menuX = Math.min(Math.max(padding, x), maxX);
+  const menuY = Math.min(Math.max(padding, y), maxY);
 
   return {
-    x: Math.min(Math.max(padding, x), maxX),
-    y: Math.min(Math.max(padding, y), maxY),
+    x: menuX,
+    y: menuY,
+    originX: Math.min(Math.max(0, x - menuX), menuWidth),
+    originY: Math.min(Math.max(0, y - menuY), menuHeight),
   };
 };
 

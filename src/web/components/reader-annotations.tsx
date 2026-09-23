@@ -28,6 +28,7 @@ import {
   type ReaderTextRange,
 } from "../../shared/types";
 import { useDismissOnOutsidePress } from "../hooks/use-dismiss-on-outside-press";
+import { OVERLAY_EXIT_MS, usePresence } from "../hooks/use-presence";
 import { api } from "../lib/api";
 import {
   resolveReaderTextRange,
@@ -313,6 +314,7 @@ export const ReaderAnnotations = ({
   }, [clearSelection, noteTarget, onOpenChange, open, selectedText]);
 
   useDismissOnOutsidePress(panelRef, open, () => onOpenChange(false));
+  const panelPresence = usePresence(open, OVERLAY_EXIT_MS);
 
   const createAnnotation = useCallback(
     async (range: ReaderTextRange, note: string | null) => {
@@ -449,7 +451,7 @@ export const ReaderAnnotations = ({
 
   return (
     <>
-      {!open && (error || status) ? (
+      {!panelPresence.value && (error || status) ? (
         <div aria-live="polite" className="sr-only">
           {error ?? status}
         </div>
@@ -503,10 +505,12 @@ export const ReaderAnnotations = ({
         </div>
       ) : null}
 
-      {open ? (
+      {panelPresence.value ? (
         <aside
           aria-label="Highlights and notes"
           className="reader-tool-panel"
+          data-state={panelPresence.closing ? "closed" : "open"}
+          inert={panelPresence.closing}
           ref={panelRef}
           role="dialog"
         >

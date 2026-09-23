@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { type CSSProperties, useEffect, useRef, useState } from "react";
 
 import { cn } from "@/lib/utils";
 
@@ -21,6 +21,10 @@ type BookActionMenuProps = {
   onClose: () => void;
   x: number;
   y: number;
+  originX: number;
+  originY: number;
+  /** True while the menu plays its exit transition; it ignores input. */
+  closing: boolean;
 };
 
 export const OverflowMenu = ({ label, items }: OverflowMenuProps) => {
@@ -88,7 +92,7 @@ export const OverflowMenu = ({ label, items }: OverflowMenuProps) => {
   );
 }
 
-export const BookActionMenu = ({ items, onClose, x, y }: BookActionMenuProps) => {
+export const BookActionMenu = ({ items, onClose, x, y, originX, originY, closing }: BookActionMenuProps) => {
   const containerRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -99,6 +103,7 @@ export const BookActionMenu = ({ items, onClose, x, y }: BookActionMenuProps) =>
   }, []);
 
   useEffect(() => {
+    if (closing) return;
     const onPointerDown = (event: PointerEvent) => {
       if (
         containerRef.current &&
@@ -122,15 +127,17 @@ export const BookActionMenu = ({ items, onClose, x, y }: BookActionMenuProps) =>
       window.removeEventListener("scroll", closeOnViewportChange, true);
       window.removeEventListener("resize", closeOnViewportChange);
     };
-  }, [onClose]);
+  }, [closing, onClose]);
 
   return (
     <div
       aria-label="Book actions"
       className="overflow-menu-popover context-menu-popover"
+      data-state={closing ? "closed" : "open"}
+      inert={closing}
       ref={containerRef}
       role="menu"
-      style={{ left: x, top: y }}
+      style={{ left: x, top: y, "--menu-origin": `${originX}px ${originY}px` } as CSSProperties}
     >
       {items.map((item) => (
         <button
