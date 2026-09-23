@@ -55,13 +55,43 @@
 
 .detail-cover-clickable .book-cover {
   border-radius: var(--radius-md);
-  transition: transform 200ms ease, box-shadow 200ms ease;
+  transition:
+    transform var(--duration-small) var(--ease-out),
+    box-shadow var(--duration-small) ease;
 }
 
-.detail-cover-clickable:hover .book-cover,
 .detail-cover-clickable:focus-visible .book-cover {
-  transform: translateY(-2px);
   box-shadow: 0 18px 40px rgba(0, 0, 0, 0.28);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .detail-cover-clickable:hover .book-cover {
+    box-shadow: 0 18px 40px rgba(0, 0, 0, 0.28);
+  }
+
+  .detail-cover-clickable:hover .detail-cover-overlay {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .detail-cover-clickable:focus-visible .book-cover {
+    transform: translateY(-2px);
+  }
+
+  .detail-cover-clickable:active .book-cover {
+    transform: scale(0.98);
+  }
+}
+
+@media (hover: hover) and (pointer: fine) and (prefers-reduced-motion: no-preference) {
+  .detail-cover-clickable:hover .book-cover {
+    transform: translateY(-2px);
+  }
+
+  .detail-cover-clickable:hover:active .book-cover {
+    transform: translateY(-1px) scale(0.98);
+  }
 }
 
 .detail-cover-overlay {
@@ -79,7 +109,6 @@
   pointer-events: none;
 }
 
-.detail-cover-clickable:hover .detail-cover-overlay,
 .detail-cover-clickable:focus-visible .detail-cover-overlay {
   opacity: 1;
 }

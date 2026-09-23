@@ -12,17 +12,6 @@
   }
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .page,
-  .modal-backdrop,
-  .import-modal,
-  .import-dropzone,
-  .import-browse-button {
-    animation: none;
-    transition: none;
-  }
-}
-
 /* ─── Responsive ─── */
 
 @media (max-width: 768px) {
@@ -301,13 +290,68 @@
   }
 }
 
+/* Reduced motion means gentler, not none: opacity and color changes keep
+   their fades so state changes stay legible; movement is removed. */
 @media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto !important;
+  }
+
+  /* Shared keyframes lose their travel but keep the fade. */
+  @keyframes fade-in {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+
+  @keyframes toast-slide-in {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+
+  /* tw-animate-css dialogs/selects: keep fade, drop zoom and slide. */
   *,
   *::before,
   *::after {
-    animation: none !important;
-    transition-duration: 0ms !important;
-    scroll-behavior: auto !important;
+    --tw-enter-scale: 1 !important;
+    --tw-exit-scale: 1 !important;
+    --tw-enter-translate-x: 0 !important;
+    --tw-enter-translate-y: 0 !important;
+    --tw-exit-translate-x: 0 !important;
+    --tw-exit-translate-y: 0 !important;
+  }
+
+  /* Elements that travel on state change: jump to the end state. */
+  .book-card-action-trigger,
+  .detail-sticky-bar,
+  .bookshelf-sidebar-content,
+  .bookshelf-sidebar-minimized .bookshelf-sidebar-content,
+  .import-dropzone-active {
+    transform: none;
+  }
+
+  /* Beats the higher-specificity aria-expanded icon states. */
+  .sidebar-toggle-icon svg {
+    transform: none !important;
+  }
+
+  /* Layout-driven sidebar collapse and paginated page slides snap. */
+  .bookshelf-layout,
+  .bookshelf-sidebar,
+  .bookshelf-sidebar-content-shell,
+  .content:has(.bookshelf-layout) {
+    transition-property: opacity;
+  }
+
+  .reader-body-paginated {
+    transition: none !important;
   }
 }
 

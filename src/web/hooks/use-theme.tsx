@@ -23,10 +23,15 @@ type ThemeContextValue = {
 const ThemeContext = createContext<ThemeContextValue | null>(null);
 
 function applyTheme(theme: Theme) {
-  document.documentElement.setAttribute("data-theme", theme);
-  document.documentElement.classList.toggle("dark", theme === "dark");
+  const root = document.documentElement;
+  root.classList.add("theme-switching");
+  root.setAttribute("data-theme", theme);
+  root.classList.toggle("dark", theme === "dark");
   const meta = document.querySelector<HTMLMetaElement>('meta[name="theme-color"]');
   if (meta) meta.content = THEME_BACKGROUNDS[theme];
+  // Commit the new colors with transitions disabled, then restore them.
+  void getComputedStyle(root).color;
+  requestAnimationFrame(() => root.classList.remove("theme-switching"));
 }
 
 function isTextEntryTarget(target: EventTarget | null) {

@@ -154,7 +154,7 @@
   pointer-events: none;
   transition:
     opacity 90ms ease,
-    transform 150ms cubic-bezier(0.4, 0, 1, 1),
+    transform 150ms var(--ease-out),
     visibility 0s linear 180ms;
 }
 
@@ -450,7 +450,7 @@
   transition:
     background-color 140ms ease,
     border-color 140ms ease,
-    transform 160ms ease,
+    transform var(--duration-press) var(--ease-out),
     box-shadow 160ms ease;
   -webkit-tap-highlight-color: transparent;
   touch-action: manipulation;
@@ -461,7 +461,25 @@
   padding: 6px;
 }
 
-@media (prefers-reduced-motion: no-preference) {
+@media (hover: hover) and (pointer: fine) {
+  .book-card-shell:hover .book-card {
+    background: var(--bg-hover);
+    border-color: var(--border-default);
+  }
+
+  .book-card-shell:hover .book-card-action-trigger {
+    opacity: 1;
+    transform: translateY(0);
+  }
+
+  .book-card-action-trigger:hover {
+    background: var(--bg-elevated);
+    color: var(--text-primary);
+    border-color: var(--border-hover);
+  }
+}
+
+@media (hover: hover) and (pointer: fine) and (prefers-reduced-motion: no-preference) {
   .book-card-shell:hover .book-card {
     transform: translateY(-2px);
   }
@@ -469,11 +487,16 @@
   .book-card-shell:hover .book-cover {
     box-shadow: 0 8px 18px color-mix(in srgb, var(--accent) 22%, rgba(0, 0, 0, 0.18));
   }
+
+  .book-card-shell:hover .book-card:active {
+    transform: translateY(-1px) scale(0.98);
+  }
 }
 
-.book-card-shell:hover .book-card {
-  background: var(--bg-hover);
-  border-color: var(--border-default);
+@media (prefers-reduced-motion: no-preference) {
+  .book-card:active {
+    transform: scale(0.98);
+  }
 }
 
 .book-card:focus-visible {
@@ -510,17 +533,18 @@
   height: 14px;
 }
 
-.book-card-shell:hover .book-card-action-trigger,
 .book-card-action-trigger:focus-visible,
 .book-card-action-trigger[aria-expanded="true"] {
   opacity: 1;
   transform: translateY(0);
 }
 
-.book-card-action-trigger:hover {
-  background: var(--bg-elevated);
-  color: var(--text-primary);
-  border-color: var(--border-hover);
+/* Without hover there is no reveal gesture, so keep the trigger visible. */
+@media (hover: none) {
+  .book-card-action-trigger {
+    opacity: 1;
+    transform: none;
+  }
 }
 
 .book-card-action-trigger:focus-visible {

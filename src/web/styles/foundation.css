@@ -34,6 +34,17 @@
   --tracking-normal: 0;
   --tracking-wide:    0.06em;
 
+  /* Motion. Enter/exit and press use --ease-out; on-screen movement uses
+     --ease-in-out; gesture settles use --ease-drawer. Hover/color changes
+     keep plain `ease`. Exits run faster than enters. */
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
+  --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
+  --duration-press: 140ms;
+  --duration-small: 180ms;
+  --duration-enter: 220ms;
+  --duration-exit: 140ms;
+
   --button-primary: #7B5A33;
   --button-primary-hover: #6C4F2E;
   --button-primary-foreground: #F6F4EE;
@@ -248,5 +259,14 @@ img {
 
 .skip-link:focus-visible {
   top: 16px;
+}
+
+/* Applied for a single frame by applyTheme() so every color transition does
+   not fire at once and smear the theme swap. */
+.theme-switching,
+.theme-switching *,
+.theme-switching *::before,
+.theme-switching *::after {
+  transition: none !important;
 }
 

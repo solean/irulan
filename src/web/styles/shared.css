@@ -138,7 +138,7 @@
 }
 
 .toast[data-state="closed"] {
-  animation: toast-fade-out 120ms ease-in;
+  animation: toast-fade-out 120ms var(--ease-out);
 }
 
 .toast[data-swipe="move"] {
@@ -231,15 +231,6 @@
   }
   to {
     transform: translateX(calc(100% + 16px));
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .toast,
-  .toast[data-state="open"],
-  .toast[data-state="closed"],
-  .toast[data-swipe="end"] {
-    animation: none;
   }
 }
 
