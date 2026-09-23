@@ -2,8 +2,10 @@ import type { FormEvent } from "react";
 import {
   useEffect,
   useEffectEvent,
+  useRef,
   useState,
 } from "react";
+import { flushSync } from "react-dom";
 import { Link } from "react-router-dom";
 
 import { Badge } from "@/components/ui/badge";
@@ -48,7 +50,10 @@ export const BookshelvesPage = () => {
   const [loading, setLoading] = useState(true);
   const [savingBookshelfId, setSavingBookshelfId] = useState<string | null>(null);
   const [deletingBookshelfId, setDeletingBookshelfId] = useState<string | null>(null);
+  const [addingBookshelf, setAddingBookshelf] = useState(false);
   const [creatingBookshelf, setCreatingBookshelf] = useState(false);
+  const addBookshelfButtonRef = useRef<HTMLButtonElement>(null);
+  const newBookshelfNameRef = useRef<HTMLInputElement>(null);
   const [testingBookshelfId, setTestingBookshelfId] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
 
@@ -85,6 +90,19 @@ export const BookshelvesPage = () => {
     return nextBookshelves;
   };
 
+  const openNewBookshelfForm = () => {
+    flushSync(() => setAddingBookshelf(true));
+    newBookshelfNameRef.current?.focus();
+  };
+
+  const closeNewBookshelfForm = () => {
+    flushSync(() => {
+      setAddingBookshelf(false);
+      setNewBookshelf({ name: "", kindleEmail: "" });
+    });
+    addBookshelfButtonRef.current?.focus();
+  };
+
   const onSaveBookshelf = async (bookshelfId: string) => {
     const form = bookshelfForms[bookshelfId];
     if (!form || savingBookshelfId) return;
@@ -96,7 +114,6 @@ export const BookshelvesPage = () => {
       await refreshBookshelves();
       toast({
         title: "Bookshelf saved",
-        description: "Bookshelf settings saved.",
         variant: "success",
       });
     } catch (requestError) {
@@ -113,6 +130,12 @@ export const BookshelvesPage = () => {
 
   const onCreateBookshelf = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    const nameInput = newBookshelfNameRef.current;
+    if (nameInput && !newBookshelf.name.trim()) {
+      nameInput.setCustomValidity("Enter a shelf name.");
+      nameInput.reportValidity();
+      return;
+    }
     setCreatingBookshelf(true);
 
     try {
@@ -121,7 +144,7 @@ export const BookshelvesPage = () => {
         newBookshelf.kindleEmail.trim() || null,
       );
       await refreshBookshelves();
-      setNewBookshelf({ name: "", kindleEmail: "" });
+      closeNewBookshelfForm();
       toast({
         title: "Bookshelf created",
         description: `${created.name} is ready.`,
@@ -221,12 +244,13 @@ export const BookshelvesPage = () => {
 
       {loadError ? <p className="inline-error">{loadError}</p> : null}
 
-      <Card className="panel stack-md">
+      <Card className="panel">
         <div className="stack-xs">
           <div className="section-heading">
             <h2>Bookshelves</h2>
-            <Badge className="status-pill" variant="outline">
-              {numberFormatter.format(bookshelves.length)} shelves
+            <Badge variant="outline">
+              {numberFormatter.format(bookshelves.length)}
+              {bookshelves.length === 1 ? " shelf" : " shelves"}
             </Badge>
           </div>
           <p className="lede">
@@ -276,7 +300,6 @@ export const BookshelvesPage = () => {
                           },
                         }));
                       }}
-                      placeholder="Me"
                       spellCheck={false}
                       type="text"
                       value={form.name}
@@ -308,13 +331,17 @@ export const BookshelvesPage = () => {
                   </div>
                 </div>
                 <div className="settings-bookshelf-meta">
-                  <span>{numberFormatter.format(bookshelf.bookCount)} books</span>
+                  <span>
+                    {numberFormatter.format(bookshelf.bookCount)}
+                    {bookshelf.bookCount === 1 ? " book" : " books"}
+                  </span>
                   {!smtpConfigured ? <span>SMTP not configured.</span> : null}
                 </div>
-                <div className="inline-actions">
+                <div className="settings-bookshelf-actions">
                   <Button
                     disabled={!dirty || saving || deleting}
                     type="submit"
+                    variant={dirty ? "default" : "outline"}
                   >
                     {saving ? "Saving\u2026" : "Save shelf"}
                   </Button>
@@ -333,67 +360,99 @@ export const BookshelvesPage = () => {
                   >
                     {testing ? "Sending\u2026" : "Send test email"}
                   </Button>
-                  <Button
-                    disabled={bookshelves.length <= 1 || saving || deleting}
-                    onClick={() => {
-                      void onDeleteBookshelf(bookshelf);
-                    }}
-                    type="button"
-                    variant="ghost"
-                  >
-                    {deleting ? "Removing\u2026" : "Remove"}
-                  </Button>
+                  {bookshelves.length > 1 ? (
+                    <Button
+                      className="settings-bookshelf-remove"
+                      disabled={saving || deleting}
+                      onClick={() => {
+                        void onDeleteBookshelf(bookshelf);
+                      }}
+                      type="button"
+                      variant="ghost"
+                    >
+                      {deleting ? "Removing\u2026" : "Remove"}
+                    </Button>
+                  ) : null}
                 </div>
               </form>
             );
           })}
-        </div>
 
-        <form className="settings-bookshelf-create" onSubmit={onCreateBookshelf}>
-          <div className="settings-bookshelf-fields">
-            <div className="stack-xs">
-              <Label className="field-label" htmlFor="new-bookshelf-name">
-                New shelf name
-              </Label>
-              <Input
-                autoComplete="off"
-                id="new-bookshelf-name"
-                name="new_bookshelf_name"
-                onChange={(event) => {
-                  const value = event.currentTarget.value;
-                  setNewBookshelf((current) => ({ ...current, name: value }));
-                }}
-                placeholder="bookshelf name"
-                spellCheck={false}
-                type="text"
-                value={newBookshelf.name}
-              />
-            </div>
-            <div className="stack-xs">
-              <Label className="field-label" htmlFor="new-bookshelf-kindle">
-                Kindle email
-              </Label>
-              <Input
-                autoComplete="email"
-                id="new-bookshelf-kindle"
-                name="new_bookshelf_kindle"
-                onChange={(event) => {
-                  const value = event.currentTarget.value;
-                  setNewBookshelf((current) => ({ ...current, kindleEmail: value }));
-                }}
-                placeholder="name@kindle.com"
-                spellCheck={false}
-                type="email"
-                value={newBookshelf.kindleEmail}
-              />
-            </div>
-          </div>
-          <div className="inline-actions">
-            <Button disabled={creatingBookshelf || !newBookshelf.name.trim()} type="submit">
-              {creatingBookshelf ? "Creating\u2026" : "Create bookshelf"}
+          {addingBookshelf ? (
+            <form
+              aria-label="New bookshelf"
+              className="settings-bookshelf-create"
+              onKeyDown={(event) => {
+                if (event.key === "Escape" && !creatingBookshelf) closeNewBookshelfForm();
+              }}
+              onSubmit={onCreateBookshelf}
+            >
+              <div className="settings-bookshelf-fields">
+                <div className="stack-xs">
+                  <Label className="field-label" htmlFor="new-bookshelf-name">
+                    Shelf name
+                  </Label>
+                  <Input
+                    autoComplete="off"
+                    id="new-bookshelf-name"
+                    name="new_bookshelf_name"
+                    onChange={(event) => {
+                      const { value } = event.currentTarget;
+                      event.currentTarget.setCustomValidity("");
+                      setNewBookshelf((current) => ({ ...current, name: value }));
+                    }}
+                    ref={newBookshelfNameRef}
+                    required
+                    spellCheck={false}
+                    type="text"
+                    value={newBookshelf.name}
+                  />
+                </div>
+                <div className="stack-xs">
+                  <Label className="field-label" htmlFor="new-bookshelf-kindle">
+                    Kindle email
+                  </Label>
+                  <Input
+                    autoComplete="email"
+                    id="new-bookshelf-kindle"
+                    name="new_bookshelf_kindle"
+                    onChange={(event) => {
+                      const value = event.currentTarget.value;
+                      setNewBookshelf((current) => ({ ...current, kindleEmail: value }));
+                    }}
+                    placeholder="name@kindle.com"
+                    spellCheck={false}
+                    type="email"
+                    value={newBookshelf.kindleEmail}
+                  />
+                </div>
+              </div>
+              <div className="settings-bookshelf-actions">
+                <Button disabled={creatingBookshelf} type="submit">
+                  {creatingBookshelf ? "Creating\u2026" : "Create shelf"}
+                </Button>
+                <Button
+                  disabled={creatingBookshelf}
+                  onClick={closeNewBookshelfForm}
+                  type="button"
+                  variant="ghost"
+                >
+                  Cancel
+                </Button>
+              </div>
+            </form>
+          ) : (
+            <Button
+              className="settings-bookshelf-add"
+              onClick={openNewBookshelfForm}
+              ref={addBookshelfButtonRef}
+              type="button"
+              variant="outline"
+            >
+              Add bookshelf
             </Button>
-          </div>
-        </form>
+          )}
+        </div>
       </Card>
     </div>
   );

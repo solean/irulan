@@ -83,6 +83,21 @@
   background: color-mix(in srgb, var(--bg-base) 74%, var(--bg-surface));
 }
 
+.settings-bookshelf-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.settings-bookshelf-remove {
+  margin-inline-start: auto;
+}
+
+.settings-bookshelf-add {
+  justify-self: start;
+}
+
 .settings-bookshelf-fields {
   display: grid;
   grid-template-columns: minmax(180px, 0.8fr) minmax(220px, 1fr);
