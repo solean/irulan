@@ -1155,13 +1155,14 @@ export const ReaderPage = () => {
     [handleReaderShortcut],
   );
 
-  // Slide the page body to a target offset with a short ease-out, then drop
-  // the inline transition so React-driven jumps (chapter swaps) stay instant.
+  // Slide the page body to a target offset on the drawer curve (a gesture
+  // settle), then drop the inline transition so React-driven jumps (chapter
+  // swaps) stay instant.
   const settleReaderBody = useCallback((offset: number) => {
     const body = readerBodyRef.current;
     if (!body) return;
 
-    body.style.transition = "transform 280ms cubic-bezier(0.22, 0.61, 0.36, 1)";
+    body.style.transition = "transform 240ms var(--ease-drawer)";
     body.style.transform = `translate3d(${-offset}px, 0, 0)`;
 
     const clear = () => {
@@ -1169,7 +1170,7 @@ export const ReaderPage = () => {
       body.removeEventListener("transitionend", clear);
     };
     body.addEventListener("transitionend", clear);
-    window.setTimeout(clear, 360);
+    window.setTimeout(clear, 320);
   }, []);
 
   // Page turn with the slide animation. Within a chapter the body glides to

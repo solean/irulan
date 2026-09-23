@@ -1,41 +1,6 @@
-/* Overflow and context menus. */
-/* ─── Overflow menu ─── */
-
-.overflow-menu {
-  position: relative;
-}
-
-.overflow-menu-trigger {
-  display: inline-grid;
-  place-items: center;
-  width: 36px;
-  height: 36px;
-  border-radius: 999px;
-  border: 1px solid var(--border-default);
-  background: var(--bg-surface);
-  color: var(--text-secondary);
-  cursor: pointer;
-  transition: color 120ms ease, border-color 120ms ease, background-color 120ms ease;
-}
-
-.overflow-menu-trigger:hover,
-.overflow-menu-trigger[aria-expanded="true"] {
-  color: var(--text-primary);
-  border-color: var(--border-hover);
-  background: var(--bg-hover);
-}
-
-.overflow-menu-trigger svg {
-  width: 16px;
-  height: 16px;
-  fill: currentColor;
-}
+/* Book action (context) menu. */
 
 .overflow-menu-popover {
-  position: absolute;
-  right: 0;
-  top: calc(100% + 6px);
-  z-index: 25;
   min-width: 200px;
   display: grid;
   gap: 2px;
@@ -44,7 +9,6 @@
   border-radius: var(--radius-md);
   background: var(--bg-surface);
   box-shadow: 0 18px 40px rgba(0, 0, 0, 0.22);
-  transform-origin: top right;
   transition:
     opacity var(--duration-small) var(--ease-out),
     scale var(--duration-small) var(--ease-out);
@@ -67,8 +31,6 @@
 
 .context-menu-popover {
   position: fixed;
-  right: auto;
-  top: auto;
   z-index: 45;
   width: 220px;
   max-width: calc(100vw - 16px);

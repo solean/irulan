@@ -48,6 +48,12 @@ export const BookshelvesPage = () => {
     kindleEmail: "",
   });
   const [loading, setLoading] = useState(true);
+  // Rows present on first render appear with the page; only rows added later
+  // (a new shelf) play their entry transition. See .settings-bookshelf-list.
+  const [animateEntries, setAnimateEntries] = useState(false);
+  useEffect(() => {
+    setAnimateEntries(!loading);
+  }, [loading]);
   const [savingBookshelfId, setSavingBookshelfId] = useState<string | null>(null);
   const [deletingBookshelfId, setDeletingBookshelfId] = useState<string | null>(null);
   const [addingBookshelf, setAddingBookshelf] = useState(false);
@@ -264,7 +270,7 @@ export const BookshelvesPage = () => {
           ) : null}
         </div>
 
-        <div className="settings-bookshelf-list">
+        <div className="settings-bookshelf-list" data-animate-entries={animateEntries || undefined}>
           {bookshelves.map((bookshelf) => {
             const form = bookshelfForms[bookshelf.id] ?? toBookshelfFormState(bookshelf);
             const dirty = isBookshelfDirty(bookshelf);

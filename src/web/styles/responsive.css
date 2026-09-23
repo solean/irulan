@@ -314,7 +314,9 @@
   }
 
   .toast,
-  .reader-end-card {
+  .reader-end-card,
+  .settings-bookshelf-row,
+  .settings-bookshelf-create {
     translate: none !important;
   }
 

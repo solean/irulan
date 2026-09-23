@@ -430,6 +430,21 @@
   gap: 4px;
 }
 
+/* Real results fade in when they replace the loading skeleton (or the view
+   switches). Filtering and sorting update the same element, so they stay
+   instant. */
+.books-grid:not(.books-grid-skeleton),
+.books-table-shell:not(.books-table-skeleton) {
+  transition: opacity var(--duration-small) var(--ease-out);
+}
+
+@starting-style {
+  .books-grid:not(.books-grid-skeleton),
+  .books-table-shell:not(.books-table-skeleton) {
+    opacity: 0;
+  }
+}
+
 .book-card-shell {
   position: relative;
   min-width: 0;

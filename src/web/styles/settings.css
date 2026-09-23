@@ -83,6 +83,24 @@
   background: color-mix(in srgb, var(--bg-base) 74%, var(--bg-surface));
 }
 
+/* A newly created shelf and the create form rise in. Rows rendered with the
+   page don't (data-animate-entries is set after the first render, and
+   @starting-style only applies to an element's first style). */
+.settings-bookshelf-list[data-animate-entries] .settings-bookshelf-row,
+.settings-bookshelf-create {
+  transition:
+    opacity var(--duration-enter) var(--ease-out),
+    translate var(--duration-enter) var(--ease-out);
+}
+
+@starting-style {
+  .settings-bookshelf-list[data-animate-entries] .settings-bookshelf-row,
+  .settings-bookshelf-create {
+    opacity: 0;
+    translate: 0 6px;
+  }
+}
+
 .settings-bookshelf-actions {
   display: flex;
   align-items: center;
