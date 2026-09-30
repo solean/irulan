@@ -451,6 +451,22 @@
   display: flex;
 }
 
+/* Freshly imported covers rise in, 40ms apart in grid order (--reveal-index
+   is set inline and capped). Existing cards never carry this class. */
+.book-card-shell-new {
+  transition:
+    opacity var(--duration-enter) var(--ease-out),
+    translate var(--duration-enter) var(--ease-out);
+  transition-delay: calc(var(--reveal-index, 0) * 40ms);
+}
+
+@starting-style {
+  .book-card-shell-new {
+    opacity: 0;
+    translate: 0 8px;
+  }
+}
+
 .book-card {
   min-width: 0;
   width: 100%;

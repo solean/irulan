@@ -99,6 +99,9 @@ import {
   type BookshelfDensity,
   type BookshelfView,
 } from "../lib/storage";
+/** Long enough for the capped stagger (11 x 40ms) plus the enter transition. */
+const IMPORT_REVEAL_MS = 1500;
+
 export const BookshelfPage = () => {
 
   const location = useLocation();
@@ -124,6 +127,14 @@ export const BookshelfPage = () => {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
+  // Freshly imported book ids: their grid cards rise in once, then the set
+  // clears so remounts (e.g. switching views) don't replay the reveal.
+  const [revealBookIds, setRevealBookIds] = useState<ReadonlySet<string>>(() => new Set());
+  useEffect(() => {
+    if (revealBookIds.size === 0) return;
+    const timer = window.setTimeout(() => setRevealBookIds(new Set()), IMPORT_REVEAL_MS);
+    return () => window.clearTimeout(timer);
+  }, [revealBookIds]);
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [pendingImportFiles, setPendingImportFiles] = useState<File[]>([]);
   const [isImportTargetModalOpen, setIsImportTargetModalOpen] = useState(false);
@@ -505,6 +516,11 @@ export const BookshelfPage = () => {
 
       toast(getImportSummaryToast(results));
       summarized = true;
+      const importedIds = results.flatMap((result) =>
+        result.status === "imported" ? [result.book.id] : [],
+      );
+      // Before the refresh, so the new cards mount already marked.
+      if (importedIds.length > 0) setRevealBookIds(new Set(importedIds));
       await loadBooks();
       await loadBookshelves();
     } catch (requestError) {
@@ -1021,6 +1037,7 @@ export const BookshelfPage = () => {
             onBookContextKeyDown={onBookContextKeyDown}
             onBookContextMenu={onBookContextMenu}
             onOpenActionMenu={onOpenBookActionMenu}
+            revealBookIds={revealBookIds}
           />
         )}
         {!showInitialBookshelfSkeleton && pageCount > 1 ? (

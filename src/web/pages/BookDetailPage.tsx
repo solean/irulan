@@ -20,6 +20,7 @@ import type {
 import {
   BookCover,
   BookMetadataEditor,
+  DrawnCheck,
   FinishCelebration,
   RatingStars,
   ReadStatusBadge,
@@ -46,6 +47,28 @@ import {
 import { getStatusBadgeVariant } from "../lib/status";
 import { navigateWithCoverTransition } from "../lib/view-transition";
 
+const SENT_LABEL_MS = 1800;
+
+/**
+ * Send button text. All three labels share one grid cell so the button keeps
+ * the width of the widest and swaps crossfade in place; only the active one is
+ * exposed to assistive tech.
+ */
+const SendButtonLabel = ({ state }: { state: "idle" | "sending" | "sent" }) => (
+  <span className="send-label">
+    <span aria-hidden={state !== "idle"} className="send-label-item" data-active={state === "idle"}>
+      Send to Kindle
+    </span>
+    <span aria-hidden={state !== "sending"} className="send-label-item" data-active={state === "sending"}>
+      Sending{"\u2026"}
+    </span>
+    <span aria-hidden={state !== "sent"} className="send-label-item" data-active={state === "sent"}>
+      <DrawnCheck draw={state === "sent"} />
+      Sent
+    </span>
+  </span>
+);
+
 export const BookDetailPage = () => {
   const { bookId = "" } = useParams();
   const navigate = useNavigate();
@@ -61,6 +84,15 @@ export const BookDetailPage = () => {
   const [editingRecipient, setEditingRecipient] = useState(false);
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
+  // After a successful send the button reads "Sent" briefly, and the new
+  // history row (matched by id) plays its entry transition.
+  const [showSent, setShowSent] = useState(false);
+  const [justSentDeliveryId, setJustSentDeliveryId] = useState<string | null>(null);
+  useEffect(() => {
+    if (!showSent) return;
+    const timer = window.setTimeout(() => setShowSent(false), SENT_LABEL_MS);
+    return () => window.clearTimeout(timer);
+  }, [showSent]);
   const [savingBookShelves, setSavingBookShelves] = useState(false);
   const [savingMetadata, setSavingMetadata] = useState(false);
   // Bumped when a save confirms the move into "finished"; keys the one-shot
@@ -163,6 +195,8 @@ export const BookDetailPage = () => {
         null;
       const delivery = await api.sendBook(bookId, recipientEmail, deliveryBookshelf?.id ?? null);
       setDeliveries((current) => [delivery, ...current]);
+      setJustSentDeliveryId(delivery.id);
+      setShowSent(true);
       toast({
         title: "Email accepted",
         description:
@@ -409,7 +443,7 @@ export const BookDetailPage = () => {
               tabIndex={stickyBarVisible ? 0 : -1}
               type="button"
             >
-              {sending ? "Sending\u2026" : "Send to Kindle"}
+              <SendButtonLabel state={sending ? "sending" : showSent ? "sent" : "idle"} />
             </Button>
           </div>
         </div>
@@ -591,7 +625,7 @@ export const BookDetailPage = () => {
                 }}
                 type="button"
               >
-                {sending ? "Sending\u2026" : "Send to Kindle"}
+                <SendButtonLabel state={sending ? "sending" : showSent ? "sent" : "idle"} />
               </Button>
               {!smtpReady ? (
                 <Button asChild size="sm" variant="ghost">
@@ -767,7 +801,11 @@ export const BookDetailPage = () => {
                 : null;
               return (
                 <article
-                  className={cn("history-row", `history-row-${delivery.status}`)}
+                  className={cn(
+                    "history-row",
+                    `history-row-${delivery.status}`,
+                    delivery.id === justSentDeliveryId && "history-row-new",
+                  )}
                   key={delivery.id}
                 >
                   <div className="history-row-main">

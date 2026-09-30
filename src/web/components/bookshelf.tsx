@@ -1,4 +1,5 @@
 import type {
+  CSSProperties,
   KeyboardEvent as ReactKeyboardEvent,
   MouseEvent,
 } from "react";
@@ -222,12 +223,17 @@ type BookshelfBookActionProps = {
   onBookContextMenu: (book: BookSummary, event: MouseEvent<HTMLElement>) => void;
 };
 
+/** Highest stagger step for freshly imported covers (x40ms in CSS). */
+const MAX_REVEAL_STAGGER = 11;
+
 type BookshelfGridProps = {
   books: BookSummary[];
   bookshelfId?: string | null;
   density: BookshelfDensity;
   sortKey: BookshelfSortKey;
   onOpenActionMenu: (book: BookSummary, rect: DOMRect) => void;
+  /** Books imported moments ago; their cards rise in, staggered. */
+  revealBookIds?: ReadonlySet<string>;
 } & BookshelfBookActionProps;
 
 export const BookshelfGrid = ({
@@ -238,8 +244,10 @@ export const BookshelfGrid = ({
   onBookContextKeyDown,
   onBookContextMenu,
   onOpenActionMenu,
+  revealBookIds,
 }: BookshelfGridProps) => {
   const navigate = useNavigate();
+  let revealIndex = 0;
 
   return (
   <section
@@ -251,8 +259,17 @@ export const BookshelfGrid = ({
       const addedFull = formatDate(book.importedAt);
       const displayTitle = formatDisplayTitle(book.title);
       const showAddedRow = sortKey !== "importedAt" && addedRelative;
+      const reveal = revealBookIds?.has(book.id) ?? false;
+      // Stagger in grid order, capped so a big import doesn't drag on.
+      const revealStyle = reveal
+        ? ({ "--reveal-index": Math.min(revealIndex++, MAX_REVEAL_STAGGER) } as CSSProperties)
+        : undefined;
       return (
-        <div className="book-card-shell" key={book.id}>
+        <div
+          className={cn("book-card-shell", reveal && "book-card-shell-new")}
+          key={book.id}
+          style={revealStyle}
+        >
           <Link
             aria-label={`Open ${book.title} by ${book.author}`}
             className="book-card"

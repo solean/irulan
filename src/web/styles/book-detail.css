@@ -523,6 +523,30 @@
   align-items: center;
 }
 
+/* SendButtonLabel: labels stacked in one cell, crossfaded with a slight blur
+   so the swap reads as one control changing rather than two words. */
+.send-label {
+  display: inline-grid;
+}
+
+.send-label-item {
+  grid-area: 1 / 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  transition:
+    opacity var(--duration-small) var(--ease-out),
+    filter var(--duration-small) var(--ease-out),
+    scale var(--duration-small) var(--ease-out);
+}
+
+.send-label-item[data-active="false"] {
+  opacity: 0;
+  filter: blur(2px);
+  scale: 0.96;
+}
+
 .detail-secondary-link {
   display: inline-flex;
   align-items: center;
@@ -702,6 +726,20 @@
   border: 1px solid var(--border-default);
   border-radius: var(--radius-md);
   background: var(--bg-base);
+}
+
+/* The delivery just sent rises into the top of the history. */
+.history-row-new {
+  transition:
+    opacity var(--duration-enter) var(--ease-out),
+    translate var(--duration-enter) var(--ease-out);
+}
+
+@starting-style {
+  .history-row-new {
+    opacity: 0;
+    translate: 0 8px;
+  }
 }
 
 .history-row-failed {

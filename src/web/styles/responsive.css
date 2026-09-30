@@ -316,8 +316,15 @@
   .toast,
   .reader-end-card,
   .settings-bookshelf-row,
-  .settings-bookshelf-create {
+  .settings-bookshelf-create,
+  .history-row-new,
+  .book-card-shell-new {
     translate: none !important;
+  }
+
+  .send-label-item[data-active="false"] {
+    filter: none;
+    scale: none;
   }
 
   /* Finished celebration: no sweep, the seal only fades, the check is drawn. */
