@@ -157,6 +157,8 @@ export const BookshelfPage = () => {
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const latestBooksRequest = useRef(0);
   const searchInputRef = useRef<HTMLInputElement | null>(null);
+  const listScrollRef = useRef<HTMLDivElement | null>(null);
+  const [listScrolled, setListScrolled] = useState(false);
   const flashMessage = (location.state as { message?: string } | null)?.message ?? null;
 
   const requestedBookshelfId = searchParams.get("shelf");
@@ -180,6 +182,12 @@ export const BookshelfPage = () => {
   const showingFilteredResults =
     debouncedQuery.trim().length > 0 || statusFilter !== "all";
   const canSendToKindleFromShelf = Boolean(settings?.smtp.configured && activeBookshelf?.kindleEmail?.trim());
+
+  // A different shelf, status, or page is a new list: start it at the top
+  // rather than wherever the previous one was scrolled to.
+  useEffect(() => {
+    listScrollRef.current?.scrollTo({ top: 0 });
+  }, [activeBookshelfId, statusFilter, pageOffset]);
 
   const loadBookshelves = useEffectEvent(async () => {
     try {
@@ -753,6 +761,35 @@ export const BookshelfPage = () => {
         open={bookPendingDelete !== null}
       />
 
+        <ImportBooksModal
+          disabled={uploading}
+          onClose={() => setIsImportModalOpen(false)}
+          onImportFiles={(files) => {
+            requestImportFiles(files);
+          }}
+          onRejectFiles={() =>
+            toast({
+              title: "Import unavailable",
+              description: INVALID_IMPORT_FILES_MESSAGE,
+              variant: "error",
+            })
+          }
+          open={isImportModalOpen}
+        />
+
+        <ImportTargetModal
+          bookshelves={bookshelves}
+          disabled={uploading}
+          fileCount={pendingImportFiles.length}
+          onClearBookshelves={clearImportBookshelves}
+          onClose={closeImportTargetModal}
+          onConfirm={confirmImportTarget}
+          onSelectAllBookshelves={selectAllImportBookshelves}
+          onToggleBookshelf={toggleImportBookshelf}
+          open={isImportTargetModalOpen}
+          selectedBookshelfIds={selectedImportBookshelfIds}
+        />
+
       <div
         aria-hidden={!bookshelfDropTarget.isActive}
         className={cn("bookshelf-dropzone-overlay", bookshelfDropTarget.isActive && "visible")}
@@ -790,6 +827,12 @@ export const BookshelfPage = () => {
         />
 
         <div aria-busy={loading} className="bookshelf-main stack-lg">
+          <div
+            className={cn(
+              "bookshelf-main-head stack-lg",
+              listScrolled && "bookshelf-main-head-scrolled",
+            )}
+          >
           <header className="bookshelf-main-header">
             <div className="bookshelf-main-heading">
               <h1 className="bookshelf-main-title">
@@ -815,51 +858,6 @@ export const BookshelfPage = () => {
               </Button>
             </div>
           </header>
-
-          {showOnboarding ? (
-            <OnboardingChecklist steps={onboardingSteps} onDismiss={dismissOnboarding} />
-          ) : null}
-
-          {!showOnboarding &&
-          hasLoadedSettings &&
-          activeBookshelf &&
-          !activeBookshelf.kindleEmail ? (
-            <p className="bookshelf-header-note">
-              <Link className="bookshelf-header-note-link" to="/settings">
-                Add a Kindle address
-              </Link>{" "}
-              to enable sending books from {activeBookshelf.name}.
-            </p>
-          ) : null}
-
-        <ImportBooksModal
-          disabled={uploading}
-          onClose={() => setIsImportModalOpen(false)}
-          onImportFiles={(files) => {
-            requestImportFiles(files);
-          }}
-          onRejectFiles={() =>
-            toast({
-              title: "Import unavailable",
-              description: INVALID_IMPORT_FILES_MESSAGE,
-              variant: "error",
-            })
-          }
-          open={isImportModalOpen}
-        />
-
-        <ImportTargetModal
-          bookshelves={bookshelves}
-          disabled={uploading}
-          fileCount={pendingImportFiles.length}
-          onClearBookshelves={clearImportBookshelves}
-          onClose={closeImportTargetModal}
-          onConfirm={confirmImportTarget}
-          onSelectAllBookshelves={selectAllImportBookshelves}
-          onToggleBookshelf={toggleImportBookshelf}
-          open={isImportTargetModalOpen}
-          selectedBookshelfIds={selectedImportBookshelfIds}
-        />
 
         <section className="toolbar">
           <div className="searchbox">
@@ -966,6 +964,28 @@ export const BookshelfPage = () => {
             </div>
           </div>
         </section>
+          </div>
+
+          <div
+            className="bookshelf-main-scroll stack-lg"
+            onScroll={(event) => setListScrolled(event.currentTarget.scrollTop > 0)}
+            ref={listScrollRef}
+          >
+          {showOnboarding ? (
+            <OnboardingChecklist steps={onboardingSteps} onDismiss={dismissOnboarding} />
+          ) : null}
+
+          {!showOnboarding &&
+          hasLoadedSettings &&
+          activeBookshelf &&
+          !activeBookshelf.kindleEmail ? (
+            <p className="bookshelf-header-note">
+              <Link className="bookshelf-header-note-link" to="/settings">
+                Add a Kindle address
+              </Link>{" "}
+              to enable sending books from {activeBookshelf.name}.
+            </p>
+          ) : null}
 
         {error ? <p className="inline-error">{error}</p> : null}
 
@@ -1067,6 +1087,7 @@ export const BookshelfPage = () => {
             </Button>
           </nav>
         ) : null}
+          </div>
         </div>
       </div>
     </div>

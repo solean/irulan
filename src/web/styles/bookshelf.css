@@ -279,8 +279,9 @@
 }
 
 /* Wide windows split the bookshelf into panes, like a desktop app: the
-   sidebar stays put and only the book list scrolls, with its scrollbar at the
-   window edge below the header. Narrow windows keep one scrolling column. */
+   sidebar stays put, the title row and toolbar stay pinned, and only the book
+   list scrolls, with its scrollbar below the toolbar at the window edge.
+   Narrow windows keep one scrolling column. */
 @media (min-width: 769px) {
   .content:has(.bookshelf-layout) {
     overflow: hidden;
@@ -311,9 +312,66 @@
   }
 
   .bookshelf-main {
-    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+  }
+
+  /* Both halves reserve the same scrollbar gutter so their right edges line
+     up, and bleed into the column gap so focus rings at the left edge are
+     not clipped. */
+  .bookshelf-main-head,
+  .bookshelf-main-scroll {
+    margin-left: -8px;
+    padding-left: 8px;
+    padding-right: 28px;
     scrollbar-gutter: stable;
-    padding: 24px 28px 24px 0;
+  }
+
+  .bookshelf-main-head {
+    flex: none;
+    overflow: hidden;
+    padding-top: 24px;
+    padding-bottom: 16px;
+    border-bottom: 1px solid transparent;
+    transition: border-color 120ms ease;
+  }
+
+  .bookshelf-main-head-scrolled {
+    border-bottom-color: var(--border-default);
+  }
+
+  .bookshelf-main > .bookshelf-main-scroll {
+    --bookshelf-list-inset-top: 16px;
+    flex: 1 1 auto;
+    min-height: 0;
+    margin-top: 0;
+    overflow: auto;
+    padding-top: var(--bookshelf-list-inset-top);
+    padding-bottom: 24px;
+  }
+
+  /* The list pane scrolls both ways, so the table's own horizontal scroller
+     steps aside and the column headers stick to the pane instead. */
+  .books-table-shell [data-slot="table-container"] {
+    overflow: visible;
+  }
+
+  /* Sticky offsets are measured inside the pane's padding; pull back by it so
+     the header sits flush under the toolbar with no rows peeking above. */
+  .books-table thead th {
+    position: sticky;
+    top: calc(-1 * var(--bookshelf-list-inset-top));
+    z-index: 1;
+    background: var(--bg-surface);
+  }
+
+  .books-table thead th:first-child {
+    border-top-left-radius: calc(var(--radius-md) - 1px);
+  }
+
+  .books-table thead th:last-child {
+    border-top-right-radius: calc(var(--radius-md) - 1px);
   }
 
   /* Frame the visible pane rather than the full scroll height. */
