@@ -42,13 +42,10 @@
 }
 
 .bookshelf-sidebar {
-  position: sticky;
-  top: 0;
   display: flex;
   flex-direction: column;
   gap: 22px;
   min-width: 0;
-  min-height: calc(100vh - var(--header-height) - 80px);
   overflow: hidden;
   padding: 0 4px 24px 0;
   border-right: 1px solid var(--border-default);
@@ -279,6 +276,50 @@
 
 .bookshelf-main {
   min-width: 0;
+}
+
+/* Wide windows split the bookshelf into panes, like a desktop app: the
+   sidebar stays put and only the book list scrolls, with its scrollbar at the
+   window edge below the header. Narrow windows keep one scrolling column. */
+@media (min-width: 769px) {
+  .content:has(.bookshelf-layout) {
+    overflow: hidden;
+    scrollbar-gutter: auto;
+    padding-top: 0;
+    padding-right: 0;
+    padding-bottom: 0;
+  }
+
+  .bookshelf-dropzone-shell {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .bookshelf-layout {
+    flex: 1 1 auto;
+    min-height: 0;
+    grid-template-rows: minmax(0, 1fr);
+    align-items: stretch;
+  }
+
+  .bookshelf-sidebar {
+    overflow-y: auto;
+    scrollbar-width: thin;
+    padding-top: 24px;
+  }
+
+  .bookshelf-main {
+    overflow-y: auto;
+    scrollbar-gutter: stable;
+    padding: 24px 28px 24px 0;
+  }
+
+  /* Frame the visible pane rather than the full scroll height. */
+  .bookshelf-dropzone-shell > .bookshelf-dropzone-overlay {
+    inset: 0;
+  }
 }
 
 .bookshelf-main-header {

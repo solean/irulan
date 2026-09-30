@@ -185,16 +185,20 @@
   box-sizing: border-box;
 }
 
+/* The window never scrolls: the shell pins the header and scrolls panes inside
+   it (see .content in shell.css). scrollbar-color inherits, so every scroll
+   pane gets the themed thumb over its own background. */
 html {
-  min-height: 100%;
-  scrollbar-gutter: stable;
+  height: 100%;
+  overflow: hidden;
+  scrollbar-color: var(--border-hover) transparent;
   background: var(--bg-base);
   color: var(--text-primary);
 }
 
 body {
   margin: 0;
-  min-height: 100vh;
+  height: 100%;
   background: var(--bg-base);
   color: var(--text-primary);
 }

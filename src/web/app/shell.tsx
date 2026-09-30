@@ -21,6 +21,7 @@ import { OVERLAY_EXIT_MS, usePresence } from "../hooks/use-presence";
 import { useTheme } from "../hooks/use-theme";
 import { BookIcon } from "../components/icons";
 import { DatabaseRecoveryNotice } from "../components/database-recovery-notice";
+import { scrollContentToTop } from "../lib/navigation";
 
 const getFocusableMenuItems = (container: HTMLElement | null) =>
   Array.from(
@@ -187,12 +188,12 @@ export const Shell = () => {
   const [searchParams] = useSearchParams();
   const isPopout = searchParams.get("popout") === "1";
 
-  // React Router keeps the window's scroll offset across client-side
-  // navigations, so moving from a scrolled-down bookshelf into a book detail
-  // would land partway down the new page. Reset to the top whenever the path
-  // changes (search-only changes, e.g. ?shelf=…, are intentionally ignored).
+  // The #content pane persists across client-side navigations, so moving from
+  // a scrolled-down page into a book detail would land partway down the new
+  // page. Reset to the top whenever the path changes (search-only changes,
+  // e.g. ?shelf=…, are intentionally ignored).
   useLayoutEffect(() => {
-    window.scrollTo({ top: 0, behavior: "auto" });
+    scrollContentToTop();
   }, [location.pathname]);
 
   const pageTitle = (() => {

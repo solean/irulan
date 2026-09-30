@@ -27,9 +27,11 @@
   font-size: 13px;
 }
 
+/* Sticks within the .content scroll pane, which already starts below the
+   header. */
 .reader-sidebar {
   position: sticky;
-  top: calc(var(--header-height) + 24px);
+  top: 24px;
 }
 
 .reader-progress {

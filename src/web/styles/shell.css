@@ -4,7 +4,7 @@
 .app-shell {
   display: flex;
   flex-direction: column;
-  min-height: 100vh;
+  height: 100vh;
 }
 
 .electron-shell .app-shell {
@@ -18,8 +18,8 @@
 }
 
 .main-header {
-  position: sticky;
-  top: 0;
+  position: relative;
+  flex: none;
   z-index: 30;
   border-bottom: 1px solid var(--border-default);
   background: var(--header-backdrop);
@@ -312,8 +312,14 @@
   height: 15px;
 }
 
+/* The page scroll pane: starts below the header, so its scrollbar does too.
+   The stable gutter keeps content from shifting as pages gain or lose
+   overflow. */
 .content {
   flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
   display: flex;
   flex-direction: column;
   width: 100%;
@@ -333,12 +339,12 @@
 
 .app-shell-popout {
   height: 100vh;
-  min-height: 100vh;
 }
 
 .popout-main {
   flex: 1;
   min-height: 0;
+  overflow-y: auto;
   display: flex;
   flex-direction: column;
 }

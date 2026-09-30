@@ -50,7 +50,7 @@ import { useDocumentTitle } from "../hooks/use-document-title";
 import { OVERLAY_EXIT_MS, usePresence } from "../hooks/use-presence";
 import { api } from "../lib/api";
 import { numberFormatter } from "../lib/format";
-import { getBookHref } from "../lib/navigation";
+import { getBookHref, scrollContentToTop } from "../lib/navigation";
 import {
   createReaderAssetSection,
   getReaderDocumentTitle,
@@ -914,7 +914,7 @@ export const ReaderPage = () => {
         return;
       }
 
-      window.scrollTo({ top: 0, behavior: "auto" });
+      scrollContentToTop();
     });
 
     return () => {
