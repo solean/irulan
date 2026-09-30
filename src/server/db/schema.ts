@@ -36,6 +36,10 @@ export const books = sqliteTable(
     importedAt: integer("imported_at", { mode: "timestamp_ms" }).notNull(),
     readStatus: text("reading_status").$type<ReadStatus>().notNull().default("unread"),
     rating: real("rating"),
+    /** Set when the status moves to "finished"; cleared when it moves away. */
+    finishedAt: integer("finished_at", { mode: "timestamp_ms" }),
+    /** Bumped each time the reader loads the book. */
+    lastOpenedAt: integer("last_opened_at", { mode: "timestamp_ms" }),
   },
   (table) => [index("books_imported_at_idx").on(table.importedAt)],
 );

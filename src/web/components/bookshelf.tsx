@@ -69,6 +69,8 @@ export const DEFAULT_BOOKSHELF_SORT: BookshelfSort = {
 };
 export const BOOKSHELF_SORT_OPTIONS: ReadonlyArray<{ value: BookshelfSortKey; label: string }> = [
   { value: "importedAt", label: "Recently added" },
+  { value: "lastOpenedAt", label: "Recently opened" },
+  { value: "finishedAt", label: "Recently finished" },
   { value: "title", label: "Title" },
   { value: "author", label: "Author" },
   { value: "readStatus", label: "Read status" },
@@ -93,7 +95,13 @@ export const EMPTY_STATUS_COUNTS: Record<ReadStatusFilter, number> = {
 
 
 export const getDefaultBookshelfSortDirection = (key: BookshelfSortKey): SortDirection =>
-  key === "importedAt" || key === "fileSizeBytes" || key === "rating" ? "desc" : "asc";
+  key === "importedAt" ||
+  key === "lastOpenedAt" ||
+  key === "finishedAt" ||
+  key === "fileSizeBytes" ||
+  key === "rating"
+    ? "desc"
+    : "asc";
 
 export const getNextBookshelfSort = (current: BookshelfSort, key: BookshelfSortKey): BookshelfSort => {
   if (current.key === key) {
@@ -255,10 +263,18 @@ export const BookshelfGrid = ({
     className={cn("books-grid", `books-grid-${density}`)}
   >
     {books.map((book) => {
-      const addedRelative = formatRelative(book.importedAt);
-      const addedFull = formatDate(book.importedAt);
+      // Surface the date the shelf is ordered by; other sorts fall back to
+      // when the book was added.
+      const cardDate =
+        sortKey === "finishedAt"
+          ? { label: "Finished", value: book.finishedAt }
+          : sortKey === "lastOpenedAt"
+            ? { label: "Opened", value: book.lastOpenedAt }
+            : sortKey === "importedAt"
+              ? null
+              : { label: "Added", value: book.importedAt };
+      const cardDateRelative = cardDate ? formatRelative(cardDate.value) : null;
       const displayTitle = formatDisplayTitle(book.title);
-      const showAddedRow = sortKey !== "importedAt" && addedRelative;
       const reveal = revealBookIds?.has(book.id) ?? false;
       // Stagger in grid order, capped so a big import doesn't drag on.
       const revealStyle = reveal
@@ -296,9 +312,9 @@ export const BookshelfGrid = ({
                 {book.author}
               </span>
               <BookMetadataStrip book={book} filledStarsOnly />
-              {showAddedRow ? (
-                <span className="book-meta" title={addedFull}>
-                  {`Added ${addedRelative}`}
+              {cardDate && cardDateRelative ? (
+                <span className="book-meta" title={formatDate(cardDate.value)}>
+                  {`${cardDate.label} ${cardDateRelative}`}
                 </span>
               ) : null}
             </div>
@@ -367,6 +383,10 @@ export const BookshelfList = ({
   onChangeSort,
 }: BookshelfListProps) => {
   const navigate = useNavigate();
+  // One date column that follows the active date sort, so a list ordered by
+  // "Recently opened" shows the dates it is ordered by.
+  const dateKey =
+    sort.key === "finishedAt" || sort.key === "lastOpenedAt" ? sort.key : "importedAt";
 
   return (
     <section
@@ -378,7 +398,7 @@ export const BookshelfList = ({
           <col className="books-table-col-title" />
           <col className="books-table-col-author" />
           <col className="books-table-col-file" />
-          <col className="books-table-col-imported" />
+          <col className="books-table-col-date" />
           <col className="books-table-col-size" />
         </colgroup>
         <TableHeader className="[&_tr]:border-0">
@@ -407,12 +427,18 @@ export const BookshelfList = ({
                 sortKey="sourceFilename"
               />
             </TableHead>
-            <TableHead aria-sort={getAriaSort(sort, "importedAt")} scope="col">
+            <TableHead aria-sort={getAriaSort(sort, dateKey)} scope="col">
               <BookshelfSortButton
-                label="Imported"
+                label={
+                  dateKey === "finishedAt"
+                    ? "Finished"
+                    : dateKey === "lastOpenedAt"
+                      ? "Opened"
+                      : "Imported"
+                }
                 onChangeSort={onChangeSort}
                 sort={sort}
-                sortKey="importedAt"
+                sortKey={dateKey}
               />
             </TableHead>
             <TableHead
@@ -474,7 +500,7 @@ export const BookshelfList = ({
                 </span>
               </TableCell>
               <TableCell>
-                <span className="books-table-text">{formatDate(book.importedAt)}</span>
+                <span className="books-table-text">{formatDate(book[dateKey])}</span>
               </TableCell>
               <TableCell className="books-table-size-cell">
                 <span className="books-table-text">{formatBytes(book.fileSizeBytes)}</span>

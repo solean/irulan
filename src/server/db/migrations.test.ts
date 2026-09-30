@@ -51,7 +51,7 @@ describe("database migrations", () => {
         ["settings"],
         ["sqlite_sequence"],
       ]);
-      expect(rows(database, "SELECT COUNT(*) FROM __drizzle_migrations;")).toEqual([[4]]);
+      expect(rows(database, "SELECT COUNT(*) FROM __drizzle_migrations;")).toEqual([[5]]);
       expect(rows(database, "SELECT id, name FROM bookshelves;")).toEqual([
         ["default", "My bookshelf"],
       ]);
@@ -145,16 +145,19 @@ describe("database migrations", () => {
     try {
       migrateDatabaseSchema(database, migrationsFolder);
 
-      expect(rows(database, "SELECT reading_status, rating FROM books WHERE id = 'book-1';")).toEqual([
-        ["unread", null],
-      ]);
+      expect(
+        rows(
+          database,
+          "SELECT reading_status, rating, finished_at, last_opened_at FROM books WHERE id = 'book-1';",
+        ),
+      ).toEqual([["unread", null, null, null]]);
       expect(rows(database, "SELECT id, book_id, bookshelf_id, status FROM deliveries;")).toEqual([
         ["delivery-1", "book-1", null, "sent"],
       ]);
       expect(rows(database, "SELECT book_id, bookshelf_id FROM book_shelves;")).toEqual([
         ["book-1", "default"],
       ]);
-      expect(rows(database, "SELECT COUNT(*) FROM __drizzle_migrations;")).toEqual([[4]]);
+      expect(rows(database, "SELECT COUNT(*) FROM __drizzle_migrations;")).toEqual([[5]]);
     } finally {
       database.close();
     }
@@ -170,7 +173,12 @@ describe("database migrations", () => {
     const journal = JSON.parse(readFileSync(journalPath, "utf8")) as {
       entries: { tag: string }[];
     };
-    journal.entries = journal.entries.filter((entry) => entry.tag !== "0003_bizarre_ultragirl");
+    // A database from before 0003 has none of the later migrations either;
+    // drizzle skips anything older than the newest applied entry.
+    journal.entries = journal.entries.slice(
+      0,
+      journal.entries.findIndex((entry) => entry.tag === "0003_bizarre_ultragirl"),
+    );
     writeFileSync(journalPath, JSON.stringify(journal));
 
     const database = freshDatabase();

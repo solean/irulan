@@ -29,6 +29,7 @@ import {
   readBookReaderAsset,
   stageBookFile,
   type StagedBookFile,
+  recordBookOpened,
   updateBookMetadata,
 } from "../services/books";
 import { replaceBookBookshelves } from "../services/bookshelves";
@@ -254,9 +255,14 @@ booksRoutes.get("/:id/search", async (c) => {
   );
 });
 
-booksRoutes.get("/:id/read", async (c) =>
-  c.json({ reader: await getBookReader(c.req.param("id")) }),
-);
+// The reader fetches this once per open, so it doubles as the "last opened"
+// signal. Stamp only after the EPUB loads; a book that fails to open was not read.
+booksRoutes.get("/:id/read", async (c) => {
+  const bookId = c.req.param("id");
+  const reader = await getBookReader(bookId);
+  recordBookOpened(bookId);
+  return c.json({ reader });
+});
 
 booksRoutes.get("/:id/read/*", async (c) => {
   const bookId = c.req.param("id");

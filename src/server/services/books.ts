@@ -132,6 +132,8 @@ const toBookSummary = (book: BookRecord, bookshelves: BookshelfSummary[]): BookS
   coverUrl: book.coverPath ? `/api/books/${book.id}/cover` : null,
   readStatus: book.readStatus,
   rating: normalizeRating(book.rating),
+  finishedAt: book.finishedAt?.toISOString() ?? null,
+  lastOpenedAt: book.lastOpenedAt?.toISOString() ?? null,
   bookshelves,
 });
 
@@ -164,10 +166,16 @@ const bookSelection = {
   importedAt: books.importedAt,
   readStatus: books.readStatus,
   rating: books.rating,
+  finishedAt: books.finishedAt,
+  lastOpenedAt: books.lastOpenedAt,
 };
 
-const getBookSortOrder = (sort: BookSortKey, direction: SortDirection) => {
+const getBookSortOrder = (sort: BookSortKey, direction: SortDirection): SQL[] => {
   let expression: SQLiteColumn | SQL;
+  // Books never finished or opened have no date to rank by; keep them after
+  // the dated ones in either direction instead of letting SQLite's NULL
+  // ordering put them first on ascending sorts.
+  let undatedLast = false;
   switch (sort) {
     case "title":
       expression = sql`lower(${books.title})`;
@@ -192,13 +200,22 @@ const getBookSortOrder = (sort: BookSortKey, direction: SortDirection) => {
     case "rating":
       expression = sql<number>`coalesce(${books.rating}, 0)`;
       break;
+    case "finishedAt":
+      expression = books.finishedAt;
+      undatedLast = true;
+      break;
+    case "lastOpenedAt":
+      expression = books.lastOpenedAt;
+      undatedLast = true;
+      break;
     // "importedAt" and anything unrecognized land here.
     default:
       expression = books.importedAt;
       break;
   }
 
-  return direction === "asc" ? asc(expression) : desc(expression);
+  const order = direction === "asc" ? asc(expression) : desc(expression);
+  return undatedLast ? [sql`${expression} is null`, order] : [order];
 };
 
 const countBooks = (bookshelfId: string | null, whereClause?: SQL) => {
@@ -291,7 +308,7 @@ export const listBooks = (options: BookListOptions = {}): BookPage => {
         .from(books)
         .innerJoin(bookShelves, eq(bookShelves.bookId, books.id))
         .where(and(eq(bookShelves.bookshelfId, bookshelfId), pageClause))
-        .orderBy(order, asc(books.id))
+        .orderBy(...order, asc(books.id))
         .limit(limit)
         .offset(offset)
         .all()
@@ -300,14 +317,14 @@ export const listBooks = (options: BookListOptions = {}): BookPage => {
           .select(bookSelection)
           .from(books)
           .where(pageClause)
-          .orderBy(order, asc(books.id))
+          .orderBy(...order, asc(books.id))
           .limit(limit)
           .offset(offset)
           .all()
       : db
           .select(bookSelection)
           .from(books)
-          .orderBy(order, asc(books.id))
+          .orderBy(...order, asc(books.id))
           .limit(limit)
           .offset(offset)
           .all();
@@ -345,16 +362,30 @@ export const updateBookMetadata = (
   metadata: UpdateBookMetadataPayload,
 ): BookDetail => {
   const current = getBookRecord(bookId);
+  const readStatus = metadata.readStatus ?? current.readStatus;
+  // Only the move into "finished" stamps the date; re-saving a finished book
+  // (say, to change its rating) keeps the original finish.
+  const finishedAt =
+    readStatus !== "finished"
+      ? null
+      : current.readStatus === "finished"
+        ? current.finishedAt
+        : new Date();
 
   db.update(books)
     .set({
-      readStatus: metadata.readStatus ?? current.readStatus,
+      readStatus,
       rating: metadata.rating === undefined ? current.rating : metadata.rating,
+      finishedAt,
     })
     .where(eq(books.id, bookId))
     .run();
 
   return getBook(bookId);
+};
+
+export const recordBookOpened = (bookId: string) => {
+  db.update(books).set({ lastOpenedAt: new Date() }).where(eq(books.id, bookId)).run();
 };
 
 const loadPreparedBookReader = async (bookId: string): Promise<PreparedBookReader> => {

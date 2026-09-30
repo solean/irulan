@@ -10,6 +10,8 @@ export const BOOK_SORT_KEYS = [
   "fileSizeBytes",
   "readStatus",
   "rating",
+  "finishedAt",
+  "lastOpenedAt",
 ] as const;
 
 export type BookSortKey = (typeof BOOK_SORT_KEYS)[number];
@@ -50,6 +52,8 @@ export type BookSummary = {
   coverUrl: string | null;
   readStatus: ReadStatus;
   rating: number | null;
+  finishedAt: string | null;
+  lastOpenedAt: string | null;
   bookshelves: BookshelfSummary[];
 };
 

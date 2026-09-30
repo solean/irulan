@@ -9,7 +9,7 @@ import { eq } from "drizzle-orm";
 import { appConfig } from "../config";
 import * as client from "../db/client";
 import * as schema from "../db/schema";
-import { listBooks } from "./books";
+import { listBooks, updateBookMetadata } from "./books";
 import {
   getBookshelfList,
   listBookshelves,
@@ -451,5 +451,58 @@ describe("getBookshelfList", () => {
     addBooks(2);
 
     expect(getBookshelfList().libraryBookCount).toBe(2);
+  });
+});
+
+describe("reading dates", () => {
+  test("stamps finishedAt only on the move into finished and clears it on the way out", () => {
+    const [bookId] = addBooks(1) as [string];
+
+    const finished = updateBookMetadata(bookId, { readStatus: "finished" });
+    expect(finished.finishedAt).not.toBeNull();
+
+    const earlier = new Date("2026-01-02T03:04:05.000Z");
+    client.db
+      .update(schema.books)
+      .set({ finishedAt: earlier })
+      .where(eq(schema.books.id, bookId))
+      .run();
+    expect(updateBookMetadata(bookId, { rating: 4 }).finishedAt).toBe(earlier.toISOString());
+    expect(updateBookMetadata(bookId, { readStatus: "finished" }).finishedAt).toBe(
+      earlier.toISOString(),
+    );
+
+    expect(updateBookMetadata(bookId, { readStatus: "reading" }).finishedAt).toBeNull();
+    expect(updateBookMetadata(bookId, { readStatus: "finished" }).finishedAt).not.toBe(
+      earlier.toISOString(),
+    );
+  });
+
+  test("orders undated books last for date sorts in both directions", () => {
+    addBooks(3);
+    const dates: Array<[string, Date]> = [
+      ["book-0", new Date("2026-03-01T00:00:00.000Z")],
+      ["book-2", new Date("2026-02-01T00:00:00.000Z")],
+    ];
+    for (const [id, date] of dates) {
+      client.db
+        .update(schema.books)
+        .set({ finishedAt: date, lastOpenedAt: date })
+        .where(eq(schema.books.id, id))
+        .run();
+    }
+
+    for (const sort of ["finishedAt", "lastOpenedAt"] as const) {
+      expect(listBooks({ sort, direction: "desc" }).books.map((book) => book.id)).toEqual([
+        "book-0",
+        "book-2",
+        "book-1",
+      ]);
+      expect(listBooks({ sort, direction: "asc" }).books.map((book) => book.id)).toEqual([
+        "book-2",
+        "book-0",
+        "book-1",
+      ]);
+    }
   });
 });

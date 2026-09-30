@@ -661,6 +661,18 @@ export const BookDetailPage = () => {
               <ReadStatusBadge status={book.readStatus} />
             </dd>
           </div>
+          {book.finishedAt ? (
+            <div>
+              <dt>Finished</dt>
+              <dd>{formatDate(book.finishedAt)}</dd>
+            </div>
+          ) : null}
+          {book.lastOpenedAt ? (
+            <div>
+              <dt>Last opened</dt>
+              <dd>{formatRelative(book.lastOpenedAt) ?? formatDate(book.lastOpenedAt)}</dd>
+            </div>
+          ) : null}
           <div>
             <dt>Rating</dt>
             <dd>

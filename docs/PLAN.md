@@ -13,8 +13,8 @@ Irulan already provides:
 - batch EPUB import with duplicate detection
 - bookshelf organization
 - title and author search
-- sorting, status filtering, grid/list views, and density controls
-- read status and ratings
+- sorting (including recently opened and recently finished), status filtering, grid/list views, and density controls
+- read status and ratings, with finished and last-opened dates
 - book detail and delivery history
 - a paginated reader with themes, fonts, spacing, keyboard navigation, and resume support
 - SMTP configuration and Send to Kindle
