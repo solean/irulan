@@ -71,7 +71,8 @@
   --muted-foreground: #6E5A43;
   --accent: var(--button-primary);
   --accent-foreground: var(--button-primary-foreground);
-  --destructive: #B85D50;
+  /* Darker than --error so destructive button text clears 4.5:1 on its own tint. */
+  --destructive: #933C31;
   --border: rgba(103, 78, 47, 0.14);
   --input: rgba(103, 78, 47, 0.14);
   --ring: #BC8D56;
@@ -203,13 +204,24 @@ body {
   color: var(--text-primary);
 }
 
+/* Buttons take their font from Tailwind's preflight, which lives in the base
+   layer; an unlayered reset here would override every Button size utility. */
 body,
-button,
 input,
 textarea,
 select,
 table {
   font: inherit;
+}
+
+/* Tailwind v4 preflight resets buttons to the arrow cursor; restore the pointer
+   that links and hand-built controls already show. Layered so a component's own
+   cursor wins. */
+@layer base {
+  button:not(:disabled),
+  [role="button"]:not([aria-disabled="true"]) {
+    cursor: pointer;
+  }
 }
 
 .serif {

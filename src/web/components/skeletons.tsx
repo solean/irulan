@@ -1,5 +1,6 @@
 import { Link } from "react-router-dom";
 
+import { Button } from "@/components/ui/button";
 
 import { SkeletonLine } from "./bookshelf";
 import { ArrowLeftIcon } from "./icons";
@@ -7,10 +8,12 @@ import { ArrowLeftIcon } from "./icons";
 export const BookDetailSkeleton = () => (
   <div aria-busy="true" className="page page-narrow stack-lg">
     <div className="detail-page-header">
-      <Link className="backlink" to="/">
-        <ArrowLeftIcon />
-        Bookshelf
-      </Link>
+      <Button asChild className="backlink" size="sm" variant="ghost">
+        <Link to="/">
+          <ArrowLeftIcon />
+          Bookshelf
+        </Link>
+      </Button>
     </div>
 
     <section aria-hidden="true" className="detail-hero">

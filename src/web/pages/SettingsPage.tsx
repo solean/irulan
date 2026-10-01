@@ -27,6 +27,7 @@ import type {
   SettingsPayload,
 } from "../../shared/types";
 import { ArrowLeftIcon } from "../components/icons";
+import { ConfirmModal } from "../components/modals";
 import { SettingsSkeleton } from "../components/skeletons";
 import { useDocumentTitle } from "../hooks/use-document-title";
 import { useToast } from "../hooks/use-toast";
@@ -77,6 +78,9 @@ export const SettingsPage = () => {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [backingUp, setBackingUp] = useState(false);
   const [restoring, setRestoring] = useState(false);
+  // The file outlives `restoreOpen` so the dialog copy holds still while it fades out.
+  const [restoreFile, setRestoreFile] = useState<File | null>(null);
+  const [restoreOpen, setRestoreOpen] = useState(false);
 
   const loadSettings = useEffectEvent(async () => {
     setLoading(true);
@@ -184,18 +188,15 @@ export const SettingsPage = () => {
     }
   };
 
-  const onRestoreBackup = async (event: ChangeEvent<HTMLInputElement>) => {
+  const onChooseRestoreFile = (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.currentTarget.files?.[0];
     event.currentTarget.value = "";
     if (!file) return;
-    if (
-      !window.confirm(
-        "Restore this backup? It will replace the current library, including books, shelves, settings, bookmarks, highlights, and notes.",
-      )
-    ) {
-      return;
-    }
+    setRestoreFile(file);
+    setRestoreOpen(true);
+  };
 
+  const onRestoreBackup = async (file: File) => {
     setRestoring(true);
     try {
       const result = await api.restoreLibraryBackup(file);
@@ -215,6 +216,7 @@ export const SettingsPage = () => {
         variant: "error",
       });
       setRestoring(false);
+      setRestoreOpen(false);
     }
   };
 
@@ -239,7 +241,7 @@ export const SettingsPage = () => {
 
   return (
     <div className="page page-narrow settings-page">
-      <Button asChild className="backlink" variant="ghost">
+      <Button asChild className="backlink" size="sm" variant="ghost">
         <Link to="/">
           <ArrowLeftIcon />
           Back to bookshelf
@@ -539,7 +541,7 @@ export const SettingsPage = () => {
         </div>
         <div className="settings-backup-controls">
           <div className="settings-backup-actions">
-            <Button disabled={backingUp || restoring} onClick={() => void onDownloadBackup()} type="button">
+            <Button disabled={backingUp || restoring} onClick={() => void onDownloadBackup()} type="button" variant="outline">
               <Download aria-hidden="true" />{backingUp ? "Creating backup…" : "Download backup"}
             </Button>
             <Button disabled={backingUp || restoring || savingSmtp} onClick={() => restoreInputRef.current?.click()} type="button" variant="outline">
@@ -547,9 +549,30 @@ export const SettingsPage = () => {
             </Button>
           </div>
           <p className="settings-help">Restoring replaces your current library. If validation fails, your library is kept.</p>
-          <input accept=".zip,application/zip" aria-label="Choose library backup" className="sr-only" disabled={backingUp || restoring || savingSmtp} onChange={(event) => void onRestoreBackup(event)} ref={restoreInputRef} type="file" />
+          <input accept=".zip,application/zip" aria-label="Choose library backup" className="sr-only" disabled={backingUp || restoring || savingSmtp} onChange={onChooseRestoreFile} ref={restoreInputRef} type="file" />
         </div>
       </section>
+
+      <ConfirmModal
+        confirmLabel="Replace library"
+        description={
+          <>
+            <strong className="font-semibold text-[var(--text-primary)]">{restoreFile?.name}</strong>{" "}
+            will replace your current library, including books, shelves, settings, bookmarks,
+            highlights, and notes. If the backup fails validation, your library is kept.
+          </>
+        }
+        destructive
+        eyebrow="Library backup"
+        onClose={() => setRestoreOpen(false)}
+        onConfirm={() => {
+          if (restoreFile) void onRestoreBackup(restoreFile);
+        }}
+        open={restoreOpen}
+        pending={restoring}
+        pendingLabel={"Restoring\u2026"}
+        title="Replace your library with this backup?"
+      />
     </div>
   );
 };

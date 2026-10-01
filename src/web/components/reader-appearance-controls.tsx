@@ -1,4 +1,3 @@
-import { Button } from "@/components/ui/button";
 import {
   Select,
   SelectContent,
@@ -28,17 +27,15 @@ export const ReaderToneToggle = ({
 }) => (
   <div aria-label="Reader tone" className="view-toggle" role="group">
     {(["paper", "sepia", "night"] as const).map((option) => (
-      <Button
+      <button
         aria-pressed={tone === option}
         className={cn("view-toggle-button", tone === option && "active")}
         key={option}
         onClick={() => onChange(option)}
-        size="sm"
         type="button"
-        variant="ghost"
       >
         {option === "paper" ? "Paper" : option === "sepia" ? "Sepia" : "Night"}
-      </Button>
+      </button>
     ))}
   </div>
 );
@@ -51,31 +48,27 @@ export const ReaderFontSizeToggle = ({
   onAdjust: (delta: number) => void;
 }) => (
   <div aria-label="Type size" className="view-toggle" role="group">
-    <Button
+    <button
       aria-label="Decrease type size"
       className="view-toggle-button"
       disabled={fontScale <= READER_MIN_FONT_SCALE}
       onClick={() => onAdjust(-READER_FONT_SCALE_STEP)}
-      size="sm"
       type="button"
-      variant="ghost"
     >
-      A-
-    </Button>
+      A−
+    </button>
     <div className="stat-chip reader-type-scale">
       <strong>{Math.round(fontScale * 100)}%</strong>
     </div>
-    <Button
+    <button
       aria-label="Increase type size"
       className="view-toggle-button"
       disabled={fontScale >= READER_MAX_FONT_SCALE}
       onClick={() => onAdjust(READER_FONT_SCALE_STEP)}
-      size="sm"
       type="button"
-      variant="ghost"
     >
       A+
-    </Button>
+    </button>
   </div>
 );
 
@@ -111,17 +104,15 @@ export const ReaderSpacingToggle = ({
 }) => (
   <div aria-label="Line spacing" className="view-toggle" role="group">
     {READER_SPACINGS.map((option) => (
-      <Button
+      <button
         aria-pressed={spacing === option.id}
         className={cn("view-toggle-button", spacing === option.id && "active")}
         key={option.id}
         onClick={() => onChange(option.id)}
-        size="sm"
         type="button"
-        variant="ghost"
       >
         {option.label}
-      </Button>
+      </button>
     ))}
   </div>
 );

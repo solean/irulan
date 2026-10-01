@@ -358,7 +358,7 @@ export const BookDetailPage = () => {
     return (
       <div className="page page-narrow stack-lg">
         <div className="detail-page-header">
-          <Button asChild className="backlink" variant="ghost">
+          <Button asChild className="backlink" size="sm" variant="ghost">
             <Link to={getBookshelfHref(searchParams.get("shelf"))}>
               <ArrowLeftIcon />
               Bookshelf
@@ -465,7 +465,7 @@ export const BookDetailPage = () => {
         />
 
         <div className="detail-page-header">
-        <Button asChild className="backlink" variant="ghost">
+        <Button asChild className="backlink" size="sm" variant="ghost">
           <Link
             onClick={(event) =>
               navigateWithCoverTransition(event, book.id, () => navigate(backHref))
@@ -741,6 +741,7 @@ export const BookDetailPage = () => {
             disabled={!bookShelfMembershipDirty || savingBookShelves}
             onClick={onSaveBookShelves}
             type="button"
+            variant="outline"
           >
             {savingBookShelves ? "Saving\u2026" : "Save bookshelves"}
           </Button>

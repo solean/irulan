@@ -911,56 +911,48 @@ export const BookshelfPage = () => {
               </SelectContent>
             </Select>
             <div aria-label="Bookshelf view" className="view-toggle" role="group">
-              <Button
+              <button
                 aria-pressed={view === "grid"}
                 className={cn("view-toggle-button", view === "grid" && "active")}
                 onClick={() => onChangeView("grid")}
-                size="sm"
                 type="button"
-                variant="ghost"
               >
                 <GridIcon />
                 Grid
-              </Button>
-              <Button
+              </button>
+              <button
                 aria-pressed={view === "list"}
                 className={cn("view-toggle-button", view === "list" && "active")}
                 onClick={() => onChangeView("list")}
-                size="sm"
                 type="button"
-                variant="ghost"
               >
                 <ListIcon />
                 List
-              </Button>
+              </button>
             </div>
             <div
               aria-label={view === "grid" ? "Grid density" : "List density"}
               className="view-toggle density-toggle"
               role="group"
             >
-              <Button
+              <button
                 aria-pressed={density === "comfortable"}
                 className={cn("view-toggle-button", density === "comfortable" && "active")}
                 onClick={() => onChangeDensity("comfortable")}
-                size="sm"
                 title="Comfortable density"
                 type="button"
-                variant="ghost"
               >
                 {view === "list" ? <ListComfortableIcon /> : <DensityComfortableIcon />}
-              </Button>
-              <Button
+              </button>
+              <button
                 aria-pressed={density === "compact"}
                 className={cn("view-toggle-button", density === "compact" && "active")}
                 onClick={() => onChangeDensity("compact")}
-                size="sm"
                 title="Compact density"
                 type="button"
-                variant="ghost"
               >
                 {view === "list" ? <ListCompactIcon /> : <DensityCompactIcon />}
-              </Button>
+              </button>
             </div>
           </div>
         </section>

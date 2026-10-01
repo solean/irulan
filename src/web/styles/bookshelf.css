@@ -209,10 +209,10 @@
   border-color: color-mix(in srgb, var(--accent) 24%, transparent);
 }
 
+/* The global focus outline, drawn inset: rows span the scroll pane, whose edge
+   would clip an outset ring. */
 .sidebar-item:focus-visible {
-  outline: none;
-  border-color: var(--accent);
-  box-shadow: 0 0 0 2px var(--accent-soft);
+  outline-offset: -2px;
 }
 
 .sidebar-item-name {
@@ -675,12 +675,6 @@
     opacity: 1;
     transform: none;
   }
-}
-
-.book-card-action-trigger:focus-visible {
-  outline: none;
-  border-color: var(--accent);
-  box-shadow: 0 0 0 2px var(--accent-soft);
 }
 
 .book-cover-wrap {
@@ -1208,97 +1202,6 @@
   color: var(--text-tertiary);
   font-size: 12px;
   font-variant-numeric: tabular-nums;
-}
-
-/* ─── Status filter chips ─── */
-
-.status-filter-row {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  flex-wrap: wrap;
-  margin-top: -4px;
-}
-
-.status-filter-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  min-height: 28px;
-  padding: 0 10px;
-  border: 1px solid var(--border-default);
-  border-radius: 999px;
-  background: transparent;
-  color: var(--text-secondary);
-  font-size: 12px;
-  font-weight: 500;
-  cursor: pointer;
-  -webkit-tap-highlight-color: transparent;
-  transition:
-    background-color 120ms ease,
-    border-color 120ms ease,
-    color 120ms ease;
-}
-
-.status-filter-chip:hover {
-  border-color: var(--border-hover);
-  color: var(--text-primary);
-}
-
-.status-filter-chip-count {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 20px;
-  height: 18px;
-  padding: 0 6px;
-  border-radius: 999px;
-  background: var(--bg-elevated);
-  color: var(--text-tertiary);
-  font-size: 11px;
-  font-variant-numeric: tabular-nums;
-}
-
-.status-filter-chip.active {
-  border-color: color-mix(in srgb, var(--accent) 40%, var(--border-hover));
-  background: var(--accent-soft);
-  color: var(--text-primary);
-}
-
-.status-filter-chip.active .status-filter-chip-count {
-  background: var(--accent);
-  color: var(--accent-foreground);
-  font-weight: 600;
-}
-
-.status-filter-chip-reading.active {
-  border-color: color-mix(in srgb, var(--accent) 50%, transparent);
-}
-
-.status-filter-chip-finished.active {
-  border-color: var(--success-border);
-  background: var(--success-soft);
-}
-
-.status-filter-chip-finished.active .status-filter-chip-count {
-  background: var(--success);
-  color: var(--accent-foreground);
-}
-
-.status-filter-chip-unread.active {
-  border-color: var(--border-hover);
-  background: var(--bg-elevated);
-}
-
-.status-filter-chip-unread.active .status-filter-chip-count {
-  background: var(--text-tertiary);
-  color: var(--bg-base);
-}
-
-.status-filter-chip:focus-visible {
-  outline: none;
-  border-color: var(--accent);
-  box-shadow: 0 0 0 2px var(--accent-soft);
 }
 
 /* ─── Density toggle ─── */

@@ -36,13 +36,14 @@
 
 /* ─── Backlink ─── */
 
+/* A ghost <Button size="sm">. Negative margins pull its padding outside the
+   content box, so the arrow lines up with the page's left edge and the row
+   keeps its old height, while the hover pill keeps its inset. */
 .backlink {
   align-self: start;
-  padding-left: 0;
+  margin-block: -5px;
+  margin-inline-start: -10px;
   color: var(--text-secondary);
-  font-size: 13px;
-  height: auto;
-  border: none;
 }
 
 .backlink:hover {

@@ -138,9 +138,13 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* The readout sits between the A−/A+ segments; boxed, it read as a selected
+   segment. */
 .reader-type-scale {
   min-height: 28px;
   padding-inline: 8px;
+  border-color: transparent;
+  background: transparent;
 }
 
 .reader-canvas {
@@ -231,6 +235,8 @@
   --input: var(--border-strong);
   --ring: var(--reader-link);
   --focus-ring: var(--reader-link);
+  /* Per tone, so destructive text clears 4.5:1 on its tint over the paper. */
+  --destructive: #933C31;
 }
 
 .reader-tone-scope[data-reader-tone="sepia"] {
@@ -238,6 +244,7 @@
   --reader-ink: #312316;
   --reader-muted: #8f7555;
   --reader-link: #7b4b1d;
+  --destructive: #802B21;
 }
 
 .reader-tone-scope[data-reader-tone="night"] {
@@ -246,6 +253,7 @@
   --reader-ink: #edf1f5;
   --reader-muted: #9aa4b0;
   --reader-link: #89bfff;
+  --destructive: #EC8D7E;
 }
 
 .reader-tools {
@@ -531,7 +539,11 @@
   color: color-mix(in srgb, var(--reader-ink) 75%, transparent);
   cursor: pointer;
   -webkit-app-region: no-drag;
-  transition: background-color 120ms ease, color 120ms ease, border-color 120ms ease;
+  transition:
+    background-color 120ms ease,
+    color 120ms ease,
+    border-color 120ms ease,
+    scale var(--duration-press) var(--ease-out);
 }
 
 .reader-immersive-control:hover,
@@ -687,12 +699,17 @@
   opacity: 1;
 }
 
-/* The edge hit area spans the full window height, so the browser's default
-   focus ring reads as a stray box down the side. Suppress it; keyboard focus
-   is already signalled by the chevron fading in and inking up. */
+/* The edge hit area spans the full window height, so an outline on the button
+   reads as a stray box down the side. Ring the chevron instead. */
 .reader-edge:focus,
 .reader-edge:focus-visible {
   outline: none;
+}
+
+.reader-edge:focus-visible svg {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 4px;
+  border-radius: var(--radius-sm);
 }
 
 .reader-edge:hover,

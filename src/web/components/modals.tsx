@@ -1,4 +1,5 @@
 import {
+  type ReactNode,
   useCallback,
   useEffect,
   useRef,
@@ -303,6 +304,91 @@ export const ImportTargetModal = ({
   );
 }
 
+type ConfirmModalProps = {
+  open: boolean;
+  pending: boolean;
+  error?: string | null;
+  eyebrow: string;
+  title: string;
+  description: ReactNode;
+  /** Names the consequence ("Delete book"), so the dialog answers without reading the body. */
+  confirmLabel: string;
+  pendingLabel: string;
+  destructive?: boolean;
+  onClose: () => void;
+  onConfirm: () => void;
+};
+
+export const ConfirmModal = ({
+  open,
+  pending,
+  error = null,
+  eyebrow,
+  title,
+  description,
+  confirmLabel,
+  pendingLabel,
+  destructive = false,
+  onClose,
+  onConfirm,
+}: ConfirmModalProps) => (
+  <AlertDialog
+    onOpenChange={(nextOpen) => {
+      if (!pending && !nextOpen) {
+        onClose();
+      }
+    }}
+    open={open}
+  >
+    <AlertDialogContent
+      // Same modifier chain as AlertDialogContent's own max-width so tailwind-merge
+      // replaces it; a bare `sm:max-w-*` loses to the data-attribute variant.
+      className="confirm-modal gap-6 data-[size=default]:sm:max-w-[460px]"
+      onEscapeKeyDown={(event) => {
+        if (pending) {
+          event.preventDefault();
+        }
+      }}
+    >
+      <div className="stack-sm">
+        <div className="stack-xs">
+          <p className="eyebrow">{eyebrow}</p>
+          <AlertDialogTitle className="text-left text-[20px] font-semibold tracking-[-0.02em]">
+            {title}
+          </AlertDialogTitle>
+        </div>
+        <AlertDialogDescription className="confirm-modal-copy text-left">
+          {description}
+        </AlertDialogDescription>
+      </div>
+
+      {error ? (
+        <p aria-live="polite" className="inline-error">
+          {error}
+        </p>
+      ) : null}
+
+      <div className="confirm-modal-actions">
+        <AlertDialogCancel disabled={pending} onClick={onClose}>
+          Cancel
+        </AlertDialogCancel>
+        <AlertDialogAction
+          disabled={pending}
+          onClick={(event) => {
+            event.preventDefault();
+            if (!pending) {
+              onConfirm();
+            }
+          }}
+          variant={destructive ? "destructive" : "default"}
+        >
+          {pending ? pendingLabel : confirmLabel}
+        </AlertDialogAction>
+      </div>
+    </AlertDialogContent>
+  </AlertDialog>
+);
+
 type DeleteBookModalProps = {
   open: boolean;
   deleting: boolean;
@@ -320,61 +406,25 @@ export const DeleteBookModal = ({
   onClose,
   onConfirm,
 }: DeleteBookModalProps) => (
-  <AlertDialog
-    onOpenChange={(nextOpen) => {
-      if (!deleting && !nextOpen) {
-        onClose();
-      }
-    }}
+  <ConfirmModal
+    confirmLabel="Delete book"
+    description={
+      <>
+        <strong className="font-semibold text-[var(--text-primary)]">{bookTitle}</strong> and its
+        delivery history will be removed. This cannot be undone.
+      </>
+    }
+    destructive
+    error={error}
+    eyebrow="Delete book"
+    onClose={onClose}
+    onConfirm={onConfirm}
     open={open}
-  >
-    <AlertDialogContent
-      className="confirm-modal gap-6 sm:max-w-[460px]"
-      onEscapeKeyDown={(event) => {
-        if (deleting) {
-          event.preventDefault();
-        }
-      }}
-    >
-      <div className="stack-sm">
-        <div className="stack-xs">
-          <p className="eyebrow">Delete book</p>
-          <AlertDialogTitle className="text-left text-[20px] font-semibold tracking-[-0.02em]">
-            Remove this title from your library?
-          </AlertDialogTitle>
-        </div>
-        <AlertDialogDescription className="confirm-modal-copy text-left">
-          <strong className="font-semibold text-[var(--text-primary)]">{bookTitle}</strong> and its
-          delivery history will be removed. This cannot be undone.
-        </AlertDialogDescription>
-      </div>
-
-      {error ? (
-        <p aria-live="polite" className="inline-error">
-          {error}
-        </p>
-      ) : null}
-
-      <div className="confirm-modal-actions">
-        <AlertDialogCancel disabled={deleting} onClick={onClose}>
-          Cancel
-        </AlertDialogCancel>
-        <AlertDialogAction
-          disabled={deleting}
-          onClick={(event) => {
-            event.preventDefault();
-            if (!deleting) {
-              onConfirm();
-            }
-          }}
-          variant="destructive"
-        >
-          {deleting ? "Deleting\u2026" : "Delete book"}
-        </AlertDialogAction>
-      </div>
-    </AlertDialogContent>
-  </AlertDialog>
-)
+    pending={deleting}
+    pendingLabel={"Deleting\u2026"}
+    title="Remove this title from your library?"
+  />
+);
 
 type SendBookModalProps = {
   open: boolean;
@@ -395,58 +445,22 @@ export const SendBookModal = ({
   onClose,
   onConfirm,
 }: SendBookModalProps) => (
-  <AlertDialog
-    onOpenChange={(nextOpen) => {
-      if (!sending && !nextOpen) {
-        onClose();
-      }
-    }}
+  <ConfirmModal
+    confirmLabel="Send to Kindle"
+    description={
+      <>
+        <strong className="font-semibold text-[var(--text-primary)]">{bookTitle}</strong> will be
+        emailed to <strong className="font-semibold text-[var(--text-primary)]">{recipientEmail}</strong>.
+        Amazon may still reject it if the sender is not approved.
+      </>
+    }
+    error={error}
+    eyebrow="Send to Kindle"
+    onClose={onClose}
+    onConfirm={onConfirm}
     open={open}
-  >
-    <AlertDialogContent
-      className="confirm-modal gap-6 sm:max-w-[460px]"
-      onEscapeKeyDown={(event) => {
-        if (sending) {
-          event.preventDefault();
-        }
-      }}
-    >
-      <div className="stack-sm">
-        <div className="stack-xs">
-          <p className="eyebrow">Send to Kindle</p>
-          <AlertDialogTitle className="text-left text-[20px] font-semibold tracking-[-0.02em]">
-            Send this book to your Kindle?
-          </AlertDialogTitle>
-        </div>
-        <AlertDialogDescription className="confirm-modal-copy text-left">
-          <strong className="font-semibold text-[var(--text-primary)]">{bookTitle}</strong> will be
-          emailed to <strong className="font-semibold text-[var(--text-primary)]">{recipientEmail}</strong>.
-          Amazon may still reject it if the sender is not approved.
-        </AlertDialogDescription>
-      </div>
-
-      {error ? (
-        <p aria-live="polite" className="inline-error">
-          {error}
-        </p>
-      ) : null}
-
-      <div className="confirm-modal-actions">
-        <AlertDialogCancel disabled={sending} onClick={onClose}>
-          Cancel
-        </AlertDialogCancel>
-        <AlertDialogAction
-          disabled={sending}
-          onClick={(event) => {
-            event.preventDefault();
-            if (!sending) {
-              onConfirm();
-            }
-          }}
-        >
-          {sending ? "Sending\u2026" : "Send to Kindle"}
-        </AlertDialogAction>
-      </div>
-    </AlertDialogContent>
-  </AlertDialog>
-)
+    pending={sending}
+    pendingLabel={"Sending\u2026"}
+    title="Send this book to your Kindle?"
+  />
+);

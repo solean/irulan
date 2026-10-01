@@ -11,6 +11,8 @@ const RELATED_SURFACE_SELECTOR = [
   ".reader-selection-toolbar",
   '[data-slot="dialog-overlay"]',
   '[data-slot="dialog-content"]',
+  '[data-slot="alert-dialog-overlay"]',
+  '[data-slot="alert-dialog-content"]',
 ].join(", ");
 
 /**

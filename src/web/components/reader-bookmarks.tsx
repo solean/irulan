@@ -7,6 +7,7 @@ import { MAX_READER_BOOKMARK_LABEL_LENGTH } from "../../shared/types";
 import { useDismissOnOutsidePress } from "../hooks/use-dismiss-on-outside-press";
 import { OVERLAY_EXIT_MS, usePresence } from "../hooks/use-presence";
 import { api } from "../lib/api";
+import { ConfirmModal } from "./modals";
 
 type ReaderBookmarksProps = {
   bookId: string;
@@ -44,6 +45,9 @@ export const ReaderBookmarks = ({
   const [labelDraft, setLabelDraft] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
+  // The target outlives `deleteOpen` so the dialog copy holds still while it fades out.
+  const [deleteTarget, setDeleteTarget] = useState<ReaderBookmark | null>(null);
+  const [deleteOpen, setDeleteOpen] = useState(false);
 
   useEffect(() => {
     setEditingId(null);
@@ -55,7 +59,8 @@ export const ReaderBookmarks = ({
   useEffect(() => {
     if (!open) return;
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== "Escape") return;
+      // A confirmation dialog on top owns Escape.
+      if (event.defaultPrevented || event.key !== "Escape" || deleteOpen) return;
       event.preventDefault();
       if (editingId) {
         setEditingId(null);
@@ -65,7 +70,7 @@ export const ReaderBookmarks = ({
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [editingId, onOpenChange, open]);
+  }, [deleteOpen, editingId, onOpenChange, open]);
 
   useEffect(() => {
     if (!editingId) return;
@@ -131,6 +136,7 @@ export const ReaderBookmarks = ({
       try {
         await api.deleteReaderBookmark(bookId, bookmarkId);
         onBookmarkDeleted(bookmarkId);
+        setDeleteOpen(false);
         setStatus("Bookmark deleted.");
       } catch (requestError) {
         setError(requestError instanceof Error ? requestError.message : "Could not delete the bookmark.");
@@ -232,10 +238,14 @@ export const ReaderBookmarks = ({
                   </Button>
                   <Button
                     disabled={saving}
-                    onClick={() => void deleteBookmark(bookmark.id)}
+                    onClick={() => {
+                      setError(null);
+                      setDeleteTarget(bookmark);
+                      setDeleteOpen(true);
+                    }}
                     size="sm"
                     type="button"
-                    variant="ghost"
+                    variant="destructive"
                   >
                     Delete
                   </Button>
@@ -245,6 +255,27 @@ export const ReaderBookmarks = ({
           </li>
         ))}
       </ol>
+
+      {/* Portalled to <body>; nesting it here only ties it to the panel's lifetime. */}
+      <ConfirmModal
+        confirmLabel="Delete bookmark"
+        description={
+          deleteTarget
+            ? `“${deleteTarget.label ?? "Bookmark"}” in ${getSectionLabel(deleteTarget.location.sectionHref)} will be removed. This cannot be undone.`
+            : ""
+        }
+        destructive
+        error={error}
+        eyebrow="Bookmarks"
+        onClose={() => setDeleteOpen(false)}
+        onConfirm={() => {
+          if (deleteTarget) void deleteBookmark(deleteTarget.id);
+        }}
+        open={deleteOpen}
+        pending={saving}
+        pendingLabel={"Deleting\u2026"}
+        title="Delete this bookmark?"
+      />
     </aside>
   );
 };

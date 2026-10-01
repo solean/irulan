@@ -34,6 +34,7 @@ import {
   resolveReaderTextRange,
   serializeReaderTextRange,
 } from "../lib/reader-location";
+import { ConfirmModal } from "./modals";
 
 type ReaderAnnotationsProps = {
   bookId: string;
@@ -91,6 +92,9 @@ export const ReaderAnnotations = ({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
+  // The target outlives `deleteOpen` so the dialog copy holds still while it fades out.
+  const [deleteTarget, setDeleteTarget] = useState<ReaderAnnotation | null>(null);
+  const [deleteOpen, setDeleteOpen] = useState(false);
 
   useEffect(() => {
     const requestId = latestRequest.current + 1;
@@ -301,7 +305,7 @@ export const ReaderAnnotations = ({
   useEffect(() => {
     if (!open && !selectedText) return;
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.defaultPrevented || event.key !== "Escape" || noteTarget) return;
+      if (event.defaultPrevented || event.key !== "Escape" || noteTarget || deleteOpen) return;
       event.preventDefault();
       if (selectedText) {
         clearSelection();
@@ -311,7 +315,7 @@ export const ReaderAnnotations = ({
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [clearSelection, noteTarget, onOpenChange, open, selectedText]);
+  }, [clearSelection, deleteOpen, noteTarget, onOpenChange, open, selectedText]);
 
   useDismissOnOutsidePress(panelRef, open, () => onOpenChange(false));
   const panelPresence = usePresence(open, OVERLAY_EXIT_MS);
@@ -427,6 +431,7 @@ export const ReaderAnnotations = ({
       try {
         await api.deleteReaderAnnotation(bookId, annotationId);
         setAnnotations((current) => current.filter((annotation) => annotation.id !== annotationId));
+        setDeleteOpen(false);
         setStatus("Highlight deleted.");
       } catch (requestError) {
         setError(requestError instanceof Error ? requestError.message : "Could not delete the highlight.");
@@ -600,10 +605,14 @@ export const ReaderAnnotations = ({
                     </Button>
                     <Button
                       disabled={saving}
-                      onClick={() => void deleteAnnotation(annotation.id)}
+                      onClick={() => {
+                        setError(null);
+                        setDeleteTarget(annotation);
+                        setDeleteOpen(true);
+                      }}
                       size="sm"
                       type="button"
-                      variant="ghost"
+                      variant="destructive"
                     >
                       Delete
                     </Button>
@@ -662,6 +671,26 @@ export const ReaderAnnotations = ({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <ConfirmModal
+        confirmLabel={deleteTarget?.note ? "Delete note" : "Delete highlight"}
+        description={
+          deleteTarget?.note
+            ? "The highlight and the note you wrote on it will be removed. This cannot be undone."
+            : "The highlight will be removed from this passage. This cannot be undone."
+        }
+        destructive
+        error={error}
+        eyebrow="Highlights & notes"
+        onClose={() => setDeleteOpen(false)}
+        onConfirm={() => {
+          if (deleteTarget) void deleteAnnotation(deleteTarget.id);
+        }}
+        open={deleteOpen}
+        pending={saving}
+        pendingLabel={"Deleting\u2026"}
+        title={deleteTarget?.note ? "Delete this note?" : "Delete this highlight?"}
+      />
     </>
   );
 };

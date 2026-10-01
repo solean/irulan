@@ -1448,7 +1448,7 @@ export const ReaderPage = () => {
   if (loading && !reader) {
     return (
       <div className="page stack-lg">
-        <Button asChild className="backlink" variant="ghost">
+        <Button asChild className="backlink" size="sm" variant="ghost">
           <Link to={bookDetailHref}>
             <ArrowLeftIcon />
             Back to book
@@ -1498,7 +1498,7 @@ export const ReaderPage = () => {
   if (!reader) {
     return (
       <div className="page stack-lg">
-        <Button asChild className="backlink" variant="ghost">
+        <Button asChild className="backlink" size="sm" variant="ghost">
           <Link to={bookDetailHref}>
             <ArrowLeftIcon />
             Back to book
@@ -1859,7 +1859,7 @@ export const ReaderPage = () => {
   // ─── Standard in-window layout ───
   return (
     <div className="page stack-lg">
-      <Button asChild className="backlink" variant="ghost">
+      <Button asChild className="backlink" size="sm" variant="ghost">
         <Link to={bookDetailHref}>
           <ArrowLeftIcon />
           Back to book

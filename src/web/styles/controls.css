@@ -1,75 +1,4 @@
 /* Shared controls and toolbars. */
-/* ─── Buttons ─── */
-
-.button,
-.backlink {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  height: 32px;
-  padding: 0 12px;
-  border: 1px solid transparent;
-  border-radius: var(--radius-sm);
-  font-size: 13px;
-  font-weight: 500;
-  cursor: pointer;
-  transition:
-    background-color 120ms ease,
-    border-color 120ms ease,
-    color 120ms ease,
-    scale var(--duration-press) var(--ease-out);
-  -webkit-tap-highlight-color: transparent;
-  touch-action: manipulation;
-}
-
-.button:disabled {
-  cursor: wait;
-  opacity: 0.5;
-}
-
-.button-primary {
-  background: var(--accent);
-  color: var(--text-on-accent);
-}
-
-.button-primary:hover:not(:disabled) {
-  background: var(--accent-hover);
-}
-
-.button-secondary {
-  background: transparent;
-  border-color: var(--border-strong);
-  color: var(--text-secondary);
-}
-
-.button-secondary:hover:not(:disabled) {
-  background: var(--bg-hover);
-  color: var(--text-primary);
-  border-color: var(--border-hover);
-}
-
-.button-danger {
-  background: var(--error);
-  color: var(--text-on-accent);
-}
-
-.button-danger:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--error) 88%, black);
-}
-
-.button-ghost {
-  background: transparent;
-  color: var(--text-secondary);
-  border: none;
-  padding: 0 8px;
-}
-
-.button-ghost:hover:not(:disabled) {
-  background: var(--bg-hover);
-  color: var(--text-primary);
-}
-
 /* ─── Toolbar ─── */
 
 .toolbar {
@@ -198,34 +127,55 @@ input::placeholder {
   background: var(--bg-surface);
 }
 
+/* Segments are native buttons styled here alone; layering them on <Button>
+   let these unlayered rules silently override the variant's utilities. */
 .view-toggle-button {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 6px;
-  height: 28px;
+  /* 26px + 2px track padding + 1px border on each side = the 32px control row. */
+  height: 26px;
   padding: 0 10px;
   border: none;
   border-radius: calc(var(--radius-sm) - 2px);
   background: transparent;
   color: var(--text-secondary);
+  font-size: var(--fs-base);
+  font-weight: 500;
+  white-space: nowrap;
   cursor: pointer;
   transition:
     background-color 120ms ease,
+    box-shadow 120ms ease,
     color 120ms ease,
+    opacity 120ms ease,
     scale var(--duration-press) var(--ease-out);
   -webkit-tap-highlight-color: transparent;
   touch-action: manipulation;
 }
 
+.view-toggle-button:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
 @media (hover: hover) and (pointer: fine) {
-  .view-toggle-button:hover {
+  .view-toggle-button:hover:not(:disabled) {
+    background: var(--bg-hover);
     color: var(--text-primary);
   }
 }
 
-.view-toggle-button.active {
+/* The selected segment is a raised thumb: an outline and a drop shadow give it a
+   shape, so selection never rests on the fill tint and text color alone. */
+.view-toggle-button.active,
+.view-toggle-button.active:hover {
   background: var(--bg-elevated);
   color: var(--text-primary);
+  box-shadow:
+    0 0 0 1px var(--border-hover),
+    0 1px 2px rgba(0, 0, 0, 0.12);
 }
 
 .view-toggle-button svg {
@@ -237,5 +187,18 @@ input::placeholder {
   stroke-width: 1.5;
   stroke-linecap: round;
   stroke-linejoin: round;
+}
+
+/* Press feedback for hand-built buttons, matching <Button>: popup triggers stay
+   still so the surface they anchor does not jump. */
+@media (prefers-reduced-motion: no-preference) {
+  :is(
+      .view-toggle-button,
+      .main-header-action,
+      .app-menu-theme-button,
+      .reader-immersive-control
+    ):active:not(:disabled, [aria-haspopup]) {
+    scale: 0.96;
+  }
 }
 

@@ -141,7 +141,8 @@
   transition:
     border-color 120ms ease,
     background-color 120ms ease,
-    color 120ms ease;
+    color 120ms ease,
+    scale var(--duration-press) var(--ease-out);
   -webkit-tap-highlight-color: transparent;
   touch-action: manipulation;
 }
@@ -290,7 +291,8 @@
   transition:
     background-color 120ms ease,
     border-color 120ms ease,
-    color 120ms ease;
+    color 120ms ease,
+    scale var(--duration-press) var(--ease-out);
   -webkit-tap-highlight-color: transparent;
   touch-action: manipulation;
 }

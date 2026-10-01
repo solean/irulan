@@ -111,7 +111,7 @@
     margin-left: 0;
   }
 
-  .bookshelf-header-actions .button {
+  .bookshelf-header-actions [data-slot="button"] {
     flex: 1 1 180px;
   }
 
@@ -155,7 +155,7 @@
     display: none;
   }
 
-  .send-card-actions .button {
+  .send-card-actions [data-slot="button"] {
     flex: 1 1 160px;
   }
 
@@ -171,7 +171,7 @@
     align-items: stretch;
   }
 
-  .danger-zone-content .button {
+  .danger-zone-content [data-slot="button"] {
     width: 100%;
   }
 
@@ -410,7 +410,8 @@
   --muted-foreground: #C7B08A;
   --accent: var(--button-primary);
   --accent-foreground: var(--button-primary-foreground);
-  --destructive: #C96E60;
+  /* Lighter than --error so destructive button text clears 4.5:1 on its own tint. */
+  --destructive: #DD8071;
   --border: rgba(232, 211, 177, 0.12);
   --input: rgba(232, 211, 177, 0.18);
   --ring: #C49A5A;

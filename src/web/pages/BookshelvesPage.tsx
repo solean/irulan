@@ -16,6 +16,7 @@ import { Label } from "@/components/ui/label";
 
 import type { BookshelfSummary, SettingsPayload } from "../../shared/types";
 import { ArrowLeftIcon } from "../components/icons";
+import { ConfirmModal } from "../components/modals";
 import { SettingsSkeleton } from "../components/skeletons";
 import { useDocumentTitle } from "../hooks/use-document-title";
 import { useToast } from "../hooks/use-toast";
@@ -56,6 +57,9 @@ export const BookshelvesPage = () => {
   }, [loading]);
   const [savingBookshelfId, setSavingBookshelfId] = useState<string | null>(null);
   const [deletingBookshelfId, setDeletingBookshelfId] = useState<string | null>(null);
+  // The target outlives `removeOpen` so the dialog copy holds still while it fades out.
+  const [removeTarget, setRemoveTarget] = useState<BookshelfSummary | null>(null);
+  const [removeOpen, setRemoveOpen] = useState(false);
   const [addingBookshelf, setAddingBookshelf] = useState(false);
   const [creatingBookshelf, setCreatingBookshelf] = useState(false);
   const addBookshelfButtonRef = useRef<HTMLButtonElement>(null);
@@ -170,11 +174,6 @@ export const BookshelvesPage = () => {
 
   const onDeleteBookshelf = async (bookshelf: BookshelfSummary) => {
     if (deletingBookshelfId) return;
-    const confirmed = window.confirm(
-      `Remove "${bookshelf.name}"? Books remain in the shared library.`,
-    );
-    if (!confirmed) return;
-
     setDeletingBookshelfId(bookshelf.id);
 
     try {
@@ -194,6 +193,7 @@ export const BookshelvesPage = () => {
       });
     } finally {
       setDeletingBookshelfId(null);
+      setRemoveOpen(false);
     }
   };
 
@@ -241,7 +241,7 @@ export const BookshelvesPage = () => {
 
   return (
     <div className="page page-narrow stack-lg">
-      <Button asChild className="backlink" variant="ghost">
+      <Button asChild className="backlink" size="sm" variant="ghost">
         <Link to="/">
           <ArrowLeftIcon />
           Back to bookshelf
@@ -371,12 +371,13 @@ export const BookshelvesPage = () => {
                       className="settings-bookshelf-remove"
                       disabled={saving || deleting}
                       onClick={() => {
-                        void onDeleteBookshelf(bookshelf);
+                        setRemoveTarget(bookshelf);
+                        setRemoveOpen(true);
                       }}
                       type="button"
-                      variant="ghost"
+                      variant="destructive"
                     >
-                      {deleting ? "Removing\u2026" : "Remove"}
+                      Remove shelf
                     </Button>
                   ) : null}
                 </div>
@@ -460,6 +461,28 @@ export const BookshelvesPage = () => {
           )}
         </div>
       </Card>
+
+      <ConfirmModal
+        confirmLabel="Remove shelf"
+        description={
+          removeTarget ? (
+            <>
+              <strong className="font-semibold text-[var(--text-primary)]">{removeTarget.name}</strong>{" "}
+              and its Kindle address will be removed. Its books stay in your library.
+            </>
+          ) : null
+        }
+        destructive
+        eyebrow="Bookshelves"
+        onClose={() => setRemoveOpen(false)}
+        onConfirm={() => {
+          if (removeTarget) void onDeleteBookshelf(removeTarget);
+        }}
+        open={removeOpen}
+        pending={deletingBookshelfId !== null}
+        pendingLabel={"Removing\u2026"}
+        title="Remove this bookshelf?"
+      />
     </div>
   );
 };
