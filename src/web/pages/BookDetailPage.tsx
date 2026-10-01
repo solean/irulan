@@ -22,8 +22,6 @@ import {
   BookMetadataEditor,
   DrawnCheck,
   FinishCelebration,
-  RatingStars,
-  ReadStatusBadge,
 } from "../components/book";
 import {
   ArrowLeftIcon,
@@ -643,24 +641,6 @@ export const BookDetailPage = () => {
           <CardTitle>About this book</CardTitle>
         </div>
         <dl className="about-grid">
-          <div>
-            <dt>Format</dt>
-            <dd>EPUB</dd>
-          </div>
-          <div>
-            <dt>File size</dt>
-            <dd>{formatBytes(book.fileSizeBytes)}</dd>
-          </div>
-          <div>
-            <dt>Imported</dt>
-            <dd>{formatDate(book.importedAt)}</dd>
-          </div>
-          <div>
-            <dt>Read status</dt>
-            <dd>
-              <ReadStatusBadge status={book.readStatus} />
-            </dd>
-          </div>
           {book.finishedAt ? (
             <div>
               <dt>Finished</dt>
@@ -674,27 +654,25 @@ export const BookDetailPage = () => {
             </div>
           ) : null}
           <div>
-            <dt>Rating</dt>
-            <dd>
-              <RatingStars rating={book.rating} />
-            </dd>
-          </div>
-          <div>
-            <dt>Bookshelves</dt>
-            <dd>
-              <span className="bookshelf-chip-row">
-                {book.bookshelves.map((bookshelf) => (
-                  <span className="bookshelf-chip" key={bookshelf.id}>
-                    {bookshelf.name}
-                  </span>
-                ))}
+            <dt>Last sent</dt>
+            <dd className="about-grid-stacked">
+              <span>
+                {lastSentAt ? (formatRelative(lastSentAt) ?? formatDate(lastSentAt)) : "Never"}
               </span>
+              {lastSentAt && lastSuccessfulDelivery?.recipientEmail ? (
+                <span
+                  className="about-grid-secondary"
+                  title={lastSuccessfulDelivery.recipientEmail}
+                >
+                  {lastSuccessfulDelivery.recipientEmail}
+                </span>
+              ) : null}
             </dd>
           </div>
-          <div className="about-grid-file-row">
+          <div className="about-file">
             <dt>Filename</dt>
             <dd>
-              <span className="about-grid-filename-value" title={book.sourceFilename}>
+              <span className="about-file-name" title={book.sourceFilename}>
                 {book.sourceFilename}
               </span>
               <Button
@@ -703,7 +681,7 @@ export const BookDetailPage = () => {
                     ? "Filename copied to clipboard"
                     : "Copy filename to clipboard"
                 }
-                className="about-grid-file-action"
+                className="about-file-action"
                 onClick={() => {
                   void onCopyFilename();
                 }}
@@ -717,7 +695,7 @@ export const BookDetailPage = () => {
               {canShowBookFile ? (
                 <Button
                   aria-label={`Open ${book.sourceFilename} in Finder`}
-                  className="about-grid-file-action"
+                  className="about-file-action"
                   onClick={() => {
                     void onShowBookFile();
                   }}
@@ -729,18 +707,6 @@ export const BookDetailPage = () => {
                   <span>Open in Finder</span>
                 </Button>
               ) : null}
-            </dd>
-          </div>
-          <div>
-            <dt>Last sent</dt>
-            <dd>
-              {lastSentAt
-                ? `${formatRelative(lastSentAt) ?? formatDate(lastSentAt)}${
-                    lastSuccessfulDelivery?.recipientEmail
-                      ? ` \u00b7 ${lastSuccessfulDelivery.recipientEmail}`
-                      : ""
-                  }`
-                : "Never"}
             </dd>
           </div>
         </dl>

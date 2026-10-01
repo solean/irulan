@@ -175,38 +175,6 @@
     width: 100%;
   }
 
-  .about-grid {
-    grid-template-columns: 1fr;
-    row-gap: 0;
-  }
-
-  .about-grid > div {
-    display: grid;
-    grid-template-columns: max-content minmax(0, 1fr);
-    column-gap: 16px;
-    align-items: center;
-    padding: 10px 0;
-    border-bottom: 1px solid var(--border-default);
-  }
-
-  .about-grid > div:last-child {
-    border-bottom: none;
-  }
-
-  .about-grid dd {
-    justify-self: end;
-    font-size: 13px;
-  }
-
-  .about-grid-file-row {
-    grid-template-columns: 1fr;
-    gap: 4px;
-  }
-
-  .about-grid-file-row dd {
-    justify-self: stretch;
-  }
-
   .reader-shell {
     grid-template-columns: 1fr;
   }

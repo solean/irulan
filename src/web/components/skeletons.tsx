@@ -55,21 +55,25 @@ export const BookDetailSkeleton = () => (
         <SkeletonLine className="skeleton-line-section" />
       </div>
       <dl className="about-grid">
-        {Array.from({ length: 6 }, (_, index) => (
+        {Array.from({ length: 2 }, (_, index) => (
           // biome-ignore lint/suspicious/noArrayIndexKey: fixed-length skeleton placeholders; position is the only identity
           <div key={`book-detail-about-skeleton-${index}`}>
             <dt>
               <SkeletonLine className="skeleton-line-eyebrow" />
             </dt>
             <dd>
-              <SkeletonLine
-                className={
-                  index === 3 ? "skeleton-line-meta" : "skeleton-line-medium"
-                }
-              />
+              <SkeletonLine className="skeleton-line-medium" />
             </dd>
           </div>
         ))}
+        <div className="about-file">
+          <dt>
+            <SkeletonLine className="skeleton-line-eyebrow" />
+          </dt>
+          <dd>
+            <SkeletonLine className="skeleton-line-meta" />
+          </dd>
+        </div>
       </dl>
     </section>
 
