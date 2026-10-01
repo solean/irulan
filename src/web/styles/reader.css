@@ -153,6 +153,7 @@
   --reader-ink: #241d17;
   --reader-muted: #7a6858;
   --reader-link: #235ea4;
+  --reader-accent: #7B5A33;
   --reader-mark: #f4e6a1;
   --reader-ground: #ece4d6;
   --reader-paper-shadow: rgba(58, 44, 28, 0.16);
@@ -180,6 +181,7 @@
   --reader-ink: #edf1f5;
   --reader-muted: #9aa4b0;
   --reader-link: #89bfff;
+  --reader-accent: #C49A5A;
   --reader-mark: rgba(239, 208, 100, 0.18);
   --reader-ground: #0e1013;
   --reader-paper-shadow: rgba(0, 0, 0, 0.5);
@@ -187,7 +189,9 @@
 
 /* Reader overlays follow the book's tone instead of the application theme.
    The bridge covers both bespoke reader CSS and the semantic tokens used by
-   shared buttons, inputs, and portalled selects. */
+   shared buttons, inputs, and portalled selects. Controls take the app's brand
+   accent (--reader-accent, the app's --button-primary per tone); --reader-link
+   stays for hyperlinks inside the book. */
 .reader-tone-scope {
   color-scheme: light;
   color: var(--reader-ink);
@@ -195,6 +199,7 @@
   --reader-ink: #241d17;
   --reader-muted: #7a6858;
   --reader-link: #235ea4;
+  --reader-accent: #7B5A33;
   --bg-base: var(--reader-paper);
   --bg-surface: color-mix(in srgb, var(--reader-paper) 97%, var(--reader-ink));
   --bg-elevated: color-mix(in srgb, var(--reader-paper) 93%, var(--reader-ink));
@@ -211,11 +216,11 @@
   --text-secondary: var(--reader-muted);
   --text-tertiary: color-mix(in srgb, var(--reader-muted) 78%, transparent);
   --text-on-accent: var(--reader-paper);
-  --accent: var(--reader-link);
-  --accent-hover: color-mix(in srgb, var(--reader-link) 84%, var(--reader-ink));
-  --accent-soft: color-mix(in srgb, var(--reader-link) 13%, transparent);
-  --accent-muted: color-mix(in srgb, var(--reader-link) 8%, transparent);
-  --button-primary: var(--reader-link);
+  --accent: var(--reader-accent);
+  --accent-hover: color-mix(in srgb, var(--reader-accent) 84%, var(--reader-ink));
+  --accent-soft: color-mix(in srgb, var(--reader-accent) 13%, transparent);
+  --accent-muted: color-mix(in srgb, var(--reader-accent) 8%, transparent);
+  --button-primary: var(--reader-accent);
   --button-primary-hover: var(--accent-hover);
   --button-primary-foreground: var(--reader-paper);
   --background: var(--reader-paper);
@@ -224,7 +229,7 @@
   --card-foreground: var(--reader-ink);
   --popover: var(--bg-surface);
   --popover-foreground: var(--reader-ink);
-  --primary: var(--reader-link);
+  --primary: var(--reader-accent);
   --primary-foreground: var(--reader-paper);
   --secondary: var(--bg-elevated);
   --secondary-foreground: var(--reader-ink);
@@ -233,8 +238,8 @@
   --accent-foreground: var(--reader-paper);
   --border: var(--border-default);
   --input: var(--border-strong);
-  --ring: var(--reader-link);
-  --focus-ring: var(--reader-link);
+  --ring: var(--reader-accent);
+  --focus-ring: var(--reader-accent);
   /* Per tone, so destructive text clears 4.5:1 on its tint over the paper. */
   --destructive: #933C31;
 }
@@ -253,6 +258,7 @@
   --reader-ink: #edf1f5;
   --reader-muted: #9aa4b0;
   --reader-link: #89bfff;
+  --reader-accent: #C49A5A;
   --destructive: #EC8D7E;
 }
 
@@ -280,7 +286,7 @@
   top: clamp(12px, 2.5vw, 24px);
   right: clamp(12px, 2.5vw, 24px);
   display: inline-flex;
-  color: var(--reader-link);
+  color: var(--reader-accent);
   pointer-events: none;
 }
 
