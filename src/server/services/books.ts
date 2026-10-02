@@ -488,34 +488,39 @@ const importBookFileUnlocked = async (
   file: StagedBookFile,
   bookshelfIds?: string | string[] | null,
 ): Promise<ImportResult> => {
-  const targetBookshelves = resolveImportBookshelves(bookshelfIds);
-  const targetBookshelfNames = targetBookshelves.map((bookshelf) => bookshelf.name);
   const { bookId, fileHash, filePath, fileSizeBytes, sourceFilename } = file;
   const targetDir = bookDirectory(bookId);
-
-  if (!sourceFilename.toLowerCase().endsWith(".epub")) {
-    await discardStagedBookFile(file);
-    return {
-      status: "failed",
-      message: `${sourceFilename} is not an EPUB file.`,
-    };
-  }
-
-  const duplicateResult = async (existing: BookRecord): Promise<ImportResult> => {
-    for (const bookshelf of targetBookshelves) {
-      addBookToBookshelf(existing.id, bookshelf.id);
-    }
-    await discardStagedBookFile(file);
-    return {
-      status: "duplicate",
-      message: `${sourceFilename} is already in your library and is now on ${formatBookshelfList(targetBookshelfNames)}.`,
-      book: serializeBook(existing),
-    };
-  };
-
-  let coverPath: string | null = null;
+  let committed = false;
 
   try {
+    const targetBookshelves = resolveImportBookshelves(bookshelfIds);
+    const targetBookshelfNames = targetBookshelves.map((bookshelf) => bookshelf.name);
+
+    if (!sourceFilename.toLowerCase().endsWith(".epub")) {
+      await discardStagedBookFile(file);
+      return {
+        status: "failed",
+        message: `${sourceFilename} is not an EPUB file.`,
+      };
+    }
+
+    const duplicateResult = async (existing: BookRecord): Promise<ImportResult> => {
+      const book = db.transaction(() => {
+        for (const bookshelf of targetBookshelves) {
+          addBookToBookshelf(existing.id, bookshelf.id);
+        }
+        return serializeBook(existing);
+      });
+      await discardStagedBookFile(file);
+      return {
+        status: "duplicate",
+        message: `${sourceFilename} is already in your library and is now on ${formatBookshelfList(targetBookshelfNames)}.`,
+        book,
+      };
+    };
+
+    let coverPath: string | null = null;
+
     const existing = db.select().from(books).where(eq(books.fileHash, fileHash)).get();
     if (existing) {
       return await duplicateResult(existing);
@@ -532,22 +537,30 @@ const importBookFileUnlocked = async (
 
     const importedAt = new Date();
 
-    db.insert(books)
-      .values({
-        id: bookId,
-        title,
-        author,
-        filePath,
-        coverPath,
-        fileHash,
-        sourceFilename,
-        fileSizeBytes,
-        importedAt,
-      })
-      .onConflictDoNothing({ target: books.fileHash })
-      .run();
+    const created = db.transaction((tx) => {
+      tx.insert(books)
+        .values({
+          id: bookId,
+          title,
+          author,
+          filePath,
+          coverPath,
+          fileHash,
+          sourceFilename,
+          fileSizeBytes,
+          importedAt,
+        })
+        .onConflictDoNothing({ target: books.fileHash })
+        .run();
 
-    const created = db.select().from(books).where(eq(books.id, bookId)).get();
+      const created = tx.select().from(books).where(eq(books.id, bookId)).get();
+      if (created) {
+        for (const bookshelf of targetBookshelves) {
+          addBookToBookshelf(bookId, bookshelf.id);
+        }
+      }
+      return created ? serializeBook(created) : undefined;
+    });
     if (!created) {
       const duplicate = db.select().from(books).where(eq(books.fileHash, fileHash)).get();
       if (duplicate) {
@@ -556,19 +569,18 @@ const importBookFileUnlocked = async (
       throw new AppError(500, "The book could not be recorded.");
     }
 
-    for (const bookshelf of targetBookshelves) {
-      addBookToBookshelf(bookId, bookshelf.id);
-    }
-
+    committed = true;
     queueBookSearchIndex(bookId);
 
     return {
       status: "imported",
       message: `${title} was added to your library.`,
-      book: serializeBook(created),
+      book: created,
     };
   } catch (error) {
-    await rm(targetDir, { recursive: true, force: true });
+    if (!committed) {
+      await rm(targetDir, { recursive: true, force: true });
+    }
     if (error instanceof AppError) {
       throw error;
     }
