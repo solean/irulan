@@ -342,27 +342,30 @@
   }
 
   .bookshelf-main > .bookshelf-main-scroll {
-    --bookshelf-list-inset-top: 16px;
     flex: 1 1 auto;
     min-height: 0;
-    margin-top: 0;
+    /* Keep the toolbar gap outside the scrolling content so headers start
+       at their sticky position instead of scrolling through the gap. */
+    margin-top: 16px;
     overflow: auto;
-    padding-top: var(--bookshelf-list-inset-top);
+    padding-top: 0;
     padding-bottom: 24px;
   }
 
   /* The list pane scrolls both ways, so the table's own horizontal scroller
      steps aside and the column headers stick to the pane instead. */
-  .books-table-shell [data-slot="table-container"] {
+  .bookshelf-main-scroll .books-table-shell [data-slot="table-container"] {
     overflow: visible;
+    border-top-width: 0;
   }
 
-  /* Sticky offsets are measured inside the pane's padding; pull back by it so
-     the header sits flush under the toolbar with no rows peeking above. */
+  /* Carry the top border with the sticky cells so even the first pixel of
+     scrolling leaves the header in place. */
   .books-table thead th {
     position: sticky;
-    top: calc(-1 * var(--bookshelf-list-inset-top));
+    top: 0;
     z-index: 1;
+    border-top: 1px solid var(--border-default);
     background: var(--bg-surface);
   }
 
@@ -1279,4 +1282,3 @@
   color: var(--text-tertiary);
   font-variant-numeric: tabular-nums;
 }
-
