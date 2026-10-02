@@ -106,8 +106,10 @@ Local app data is stored under:
   asset bytes are read out of `original.epub` on request, so nothing is unpacked to disk.
   Content extracted by older builds is removed on the next start.
 - `storage/.trash/` — where a deleted book's files wait until its rows are gone, so a
-  failed delete can put them back. Emptied on every start, so anything a crash left
-  behind is cleaned up rather than accumulating.
+  failed delete can put them back. On startup, files belonging to books still in the
+  catalog are restored; files from committed deletions are removed.
+- `data/.library-restore.json` — a temporary restore journal. Startup uses it to
+  recover an interrupted restore before opening the catalog.
 
 You can override the storage locations with:
 
@@ -116,21 +118,31 @@ You can override the storage locations with:
 
 ## Database Durability
 
-Writes to `data/app.db` never modify the live file in place. Every save:
+SQLite writes use WAL mode with `synchronous = FULL`. Commits flush the WAL to disk;
+a clean shutdown checkpoints it into `data/app.db`. After an interrupted process,
+SQLite replays the WAL on the next open. Do not copy only `app.db` while the app is
+running: committed changes may still be in its `-wal` sidecar.
 
-1. exports the database and verifies it with `PRAGMA integrity_check`
-2. writes the bytes to `data/app.db.tmp` and flushes them to disk
-3. rotates the previous known-good database to `data/app.db.bak`
-4. atomically renames the temporary file over `data/app.db`
+On startup the primary database passes SQLite's `quick_check`. If it is missing
+or unreadable, Irulan restores the last usable `data/app.db.bak` and displays a
+recovery notice. The recovery copy is refreshed with SQLite's online backup once
+per startup and after a library restore, not after every save. Recovery can
+therefore lose changes made since that snapshot. An unusable existing database
+without a valid backup stops startup; a fresh installation creates an empty database.
 
-If the app is killed mid-save, the interrupted `.tmp` file is discarded on the
-next start and the committed database is used unchanged.
+## Library Backup and Restore
 
-On startup the primary database is opened and integrity-checked. If it is
-missing or unreadable, Irulan restores `data/app.db.bak`, logs
-`Recovered Irulan database from …`, and continues. Recovery rolls the library
-back to the state before the last successful save. If neither file is valid,
-startup fails loudly instead of silently creating an empty library.
+Settings provides a complete-library ZIP backup containing the database, original
+EPUBs, covers, shelves, settings, delivery history, bookmarks, annotations, and
+reading positions. Reading positions live in SQLite and survive desktop restarts;
+older browser-local positions migrate when no library position is saved.
 
-Only the SQLite catalog is covered. Imported EPUBs and covers under `storage/`
-are not yet backed up — see `docs/PLAN.md`.
+Restore validates archive paths, file sizes and hashes, and the database before
+replacing the library. A restore journal retains the previous catalog and book
+files until the replacement is committed. If interrupted, startup rolls back an
+uncommitted restore or finishes cleanup for a committed one. Recovery failures
+stop startup and preserve recovery files for inspection.
+
+The automatic `app.db.bak` covers only the catalog. Use the complete-library ZIP
+backup to protect EPUBs and covers too. SMTP passwords encrypted by the operating
+system may need to be entered again when restoring on another machine.

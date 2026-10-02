@@ -41,7 +41,8 @@ The word is kept alongside the colour so the doc stays readable without colour.
   every original EPUB, and every extracted cover
 - 🟢 one-click restore — done; uploads are bounded, archive paths and manifests are validated,
   file hashes are checked, the staged database is migrated and integrity-checked, and an
-  installation failure rolls back to the previous library
+  installation failure rolls back to the previous library; a durable journal also
+  recovers an interrupted restore at startup
 - 🟡 automatic rotating backups — partial; a single `app.db.bak` is refreshed once per startup,
   with no rotation
 - 🔴 export of an individual original EPUB — todo; originals are stored at
@@ -50,7 +51,7 @@ The word is kept alongside the colour so the doc stays readable without colour.
   `shell.showItemInFolder` reveals one book's EPUB (`electron/main.cjs`), not the data directory
 
 Complete-library backups include the database, original EPUB files, extracted covers, bookmarks,
-annotations, settings, shelves, and delivery history.
+annotations, reading positions, settings, shelves, and delivery history.
 
 #### Durable database persistence — 🟢 done
 
@@ -92,12 +93,13 @@ Reader resume stores the first visible stable text point and resolves it against
 pagination instead of persisting a page number. Point and range resolution are covered across
 equivalent markup, repeated quotes, changed layout, and malformed persisted data.
 
-Reading progress remains browser-local. Persisting reading state in SQLite is still required for
-it to survive browser-storage resets and participate in complete-library backups.
+Reading progress is persisted in SQLite and included in complete-library backups. It survives
+desktop restarts and browser-storage resets. Legacy browser-local positions migrate only when
+no library position exists; serialized requests prevent older saves from overtaking newer ones.
 
 Reading state should include:
 
-- 🟢 stable current location — done in browser storage
+- 🟢 stable current location — done in SQLite
 - 🔴 overall completion percentage — todo
 - 🔴 last-read timestamp — todo
 - 🔴 optional completed timestamp — todo
@@ -285,10 +287,10 @@ Exit criteria:
 - 🔴 a backup restores books, metadata, shelves, settings, and originals — not met
 - 🟢 no settings response contains the SMTP password — met
 
-### Phase 2: Reading State — 🔴 not started
+### Phase 2: Reading State — 🟡 in progress
 
 - 🔴 introduce stable EPUB locations (todo)
-- 🔴 persist reading progress in SQLite (todo)
+- 🟢 persist reading progress in SQLite (done)
 - 🔴 add Continue Reading and overall progress (todo)
 - 🔴 automate read-status transitions conservatively (todo)
 
@@ -296,7 +298,7 @@ Exit criteria:
 
 - 🔴 reopening a book returns to the same text after resizing or changing typography — not met
 - 🔴 progress is visible from the bookshelf — not met
-- 🔴 progress is included in backup and restore — not met
+- 🟢 progress is included in backup and restore — met
 
 ### Phase 3: EPUB Compatibility — 🟡 in progress
 
