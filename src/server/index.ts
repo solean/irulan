@@ -13,6 +13,7 @@ import {
 } from "./db/client";
 import { books } from "./db/schema";
 import { recordDatabaseRecovery } from "./services/settings";
+import { recoverLibraryRestore } from "./services/library-restore-journal";
 import { migrateLegacySmtpPassword } from "./services/smtp-credentials";
 import { ensureStorageLayout, sweepExtractedReaderContent, sweepTrash } from "./lib/storage";
 
@@ -24,6 +25,7 @@ export type StartedServer = {
 };
 
 export const startServer = async (options: { port?: number; hostname?: string } = {}) => {
+  await recoverLibraryRestore();
   await ensureStorageLayout();
   await initializeDatabase();
   ensureSchema();

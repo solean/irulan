@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
-import { beforeEach, describe, expect, test } from "vitest";
+import { beforeEach, describe, expect, test, vi } from "vitest";
 
 import { app } from "../app";
 import { appConfig } from "../config";
@@ -10,6 +10,7 @@ import * as client from "../db/client";
 import * as schema from "../db/schema";
 import { bookDirectory } from "../lib/storage";
 import { searchBook } from "./book-search";
+import * as restoreJournal from "./library-restore-journal";
 
 await client.initializeDatabase();
 client.ensureSchema();
@@ -183,5 +184,28 @@ describe("complete library backup and restore", () => {
     expect(response.status).toBe(400);
     expect(client.db.select().from(schema.books).get()?.id).toBe(BOOK_ID);
     expect(readFileSync(originalPath)).toEqual(fixtureBytes);
+  });
+
+  test("keeps the current library if restored payloads cannot be flushed to disk", async () => {
+    const backupResponse = await app.request("/api/library/backup");
+    const archive = await backupResponse.arrayBuffer();
+    const flush = vi.spyOn(restoreJournal, "syncRestoreTree").mockRejectedValueOnce(new Error("Disk sync failed"));
+    const begin = vi.spyOn(restoreJournal, "beginLibraryRestore");
+    try {
+      const response = await app.request("/api/library/restore", {
+        method: "POST",
+        headers: { "Content-Type": "application/zip" },
+        body: archive,
+      });
+      expect(response.status).toBe(500);
+      expect(flush).toHaveBeenCalledOnce();
+      expect(begin).not.toHaveBeenCalled();
+      expect(client.db.select().from(schema.books).get()?.id).toBe(BOOK_ID);
+      expect(readFileSync(originalPath)).toEqual(fixtureBytes);
+      expect(readFileSync(coverPath).toString()).toBe("fixture-cover");
+    } finally {
+      flush.mockRestore();
+      begin.mockRestore();
+    }
   });
 });

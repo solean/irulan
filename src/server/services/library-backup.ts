@@ -4,6 +4,7 @@ import {
   copyFile,
   mkdir,
   mkdtemp,
+  open,
   readFile,
   rename,
   rm,
@@ -34,6 +35,14 @@ import { AppError } from "../errors";
 import { bookDirectory } from "../lib/storage";
 import { clearPreparedReaderCache } from "./books";
 import { withLibraryFileLock } from "./library-lock";
+import {
+  beginLibraryRestore,
+  commitLibraryRestore,
+  recoverLibraryRestore,
+  restorePaths,
+  syncRestoreDirectories,
+  syncRestoreTree,
+} from "./library-restore-journal";
 
 const BACKUP_FORMAT = "irulan-library-backup";
 const BACKUP_VERSION = 1;
@@ -350,7 +359,7 @@ const validateAndRebaseDatabase = (
     const foreignKeyErrors = database.pragma("foreign_key_check") as unknown[];
     if (foreignKeyErrors.length > 0) throw new Error("SQLite foreign key check failed.");
 
-    const requiredTables = ["books", "bookshelves", "settings", "reader_bookmarks", "reader_annotations"];
+    const requiredTables = ["books", "bookshelves", "settings", "reader_bookmarks", "reader_annotations", "reader_progress"];
     const tableExists = database
       .prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ? LIMIT 1")
       .pluck();
@@ -398,83 +407,68 @@ const validateAndRebaseDatabase = (
 
 const applyRestore = async (stagedRoot: string, stagedDatabasePath: string) => {
   const restoreId = randomUUID();
-  const booksPath = path.join(appConfig.storageDir, "books");
+  const paths = restorePaths(restoreId);
   const stagedBooksPath = path.join(stagedRoot, "books");
-  const oldBooksPath = path.join(appConfig.storageDir, `.restore-old-books-${restoreId}`);
-  const newDatabasePath = `${appConfig.dbPath}.restore-new-${restoreId}`;
-  const oldDatabasePath = `${appConfig.dbPath}.restore-old-${restoreId}`;
-  const backupPath = `${appConfig.dbPath}.bak`;
-  const oldBackupPath = `${backupPath}.restore-old-${restoreId}`;
   await mkdir(stagedBooksPath, { recursive: true });
-  await copyFile(stagedDatabasePath, newDatabasePath);
+  await syncRestoreTree(stagedBooksPath);
+  await copyFile(stagedDatabasePath, paths.newDatabase);
+  const stagedHandle = await open(paths.newDatabase, "r");
+  try {
+    await stagedHandle.sync();
+  } finally {
+    await stagedHandle.close();
+  }
 
   await withLibraryFileLock(async () => {
     restoreInProgress = true;
-    let movedBooks = false;
-    let movedDatabase = false;
-    let movedBackup = false;
-    let installedBooks = false;
-    let installedDatabase = false;
+    let journal: Awaited<ReturnType<typeof beginLibraryRestore>> | undefined;
+    let canServe = false;
     try {
       closeDatabase();
-      if (await pathExists(booksPath)) {
-        await rename(booksPath, oldBooksPath);
-        movedBooks = true;
-      }
-      if (await pathExists(appConfig.dbPath)) {
-        await rename(appConfig.dbPath, oldDatabasePath);
-        movedDatabase = true;
-      }
-      if (await pathExists(backupPath)) {
-        await rename(backupPath, oldBackupPath);
-        movedBackup = true;
-      }
-      await rm(`${appConfig.dbPath}-wal`, { force: true });
-      await rm(`${appConfig.dbPath}-shm`, { force: true });
-      await rename(stagedBooksPath, booksPath);
-      installedBooks = true;
-      await rename(newDatabasePath, appConfig.dbPath);
-      installedDatabase = true;
+      journal = await beginLibraryRestore(restoreId);
+      if (journal.hadBooks) await rename(paths.books, paths.oldBooks);
+      if (journal.hadDatabase) await rename(paths.database, paths.oldDatabase);
+      if (journal.hadBackup) await rename(paths.backup, paths.oldBackup);
+      await syncRestoreDirectories();
+      await rm(`${paths.database}-wal`, { force: true });
+      await rm(`${paths.database}-shm`, { force: true });
+      await rename(stagedBooksPath, paths.books);
+      await rename(paths.newDatabase, paths.database);
+      await syncRestoreDirectories();
 
       await initializeDatabase();
       ensureSchema();
       setPendingDatabaseRecovery(null);
       clearPreparedReaderCache();
       await backupDatabase();
-
-      await rm(oldBooksPath, { force: true, recursive: true }).catch((cleanupError) => {
-        console.warn("Could not remove the previous restored book directory.", cleanupError);
-      });
-      await rm(oldDatabasePath, { force: true }).catch((cleanupError) => {
-        console.warn("Could not remove the previous restored database.", cleanupError);
-      });
-      await rm(oldBackupPath, { force: true }).catch((cleanupError) => {
-        console.warn("Could not remove the previous database backup.", cleanupError);
-      });
+      await commitLibraryRestore(journal);
+      canServe = true;
     } catch (error) {
       closeDatabase();
-      if (installedBooks) await rm(booksPath, { force: true, recursive: true });
-      if (installedDatabase) {
-        await rm(appConfig.dbPath, { force: true });
-        await rm(`${appConfig.dbPath}-wal`, { force: true });
-        await rm(`${appConfig.dbPath}-shm`, { force: true });
-      }
-      if (movedBooks) await rename(oldBooksPath, booksPath);
-      if (movedDatabase) await rename(oldDatabasePath, appConfig.dbPath);
-      if (movedBackup) await rename(oldBackupPath, backupPath);
-      await rm(newDatabasePath, { force: true });
       try {
+        if (journal) await recoverLibraryRestore();
+        await rm(paths.newDatabase, { force: true });
         await initializeDatabase();
         ensureSchema();
         clearPreparedReaderCache();
+        canServe = true;
       } catch (rollbackError) {
-        console.error("Library restore rollback could not reopen the previous database.", rollbackError);
+        console.error("Library restore recovery could not reopen the database.", rollbackError);
+        throw new AppError(503, "Library restore recovery could not finish. Restart Irulan to retry recovery; the recovery files have been kept.");
       }
       console.error("Library restore failed after validation.", error);
-      throw new AppError(500, "The library could not be restored; the previous library was kept.");
+      throw new AppError(500, "The library could not be restored. The library was recovered from the restore journal.");
     } finally {
-      restoreInProgress = false;
+      // If recovery fails, keep API traffic blocked instead of serving a closed
+      // database or allowing another restore to overwrite recovery evidence.
+      restoreInProgress = !canServe;
     }
+
+    // The committed journal makes cleanup repeatable at the next startup. A
+    // failure removing old files must not undo an already committed restore.
+    await recoverLibraryRestore().catch((error) => {
+      console.warn("Could not clean up the previous library; startup will retry.", error);
+    });
   });
 };
 
