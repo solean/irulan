@@ -48,7 +48,9 @@ import {
 } from "../components/icons";
 import { useDocumentTitle } from "../hooks/use-document-title";
 import { OVERLAY_EXIT_MS, usePresence } from "../hooks/use-presence";
+import { useToast } from "../hooks/use-toast";
 import { api } from "../lib/api";
+import { loadReaderProgress, saveReaderProgress } from "../lib/reader-progress";
 import { numberFormatter } from "../lib/format";
 import { getBookHref, scrollContentToTop } from "../lib/navigation";
 import {
@@ -71,7 +73,6 @@ import {
   DEFAULT_READER_SPACING,
   getStoredReaderFont,
   getStoredReaderFontScale,
-  getStoredReaderProgress,
   getStoredReaderSpacing,
   getStoredReaderTone,
   READER_FONTS,
@@ -80,7 +81,6 @@ import {
   READER_SPACINGS,
   setStoredReaderFont,
   setStoredReaderFontScale,
-  setStoredReaderProgress,
   setStoredReaderSpacing,
   setStoredReaderTone,
   type ReaderFontId,
@@ -174,11 +174,14 @@ const estimateReaderCharactersPerPage = (body: HTMLElement, bounds: DOMRect) => 
 
 export const ReaderPage = () => {
   const { bookId = "" } = useParams();
+  const toast = useToast();
   const [searchParams, setSearchParams] = useSearchParams();
   const readerViewportRef = useRef<HTMLDivElement | null>(null);
   const readerBodyRef = useRef<HTMLElement | null>(null);
   const sectionMarkupCache = useRef(new Map<string, string>());
   const latestSectionRequest = useRef(0);
+  const latestReaderRequest = useRef(0);
+  const savedProgressRef = useRef<ReaderTextLocation | null>(null);
   // In-flight drag gesture on the reading viewport, if any. Lives in a ref so
   // pointermove never re-renders; only engage/release touch React state.
   const readerDragRef = useRef<{
@@ -509,7 +512,15 @@ export const ReaderPage = () => {
   const persistReaderProgress = useEffectEvent(() => {
     if (!reader || !selectedHref || pendingReaderTarget || pageSpan <= 0) return;
     const location = getCurrentReaderLocation();
-    if (location) setStoredReaderProgress(bookId, location);
+    const requestId = latestReaderRequest.current;
+    if (location) void saveReaderProgress(bookId, location).catch((requestError) => {
+      if (requestId !== latestReaderRequest.current) return;
+      toast({
+        title: "Could not save reading progress",
+        description: requestError instanceof Error ? requestError.message : "Please try again.",
+        variant: "error",
+      });
+    });
   });
 
   useEffect(() => {
@@ -622,15 +633,24 @@ export const ReaderPage = () => {
   }, [bookId]);
 
   const loadReader = useEffectEvent(async () => {
+    const requestId = ++latestReaderRequest.current;
     setLoading(true);
     setError(null);
 
     try {
-      setReader(await api.getBookReader(bookId));
+      const [nextReader, savedProgress] = await Promise.all([
+        api.getBookReader(bookId),
+        loadReaderProgress(bookId),
+      ]);
+      if (requestId !== latestReaderRequest.current) return;
+      savedProgressRef.current = savedProgress;
+      setReader(nextReader);
     } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : "Could not load this EPUB.");
+      if (requestId === latestReaderRequest.current) {
+        setError(requestError instanceof Error ? requestError.message : "Could not load this EPUB.");
+      }
     } finally {
-      setLoading(false);
+      if (requestId === latestReaderRequest.current) setLoading(false);
     }
   });
 
@@ -680,6 +700,7 @@ export const ReaderPage = () => {
     setSectionError(null);
     setBookPagination(null);
     void loadReader();
+    return () => { latestReaderRequest.current += 1; };
   }, [bookId]);
 
   useEffect(() => {
@@ -689,7 +710,7 @@ export const ReaderPage = () => {
 
     // No section in the URL means the reader was just opened: resume the saved
     // position if one belongs to this book's spine, otherwise start at the top.
-    const saved = getStoredReaderProgress(bookId);
+    const saved = savedProgressRef.current;
     if (saved && reader.sections.some((section) => section.href === saved.sectionHref)) {
       setPendingReaderTarget(saved);
       goToSection(saved.sectionHref, { replace: true });

@@ -7,11 +7,12 @@ import type {
   CreateReaderBookmarkPayload,
   ReaderAnnotation,
   ReaderBookmark,
+  ReaderTextLocation,
   UpdateReaderAnnotationPayload,
   UpdateReaderBookmarkPayload,
 } from "../../shared/types";
 import { db } from "../db/client";
-import { readerAnnotations, readerBookmarks } from "../db/schema";
+import { readerAnnotations, readerBookmarks, readerProgress } from "../db/schema";
 import { AppError } from "../errors";
 import { getBookRecord } from "./books";
 
@@ -207,4 +208,23 @@ export const deleteReaderAnnotation = (bookId: string, annotationId: string) => 
     .where(and(eq(readerAnnotations.bookId, bookId), eq(readerAnnotations.id, annotationId)))
     .run();
   return { id: annotationId };
+};
+
+export const getReaderProgress = (bookId: string): ReaderTextLocation | null => {
+  getBookRecord(bookId);
+  return db.select().from(readerProgress).where(eq(readerProgress.bookId, bookId)).get()?.location ?? null;
+};
+
+export const saveReaderProgress = (
+  bookId: string,
+  location: ReaderTextLocation,
+  migrateOnly = false,
+): ReaderTextLocation => {
+  getBookRecord(bookId);
+  const insert = db.insert(readerProgress).values({ bookId, location });
+  if (migrateOnly) insert.onConflictDoNothing().run();
+  else insert.onConflictDoUpdate({ target: readerProgress.bookId, set: { location } }).run();
+  const saved = getReaderProgress(bookId);
+  if (!saved) throw new AppError(500, "Could not save reading progress.");
+  return saved;
 };

@@ -14,6 +14,8 @@ import {
   READER_TEXT_CONTEXT_LENGTH,
 } from "../../shared/reader-text";
 import {
+  getReaderProgress,
+  saveReaderProgress,
   createReaderAnnotation,
   createReaderBookmark,
   deleteReaderAnnotation,
@@ -152,3 +154,18 @@ readerToolsRoutes.delete("/:bookId/annotations/:annotationId", (c) =>
     deletion: deleteReaderAnnotation(c.req.param("bookId"), c.req.param("annotationId")),
   }),
 );
+
+readerToolsRoutes.get("/:bookId/progress", (c) =>
+  c.json({ progress: getReaderProgress(c.req.param("bookId")) }),
+);
+
+// POST migrates legacy browser data only when the library has no saved location.
+readerToolsRoutes.post("/:bookId/progress", async (c) => {
+  const location = readerLocationSchema.parse(await c.req.json());
+  return c.json({ progress: saveReaderProgress(c.req.param("bookId"), location, true) });
+});
+
+readerToolsRoutes.put("/:bookId/progress", async (c) => {
+  const location = readerLocationSchema.parse(await c.req.json());
+  return c.json({ progress: saveReaderProgress(c.req.param("bookId"), location) });
+});

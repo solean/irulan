@@ -46,12 +46,13 @@ describe("database migrations", () => {
         ["deliveries"],
         ["reader_annotations"],
         ["reader_bookmarks"],
+        ["reader_progress"],
         ["reader_section_fts"],
         ["reader_section_text"],
         ["settings"],
         ["sqlite_sequence"],
       ]);
-      expect(rows(database, "SELECT COUNT(*) FROM __drizzle_migrations;")).toEqual([[5]]);
+      expect(rows(database, "SELECT COUNT(*) FROM __drizzle_migrations;")).toEqual([[6]]);
       expect(rows(database, "SELECT id, name FROM bookshelves;")).toEqual([
         ["default", "My bookshelf"],
       ]);
@@ -157,7 +158,7 @@ describe("database migrations", () => {
       expect(rows(database, "SELECT book_id, bookshelf_id FROM book_shelves;")).toEqual([
         ["book-1", "default"],
       ]);
-      expect(rows(database, "SELECT COUNT(*) FROM __drizzle_migrations;")).toEqual([[5]]);
+      expect(rows(database, "SELECT COUNT(*) FROM __drizzle_migrations;")).toEqual([[6]]);
     } finally {
       database.close();
     }

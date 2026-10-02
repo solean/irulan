@@ -8,7 +8,7 @@ import {
   uniqueIndex,
 } from "drizzle-orm/sqlite-core";
 
-import type { ReadStatus, ReaderAnnotationColor } from "../../shared/types";
+import type { ReadStatus, ReaderAnnotationColor, ReaderTextLocation } from "../../shared/types";
 
 export const bookshelves = sqliteTable(
   "bookshelves",
@@ -161,4 +161,10 @@ export const deliveries = sqliteTable(
 export const settings = sqliteTable("settings", {
   key: text("key").primaryKey(),
   value: text("value").notNull(),
+});
+
+/** Resume locations belong to the library, independent of browser origins. */
+export const readerProgress = sqliteTable("reader_progress", {
+  bookId: text("book_id").primaryKey().references(() => books.id, { onDelete: "cascade" }),
+  location: text("location", { mode: "json" }).$type<ReaderTextLocation>().notNull(),
 });

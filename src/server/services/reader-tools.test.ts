@@ -2,7 +2,7 @@ import { afterAll, beforeEach, describe, expect, test } from "vitest";
 
 import { app } from "../app";
 import * as client from "../db/client";
-import { books, readerAnnotations, readerBookmarks } from "../db/schema";
+import { books, readerAnnotations, readerBookmarks, readerProgress } from "../db/schema";
 
 await client.initializeDatabase();
 client.ensureSchema();
@@ -209,5 +209,28 @@ describe("reader annotations", () => {
       color: "green",
     });
     expect(response.status).toBe(400);
+  });
+});
+
+describe("durable reader progress", () => {
+  test("persists across database reopen and prevents stale legacy migration", async () => {
+    expect(await (await request(`/api/books/${BOOK_ID}/progress`)).json()).toEqual({ progress: null });
+    expect((await request(`/api/books/${BOOK_ID}/progress`, "POST", location)).status).toBe(200);
+    const next = { ...location, offset: 30 };
+    expect((await request(`/api/books/${BOOK_ID}/progress`, "PUT", next)).status).toBe(200);
+    client.closeDatabase();
+    await client.initializeDatabase();
+    client.ensureSchema();
+    expect(await (await request(`/api/books/${BOOK_ID}/progress`)).json()).toEqual({ progress: next });
+    expect(await (await request(`/api/books/${BOOK_ID}/progress`, "POST", location)).json()).toEqual({ progress: next });
+    expect(await (await request(`/api/books/${OTHER_BOOK_ID}/progress`)).json()).toEqual({ progress: null });
+    client.db.delete(books).run();
+    expect(client.db.select().from(readerProgress).all()).toEqual([]);
+  });
+
+  test("rejects malformed locations and missing books", async () => {
+    expect((await request(`/api/books/${BOOK_ID}/progress`, "PUT", { ...location, page: 3 })).status).toBe(400);
+    expect((await request(`/api/books/${BOOK_ID}/progress`, "POST", { ...location, offset: -1 })).status).toBe(400);
+    expect((await request("/api/books/missing/progress", "PUT", location)).status).toBe(404);
   });
 });

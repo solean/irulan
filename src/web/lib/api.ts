@@ -15,6 +15,7 @@ import type {
   LibraryRestoreResult,
   ReaderAnnotation,
   ReaderBookmark,
+  ReaderTextLocation,
   SettingsPayload,
   UpdateBookMetadataPayload,
   UpdateReaderAnnotationPayload,
@@ -38,6 +39,20 @@ const request = async <T>(input: string, init?: RequestInit): Promise<T> => {
 };
 
 export const api = {
+  async getReaderProgress(bookId: string) {
+    const payload = await request<{ progress: ReaderTextLocation | null }>(`/api/books/${bookId}/progress`);
+    return payload.progress;
+  },
+
+  async saveReaderProgress(bookId: string, location: ReaderTextLocation, migrateOnly = false) {
+    const payload = await request<{ progress: ReaderTextLocation }>(`/api/books/${bookId}/progress`, {
+      method: migrateOnly ? "POST" : "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(location),
+      keepalive: true,
+    });
+    return payload.progress;
+  },
   async listBooks(options: BookListOptions = {}) {
     const params = new URLSearchParams();
     if (options.query?.trim()) {

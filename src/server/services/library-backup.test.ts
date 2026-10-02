@@ -16,6 +16,13 @@ client.ensureSchema();
 
 const BOOK_ID = "backup-book";
 const SHELF_ID = "backup-shelf";
+const SAVED_PROGRESS = {
+  sectionHref: "OEBPS/chapter-2.xhtml",
+  textVersion: 1 as const,
+  offset: 36,
+  prefix: "Beyond the stair, a glass garden",
+  suffix: "kept summer through the longest winter.",
+};
 const FIXTURE_PATH = path.join(appConfig.rootDir, "src/test/fixtures/multi-section.epub");
 const fixtureBytes = readFileSync(FIXTURE_PATH);
 const fixtureHash = createHash("sha256").update(fixtureBytes).digest("hex");
@@ -59,6 +66,7 @@ beforeEach(() => {
     .values({ bookId: BOOK_ID, bookshelfId: SHELF_ID, addedAt: new Date() })
     .run();
   client.db.insert(schema.settings).values({ key: "backup-test", value: "preserved" }).run();
+  client.db.insert(schema.readerProgress).values({ bookId: BOOK_ID, location: SAVED_PROGRESS }).run();
   client.db
     .insert(schema.readerBookmarks)
     .values({
@@ -138,6 +146,12 @@ describe("complete library backup and restore", () => {
       key: "backup-test",
       value: "preserved",
     });
+    expect(client.db.select().from(schema.readerProgress).get()).toEqual({
+      bookId: BOOK_ID,
+      location: SAVED_PROGRESS,
+    });
+    const progressResponse = await app.fetch(new Request(`http://127.0.0.1/api/books/${BOOK_ID}/progress`));
+    expect(await progressResponse.json()).toEqual({ progress: SAVED_PROGRESS });
     expect(client.db.select().from(schema.readerBookmarks).get()).toMatchObject({
       id: "saved-bookmark",
       label: "Garden",
