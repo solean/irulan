@@ -5,6 +5,7 @@ import { pipeline } from "node:stream/promises";
 import busboy, { type Busboy } from "busboy";
 import { Hono } from "hono";
 import { z } from "zod";
+import { readerAssetContentSecurityPolicy } from "../../security/csp";
 import {
   BOOK_SEARCH_PAGE_SIZE,
   BOOK_SORT_KEYS,
@@ -272,6 +273,8 @@ booksRoutes.get("/:id/read/*", async (c) => {
   return new Response(bytes, {
     headers: {
       "Content-Type": readerAssetContentType(assetPath),
+      "Content-Security-Policy": readerAssetContentSecurityPolicy,
+      "X-Content-Type-Options": "nosniff",
       "Cache-Control": "public, max-age=3600",
     },
   });
