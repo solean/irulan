@@ -6,10 +6,12 @@ import { appConfig } from "./config";
 import {
   backupDatabase,
   closeDatabase,
+  db,
   ensureSchema,
   getPendingDatabaseRecovery,
   initializeDatabase,
 } from "./db/client";
+import { books } from "./db/schema";
 import { recordDatabaseRecovery } from "./services/settings";
 import { migrateLegacySmtpPassword } from "./services/smtp-credentials";
 import { ensureStorageLayout, sweepExtractedReaderContent, sweepTrash } from "./lib/storage";
@@ -23,10 +25,10 @@ export type StartedServer = {
 
 export const startServer = async (options: { port?: number; hostname?: string } = {}) => {
   await ensureStorageLayout();
-  await sweepTrash();
-  await sweepExtractedReaderContent();
   await initializeDatabase();
   ensureSchema();
+  await sweepTrash(new Set(db.select({ id: books.id }).from(books).all().map((book) => book.id)));
+  await sweepExtractedReaderContent();
   migrateLegacySmtpPassword();
   recordDatabaseRecovery(getPendingDatabaseRecovery());
   const hostname = options.hostname ?? "127.0.0.1";

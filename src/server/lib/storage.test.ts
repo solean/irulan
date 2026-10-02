@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
 import { afterAll, beforeEach, describe, expect, test } from "vitest";
@@ -36,7 +36,7 @@ describe("sweepTrash (finding 26)", () => {
     const second = path.join(trashRoot, "book-2-1700000000001");
     mkdirSync(second, { recursive: true });
 
-    expect(await sweepTrash()).toBe(2);
+    expect(await sweepTrash(new Set())).toBe(2);
     expect(existsSync(orphan)).toBe(false);
     expect(existsSync(second)).toBe(false);
     expect(existsSync(trashRoot)).toBe(true);
@@ -47,13 +47,38 @@ describe("sweepTrash (finding 26)", () => {
     writeFileSync(path.join(keptBook, "original.epub"), "epub bytes");
     mkdirSync(trashRoot, { recursive: true });
 
-    expect(await sweepTrash()).toBe(0);
+    expect(await sweepTrash(new Set())).toBe(0);
     expect(existsSync(path.join(keptBook, "original.epub"))).toBe(true);
   });
 
   test("is a no-op when nothing has ever been deleted", async () => {
     expect(existsSync(trashRoot)).toBe(false);
-    expect(await sweepTrash()).toBe(0);
+    expect(await sweepTrash(new Set())).toBe(0);
+  });
+
+  test("recovers a book moved before its database deletion committed", async () => {
+    mkdirSync(keptBook, { recursive: true });
+    writeFileSync(path.join(keptBook, "original.epub"), "recoverable epub");
+    mkdirSync(trashRoot, { recursive: true });
+    const interrupted = path.join(trashRoot, "sweep-test-book-1700000000000");
+    renameSync(keptBook, interrupted);
+
+    expect(await sweepTrash(new Set(["sweep-test-book"]))).toBe(0);
+    expect(readFileSync(path.join(keptBook, "original.epub"), "utf8")).toBe("recoverable epub");
+    expect(existsSync(interrupted)).toBe(false);
+    expect(await sweepTrash(new Set(["sweep-test-book"]))).toBe(0);
+  });
+
+  test("preserves both copies if a live book also has an existing directory", async () => {
+    mkdirSync(keptBook, { recursive: true });
+    writeFileSync(path.join(keptBook, "original.epub"), "current epub");
+    const interrupted = path.join(trashRoot, "sweep-test-book-1700000000000");
+    mkdirSync(interrupted, { recursive: true });
+    writeFileSync(path.join(interrupted, "original.epub"), "recoverable epub");
+
+    await sweepTrash(new Set(["sweep-test-book"]));
+    expect(readFileSync(path.join(keptBook, "original.epub"), "utf8")).toBe("current epub");
+    expect(readFileSync(path.join(interrupted, "original.epub"), "utf8")).toBe("recoverable epub");
   });
 });
 

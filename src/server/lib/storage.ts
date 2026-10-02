@@ -1,4 +1,4 @@
-import { mkdir, readdir, rm, stat } from "node:fs/promises";
+import { mkdir, readdir, rename, rm, stat } from "node:fs/promises";
 import path from "node:path";
 
 import { appConfig } from "../config";
@@ -24,18 +24,14 @@ const isMissing = (error: unknown) =>
   error instanceof Error && "code" in error && error.code === "ENOENT";
 
 /**
- * Remove everything left in the trash directory and report how much was removed.
- *
- * Once a delete commits, nothing in the database points at the trashed files, so
- * a crash between the commit and the cleanup — or a cleanup that simply fails —
- * strands them where no later request would ever look. Startup is the safe place
- * to sweep: the server is not accepting requests yet, so no delete can be
- * mid-flight waiting to restore its files from here.
+ * Reconcile interrupted deletions against the opened catalog before removing
+ * committed deletions. A crash after the rename but before the SQL commit leaves
+ * a live book in trash; those files must go back, not be swept away.
  *
  * A directory that refuses to go away must not stop the app from booting, so
  * failures are logged per entry and the sweep continues.
  */
-export const sweepTrash = async () => {
+export const sweepTrash = async (liveBookIds: ReadonlySet<string>) => {
   const root = trashDirectory();
   let entries: string[];
 
@@ -52,6 +48,25 @@ export const sweepTrash = async () => {
 
   for (const entry of entries) {
     try {
+      const bookId = /^(.*)-\d+$/.exec(entry)?.[1];
+      if (!bookId) {
+        console.warn(`Keeping unrecognized trash entry ${entry}.`);
+        continue;
+      }
+      if (liveBookIds.has(bookId)) {
+        const destination = bookDirectory(bookId);
+        try {
+          await stat(destination);
+          // Never overwrite another copy or discard potentially recoverable data.
+          console.warn(`Keeping .trash/${entry}: the book directory already exists.`);
+          continue;
+        } catch (error) {
+          if (!isMissing(error)) throw error;
+        }
+        await rename(path.join(root, entry), destination);
+        console.log(`Recovered book files from .trash/${entry}.`);
+        continue;
+      }
       await rm(path.join(root, entry), { recursive: true, force: true });
       removed += 1;
     } catch (error) {
