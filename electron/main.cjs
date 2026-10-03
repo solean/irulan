@@ -5,6 +5,7 @@ const { readFileSync, writeFileSync } = require("node:fs");
 const { app, BrowserWindow, ipcMain, nativeTheme, safeStorage, screen, shell } = require("electron");
 
 const { isExternallyOpenable, isSameOrigin } = require("./url-policy.cjs");
+const { resolveWindowState, trackWindowState } = require("./window-state.cjs");
 
 /**
  * Hand a URL to the system browser, but only if its scheme is one the reader
@@ -159,12 +160,30 @@ const startLocalServer = async () => {
   return serverModule.startServer({ port: 0, hostname: "127.0.0.1" });
 };
 
-const buildWindow = (overrides = {}) => {
+const loadWindowStates = () => {
+  try {
+    const stored = JSON.parse(readFileSync(path.join(app.getPath("userData"), "windows.json"), "utf8"));
+    return stored && typeof stored === "object" && !Array.isArray(stored) ? stored : {};
+  } catch {
+    return {};
+  }
+};
+
+const saveWindowState = (kind, state) => {
+  try {
+    writeFileSync(
+      path.join(app.getPath("userData"), "windows.json"),
+      JSON.stringify({ ...loadWindowStates(), [kind]: state }),
+    );
+  } catch (error) {
+    console.error("Failed to persist window dimensions.", error);
+  }
+};
+
+const buildWindow = (kind = "library") => {
+  const state = resolveWindowState(kind, loadWindowStates()[kind], screen.getAllDisplays(), screen.getPrimaryDisplay());
   const window = new BrowserWindow({
-    width: 1280,
-    height: 840,
-    minWidth: 960,
-    minHeight: 640,
+    ...state.options,
     show: false,
     title: "Irulan",
     titleBarStyle: "hiddenInset",
@@ -183,10 +202,11 @@ const buildWindow = (overrides = {}) => {
         `${READER_PREFERENCES_SWITCH}${encodeURIComponent(JSON.stringify(loadReaderPreferences()))}`,
       ],
     },
-    ...overrides,
   });
 
+  trackWindowState(window, (saved) => saveWindowState(kind, saved));
   window.once("ready-to-show", () => {
+    if (state.maximized) window.maximize();
     window.show();
   });
 
@@ -235,12 +255,7 @@ const openReaderWindow = (bookId, search) => {
   params.set("popout", "1");
   const url = `${localServer.url}/books/${encodeURIComponent(normalizedId)}/read?${params.toString()}`;
 
-  const readerWindow = buildWindow({
-    width: 820,
-    height: 940,
-    minWidth: 480,
-    minHeight: 600,
-  });
+  const readerWindow = buildWindow("reader");
   if (process.platform === "darwin") {
     readerWindow.setWindowButtonVisibility(false);
   }
