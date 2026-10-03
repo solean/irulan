@@ -81,7 +81,7 @@ Create distributable macOS artifacts:
 bun run electron:dist
 ```
 
-The desktop app stores its library data under the app's macOS Application Support directory instead of the repo-local `data/` and `storage/` folders.
+The desktop app stores its library data under `~/Library/Application Support/irulan/` instead of the repo-local `data/` and `storage/` folders, using the same `data/` and `storage/` layout described in [Data Layout](#data-layout). Use **Settings → Library backup** to move or copy a library; editing these files directly while the app is running can break it.
 
 ## Kindle Delivery
 

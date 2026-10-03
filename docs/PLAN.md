@@ -231,7 +231,7 @@ Add desktop integration after the core data and reader work is reliable:
 - 🟡 drag EPUBs onto the app or Dock icon — partial; in-app drop targets exist, with no Dock or OS handler
 - 🔴 signed and notarized macOS builds — todo; no signing or notarization config
 - 🔴 application updates — todo; no `autoUpdater`
-- 🟡 a documented library-data location — partial; `electron/main.cjs` defines `userData/data` and `userData/storage`, but they are undocumented
+- 🟢 a documented library-data location — done; the README documents `~/Library/Application Support/irulan/data` and `storage`
 - 🔴 a first-run choice for importing an existing library — todo; onboarding covers first book, SMTP, and Kindle only
 
 ## Test and Compatibility Matrix
