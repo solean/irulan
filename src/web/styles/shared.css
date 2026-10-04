@@ -441,46 +441,63 @@
   overflow-wrap: anywhere;
 }
 
-.status-pill {
+/* One quiet ink shell for every pill. Status lives in the dot; only the
+   danger tone tints the whole pill, so problems stand out on a scan. */
+.pill {
+  --pill-dot: var(--text-tertiary);
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 2px 8px;
+  gap: 7px;
+  height: 22px;
+  max-width: 100%;
+  padding: 0 9px;
   border-radius: 999px;
+  background: color-mix(in srgb, var(--text-primary) 6%, transparent);
+  color: var(--text-secondary);
   font-size: 12px;
   font-weight: 500;
-  text-transform: capitalize;
+  letter-spacing: 0.005em;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
 }
 
-.status-pill::before {
+/* Trim the label to cap height so flex centering lines the capitals and
+   the dot up on the pill's true middle (the line box carries descender room).
+   Descenders paint outside the trimmed box, so nothing here may clip. */
+.pill-label {
+  display: block;
+  text-box: trim-both cap alphabetic;
+}
+
+.pill-dot {
+  padding-left: 8px;
+}
+
+.pill-dot::before {
   content: '';
   width: 6px;
   height: 6px;
   border-radius: 50%;
   flex-shrink: 0;
+  background: var(--pill-dot);
+  box-shadow: 0 0 0 2.5px color-mix(in srgb, var(--pill-dot) 22%, transparent);
 }
 
-.status-sent {
-  color: var(--success);
+.pill-accent {
+  --pill-dot: var(--accent);
 }
 
-.status-sent::before {
-  background: var(--success);
+.pill-success {
+  --pill-dot: var(--success);
 }
 
-.status-pending {
-  color: var(--warning);
+.pill-warning {
+  --pill-dot: var(--warning);
 }
 
-.status-pending::before {
-  background: var(--warning);
-}
-
-.status-failed {
-  color: var(--error);
-}
-
-.status-failed::before {
-  background: var(--error);
+.pill-danger {
+  --pill-dot: var(--error);
+  background: var(--error-soft);
+  color: var(--error-ink);
 }
 

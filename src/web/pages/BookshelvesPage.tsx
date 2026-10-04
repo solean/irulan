@@ -8,7 +8,6 @@ import {
 import { flushSync } from "react-dom";
 import { Link } from "react-router-dom";
 
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -17,6 +16,7 @@ import { Label } from "@/components/ui/label";
 import type { BookshelfSummary, SettingsPayload } from "../../shared/types";
 import { ArrowLeftIcon } from "../components/icons";
 import { ConfirmModal } from "../components/modals";
+import { Pill } from "../components/pill";
 import { SettingsSkeleton } from "../components/skeletons";
 import { useDocumentTitle } from "../hooks/use-document-title";
 import { useToast } from "../hooks/use-toast";
@@ -254,10 +254,10 @@ export const BookshelvesPage = () => {
         <div className="stack-xs">
           <div className="section-heading">
             <h2>Bookshelves</h2>
-            <Badge variant="outline">
+            <Pill>
               {numberFormatter.format(bookshelves.length)}
               {bookshelves.length === 1 ? " shelf" : " shelves"}
-            </Badge>
+            </Pill>
           </div>
           <p className="lede">
             Each bookshelf keeps its own Kindle destination. Books can belong to more than one

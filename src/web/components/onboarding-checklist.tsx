@@ -1,9 +1,8 @@
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 
-import { getStatusBadgeVariant } from "../lib/status";
+import { Pill } from "./pill";
 import { CheckIcon } from "./icons";
 export type OnboardingStep = {
   id: string;
@@ -62,12 +61,9 @@ export const OnboardingChecklist = ({
             <div className="stack-xs">
               <div className="smtp-onboarding-step-heading">
                 <p className="smtp-onboarding-step-title">{step.title}</p>
-                <Badge
-                  className={cn("status-pill", step.done ? "status-sent" : "status-pending")}
-                  variant={getStatusBadgeVariant(step.done ? "configured" : "pending")}
-                >
+                <Pill dot tone={step.done ? "success" : "warning"}>
                   {step.done ? "Done" : "To do"}
-                </Badge>
+                </Pill>
               </div>
               <p className="smtp-onboarding-step-copy">{step.description}</p>
               {!step.done ? (

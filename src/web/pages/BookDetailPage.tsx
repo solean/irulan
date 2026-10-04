@@ -3,7 +3,6 @@ import type { FormEvent } from "react";
 import { useEffect, useEffectEvent, useRef, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -32,6 +31,7 @@ import {
   PlayIcon,
 } from "../components/icons";
 import { DeleteBookModal } from "../components/modals";
+import { Pill } from "../components/pill";
 import { BookDetailSkeleton } from "../components/skeletons";
 import { useDocumentTitle } from "../hooks/use-document-title";
 import { useToast } from "../hooks/use-toast";
@@ -42,7 +42,7 @@ import {
   getReaderSearch,
   openReaderWindow,
 } from "../lib/navigation";
-import { getStatusBadgeVariant } from "../lib/status";
+import { DELIVERY_STATUS_PILLS } from "../lib/status";
 import { navigateWithCoverTransition } from "../lib/view-transition";
 
 const SENT_LABEL_MS = 1800;
@@ -597,9 +597,7 @@ export const BookDetailPage = () => {
                     {trimmedRecipient}
                   </span>
                   {recipientMatchesDefault ? (
-                    <span className="send-recipient-tag">
-                      {activeBookBookshelf?.name ?? "Shelf"}
-                    </span>
+                    <Pill>{activeBookBookshelf?.name ?? "Shelf"}</Pill>
                   ) : null}
                 </div>
                 <Button
@@ -788,12 +786,9 @@ export const BookDetailPage = () => {
                   key={delivery.id}
                 >
                   <div className="history-row-main">
-                    <Badge
-                      className={cn("status-pill", `status-${delivery.status}`)}
-                      variant={getStatusBadgeVariant(delivery.status)}
-                    >
-                      {delivery.status}
-                    </Badge>
+                    <Pill dot tone={DELIVERY_STATUS_PILLS[delivery.status].tone}>
+                      {DELIVERY_STATUS_PILLS[delivery.status].label}
+                    </Pill>
                     <div className="history-row-text">
                       <span className="history-row-recipient">
                         {deliveryBookshelfName

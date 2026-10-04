@@ -8,7 +8,6 @@ import {
 } from "react";
 import { Link } from "react-router-dom";
 
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -28,12 +27,12 @@ import type {
 } from "../../shared/types";
 import { ArrowLeftIcon } from "../components/icons";
 import { ConfirmModal } from "../components/modals";
+import { Pill } from "../components/pill";
 import { SettingsSkeleton } from "../components/skeletons";
 import { useDocumentTitle } from "../hooks/use-document-title";
 import { useToast } from "../hooks/use-toast";
 import { api } from "../lib/api";
 import { numberFormatter } from "../lib/format";
-import { getStatusBadgeVariant } from "../lib/status";
 
 type SmtpFormState = {
   host: string;
@@ -259,12 +258,9 @@ export const SettingsPage = () => {
         <div className="stack-xs">
           <div className="section-heading">
             <h2>Mail connection</h2>
-            <Badge
-              className={cn("status-pill", smtpConfigured ? "status-sent" : "status-failed")}
-              variant={getStatusBadgeVariant(smtpConfigured ? "configured" : "missing")}
-            >
+            <Pill dot tone={smtpConfigured ? "success" : "danger"}>
               {smtpConfigured ? "Configured" : "Not configured"}
-            </Badge>
+            </Pill>
           </div>
           <p className="lede">
             Use the SMTP settings from your mail provider.

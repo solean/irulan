@@ -129,6 +129,8 @@
   --error: #C96E60;
   --error-soft: rgba(201, 110, 96, 0.14);
   --error-border: rgba(201, 110, 96, 0.22);
+  /* Text on --error-soft; clears 4.5:1 over every surface. */
+  --error-ink: #D18377;
 
   --header-backdrop: rgba(21, 16, 11, 0.82);
   --cover-gradient-from: var(--bg-elevated);
@@ -174,6 +176,8 @@
   --error: #B85D50;
   --error-soft: rgba(184, 93, 80, 0.09);
   --error-border: rgba(184, 93, 80, 0.16);
+  /* Text on --error-soft; clears 4.5:1 over every surface. */
+  --error-ink: #9B4A3F;
 
   --header-backdrop: rgba(246, 244, 238, 0.9);
   --cover-gradient-from: var(--bg-elevated);

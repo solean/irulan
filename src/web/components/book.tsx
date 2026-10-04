@@ -15,6 +15,8 @@ import {
 } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 
+import { Pill, type PillTone } from "./pill";
+
 import {
   READ_STATUSES,
   type BookDetail,
@@ -41,10 +43,16 @@ const getStarFill = (rating: number | null, index: number) => {
   return Math.max(0, Math.min(1, rating - index));
 };
 
+const READ_STATUS_TONES: Record<ReadStatus, PillTone> = {
+  unread: "neutral",
+  reading: "accent",
+  finished: "success",
+};
+
 export const ReadStatusBadge = ({ status }: { status: ReadStatus }) => (
-  <span className={cn("read-status-badge", `read-status-${status}`)}>
+  <Pill dot={status !== "unread"} tone={READ_STATUS_TONES[status]}>
     {READ_STATUS_LABELS[status]}
-  </span>
+  </Pill>
 )
 
 /** Check mark whose stroke draws in when `draw` is set (see .drawn-check). */
