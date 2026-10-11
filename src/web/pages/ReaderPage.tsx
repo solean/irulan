@@ -847,10 +847,27 @@ export const ReaderPage = () => {
       return;
     }
 
-    measurePagination();
-
     const viewport = readerViewportRef.current;
     const body = readerBodyRef.current;
+
+    // The freshly laid-out body renders at an offset derived from stale
+    // pagination (the outgoing chapter's page count, or the old typography).
+    // Measuring corrects it, e.g. to the real last page when paging back into
+    // the previous chapter. Jump there: with the transform transition active,
+    // the correction would slide visibly through every page in between. The
+    // measurement's state updates commit synchronously before the next frame,
+    // so flush that style with the transition off, then restore it.
+    let restoreFrame = 0;
+    if (body) {
+      body.style.transition = "none";
+      restoreFrame = window.requestAnimationFrame(() => {
+        void getComputedStyle(body).transform;
+        body.style.transition = "";
+      });
+    }
+
+    measurePagination();
+
     if (!viewport || !body) {
       return;
     }
@@ -870,6 +887,10 @@ export const ReaderPage = () => {
     return () => {
       cancelled = true;
       observer.disconnect();
+      if (restoreFrame) {
+        window.cancelAnimationFrame(restoreFrame);
+        body.style.transition = "";
+      }
     };
   }, [fontFamily, fontScale, lineSpacing, sectionDocument, sectionLoading]);
 
