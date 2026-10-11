@@ -45,7 +45,8 @@
     padding: 20px;
   }
 
-  .confirm-modal {
+  .confirm-modal,
+  .reader-shortcuts-modal {
     padding: 20px;
   }
 

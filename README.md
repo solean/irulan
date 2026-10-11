@@ -4,7 +4,7 @@ A local-first, single-user EPUB manager focused on:
 
 - importing EPUB files
 - browsing a clean bookshelf
-- reading EPUBs in the browser
+- reading EPUBs in the browser (press `?` in the reader for keyboard shortcuts)
 - sending a selected EPUB to a Kindle email address
 
 This project intentionally does not do format conversion.

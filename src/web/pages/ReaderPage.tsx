@@ -1,6 +1,5 @@
 import type {
   CSSProperties,
-  KeyboardEvent as ReactKeyboardEvent,
   MouseEvent,
   PointerEvent as ReactPointerEvent,
 } from "react";
@@ -37,6 +36,7 @@ import {
 } from "../components/reader-appearance-controls";
 import { ReaderEndCard } from "../components/reader-end-card";
 import { ReaderSearch } from "../components/reader-search";
+import { ReaderShortcutsDialog } from "../components/reader-shortcuts-dialog";
 import {
   ArrowLeftIcon,
   BookmarkIcon,
@@ -68,6 +68,7 @@ import {
   resolveReaderTextRange,
   serializeReaderViewportLocation,
 } from "../lib/reader-location";
+import { getReaderShortcutAction, READER_SHORTCUT_BEHAVIOR } from "../lib/reader-shortcuts";
 import {
   DEFAULT_READER_FONT,
   DEFAULT_READER_SPACING,
@@ -76,6 +77,7 @@ import {
   getStoredReaderSpacing,
   getStoredReaderTone,
   READER_FONTS,
+  READER_FONT_SCALE_STEP,
   READER_MAX_FONT_SCALE,
   READER_MIN_FONT_SCALE,
   READER_SPACINGS,
@@ -233,6 +235,7 @@ export const ReaderPage = () => {
   const [readerToolPanel, setReaderToolPanel] = useState<
     null | "search" | "bookmarks" | "annotations"
   >(null);
+  const [shortcutsHelpOpen, setShortcutsHelpOpen] = useState(false);
   const [activeSearchRange, setActiveSearchRange] = useState<ReaderTextRange | null>(null);
   const [pendingReaderTarget, setPendingReaderTarget] = useState<
     ReaderTextLocation | ReaderTextRange | null
@@ -1084,75 +1087,140 @@ export const ReaderPage = () => {
     [currentPage, goToPage, goToSection, nextSection, pageCount, previousSection],
   );
 
-  const handleReaderShortcut = useCallback(
-    (key: string) => {
-      if (key === "ArrowRight" || key === "PageDown" || key === " ") {
+  const addingShortcutBookmark = useRef(false);
+  const addBookmarkAtCurrentPage = async () => {
+    if (addingShortcutBookmark.current) return;
+    if (isCurrentPageBookmarked) {
+      toast({ title: "This page is already bookmarked", variant: "default" });
+      return;
+    }
+    const location = getCurrentReaderLocation();
+    if (!location) {
+      toast({
+        title: "Nothing to bookmark yet",
+        description: "No text is on screen. Try again once the page has loaded.",
+        variant: "warning",
+      });
+      return;
+    }
+
+    addingShortcutBookmark.current = true;
+    try {
+      onReaderBookmarkAdded(await api.createReaderBookmark(bookId, { location }));
+      toast({ title: "Bookmark added", variant: "success" });
+    } catch (requestError) {
+      toast({
+        title: "Could not add the bookmark",
+        description: requestError instanceof Error ? requestError.message : "Please try again.",
+        variant: "error",
+      });
+    } finally {
+      addingShortcutBookmark.current = false;
+    }
+  };
+
+  const onReaderShortcutKeyDown = useEffectEvent((event: KeyboardEvent) => {
+    if (event.defaultPrevented) return;
+    const action = getReaderShortcutAction(event);
+    if (!action) return;
+
+    // The help dialog is modal: only its own toggle reaches the reader.
+    if (shortcutsHelpOpen) {
+      if (action === "toggle-help") {
+        event.preventDefault();
+        setShortcutsHelpOpen(false);
+      }
+      return;
+    }
+
+    const target = event.target instanceof Element ? event.target : null;
+    if (
+      target?.closest(
+        'input, textarea, select, [contenteditable]:not([contenteditable="false"]), [role="alertdialog"], [role="combobox"], [role="listbox"], [role="menu"], [role="textbox"]',
+      ) ||
+      (target instanceof HTMLElement && target.isContentEditable)
+    ) {
+      return;
+    }
+
+    // Inside the page (including links in the book) every key pages; elsewhere
+    // a focused control keeps its own Space/arrow behavior.
+    if (
+      READER_SHORTCUT_BEHAVIOR[action].paging &&
+      !(target && readerViewportRef.current?.contains(target)) &&
+      target?.closest(
+        'button, a[href], summary, [role="button"], [role="dialog"], [role="link"], [role="radio"], [role="slider"], [role="tab"]',
+      )
+    ) {
+      return;
+    }
+
+    event.preventDefault();
+    switch (action) {
+      case "next-page":
         onTurnPage("next");
-        return true;
-      }
-
-      if (key === "ArrowLeft" || key === "PageUp") {
+        return;
+      case "previous-page":
         onTurnPage("previous");
-        return true;
-      }
-
-      if (key === "Home") {
+        return;
+      case "section-start":
         goToPage(1, { preserveAnchor: false });
-        return true;
-      }
-
-      if (key === "End") {
+        return;
+      case "section-end":
         goToPage(pageCount, { preserveAnchor: false });
-        return true;
-      }
-
-      return false;
-    },
-    [goToPage, onTurnPage, pageCount],
-  );
+        return;
+      case "next-section":
+        if (nextSection) goToSection(nextSection.href, { page: 1 });
+        return;
+      case "previous-section":
+        if (previousSection) goToSection(previousSection.href, { page: 1 });
+        return;
+      case "toggle-contents":
+        if (isPopout) {
+          setReaderPanel((panel) => (panel === "contents" ? null : "contents"));
+        } else {
+          // The in-window layout always shows the contents; jump focus there.
+          (
+            document.querySelector<HTMLElement>('.reader-sidebar .reader-toc [aria-current="page"]') ??
+            document.querySelector<HTMLElement>(".reader-sidebar .reader-toc button")
+          )?.focus();
+        }
+        return;
+      case "toggle-appearance":
+        if (isPopout) {
+          setReaderPanel((panel) => (panel === "appearance" ? null : "appearance"));
+        } else {
+          // The in-window toolbar always shows appearance; focus its first control.
+          document
+            .querySelector<HTMLElement>('.reader-toolbar-controls [aria-pressed="true"]')
+            ?.focus();
+        }
+        return;
+      case "toggle-bookmarks":
+        setReaderBookmarksOpen(readerToolPanel !== "bookmarks");
+        return;
+      case "toggle-annotations":
+        setReaderAnnotationsOpen(readerToolPanel !== "annotations");
+        return;
+      case "add-bookmark":
+        void addBookmarkAtCurrentPage();
+        return;
+      case "increase-font":
+        onAdjustFontScale(READER_FONT_SCALE_STEP);
+        return;
+      case "decrease-font":
+        onAdjustFontScale(-READER_FONT_SCALE_STEP);
+        return;
+      case "toggle-help":
+        setShortcutsHelpOpen(true);
+        return;
+    }
+  });
 
   useEffect(() => {
-    const onWindowKeyDown = (event: KeyboardEvent) => {
-      if (
-        event.defaultPrevented ||
-        event.altKey ||
-        event.ctrlKey ||
-        event.metaKey ||
-        event.shiftKey
-      ) {
-        return;
-      }
-
-      if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") {
-        return;
-      }
-
-      const target =
-        event.target instanceof HTMLElement || event.target instanceof SVGElement
-          ? event.target
-          : null;
-      if (
-        target?.closest(
-          'input, textarea, select, button, a[href], [contenteditable="true"], [role="button"], [role="combobox"], [role="dialog"], [role="link"], [role="listbox"], [role="menu"], [role="textbox"]',
-        )
-      ) {
-        return;
-      }
-
-      if (target instanceof HTMLElement && target.isContentEditable) {
-        return;
-      }
-
-      if (handleReaderShortcut(event.key)) {
-        event.preventDefault();
-      }
-    };
-
-    window.addEventListener("keydown", onWindowKeyDown);
-    return () => {
-      window.removeEventListener("keydown", onWindowKeyDown);
-    };
-  }, [handleReaderShortcut]);
+    window.addEventListener("keydown", onReaderShortcutKeyDown);
+    return () => window.removeEventListener("keydown", onReaderShortcutKeyDown);
+  }, []);
 
   useEffect(() => {
     if (!readerPanel) return;
@@ -1162,19 +1230,6 @@ export const ReaderPage = () => {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [readerPanel]);
-
-  const onReaderViewportKeyDown = useCallback(
-    (event: ReactKeyboardEvent<HTMLDivElement>) => {
-      if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) {
-        return;
-      }
-
-      if (handleReaderShortcut(event.key)) {
-        event.preventDefault();
-      }
-    },
-    [handleReaderShortcut],
-  );
 
   // Slide the page body to a target offset on the drawer curve (a gesture
   // settle), then drop the inline transition so React-driven jumps (chapter
@@ -1613,6 +1668,7 @@ export const ReaderPage = () => {
         sectionHref={displayedHref}
         viewportRef={readerViewportRef}
       />
+      <ReaderShortcutsDialog onOpenChange={setShortcutsHelpOpen} open={shortcutsHelpOpen} />
     </div>
   );
 
@@ -1666,7 +1722,6 @@ export const ReaderPage = () => {
               isDraggingPage && "reader-page-window-dragging",
             )}
             onClickCapture={onReaderClickCapture}
-            onKeyDown={onReaderViewportKeyDown}
             onPointerCancel={onReaderPointerCancel}
             onPointerDown={onReaderPointerDown}
             onPointerMove={onReaderPointerMove}
@@ -1716,9 +1771,11 @@ export const ReaderPage = () => {
             <button
               aria-expanded={readerPanel === "contents"}
               aria-haspopup="dialog"
+              aria-keyshortcuts="C"
               aria-label="Contents"
               className={cn("reader-immersive-control", readerPanel === "contents" && "active")}
               onClick={() => setReaderPanel((panel) => (panel === "contents" ? null : "contents"))}
+              title="Contents (C)"
               type="button"
             >
               <ContentsIcon />
@@ -1739,24 +1796,28 @@ export const ReaderPage = () => {
             </button>
             <button
               aria-expanded={readerToolPanel === "bookmarks"}
+              aria-keyshortcuts="B"
               aria-label="Bookmarks"
               className={cn(
                 "reader-immersive-control",
                 readerToolPanel === "bookmarks" && "active",
               )}
               onClick={() => setReaderBookmarksOpen(readerToolPanel !== "bookmarks")}
+              title="Bookmarks (B)"
               type="button"
             >
               <BookmarkIcon />
             </button>
             <button
               aria-expanded={readerToolPanel === "annotations"}
+              aria-keyshortcuts="H"
               aria-label="Highlights and notes"
               className={cn(
                 "reader-immersive-control",
                 readerToolPanel === "annotations" && "active",
               )}
               onClick={() => setReaderAnnotationsOpen(readerToolPanel !== "annotations")}
+              title="Highlights and notes (H)"
               type="button"
             >
               <HighlightIcon />
@@ -1769,6 +1830,7 @@ export const ReaderPage = () => {
             <button
               aria-expanded={readerPanel === "appearance"}
               aria-haspopup="dialog"
+              aria-keyshortcuts="A"
               aria-label="Appearance"
               className={cn(
                 "reader-immersive-control reader-immersive-control-aa",
@@ -1777,6 +1839,7 @@ export const ReaderPage = () => {
               onClick={() =>
                 setReaderPanel((panel) => (panel === "appearance" ? null : "appearance"))
               }
+              title="Appearance (A)"
               type="button"
             >
               Aa
@@ -1964,7 +2027,9 @@ export const ReaderPage = () => {
               </Button>
               <Button
                 aria-expanded={readerToolPanel === "bookmarks"}
+                aria-keyshortcuts="B"
                 onClick={() => setReaderBookmarksOpen(readerToolPanel !== "bookmarks")}
+                title="Bookmarks (B)"
                 type="button"
                 variant="outline"
               >
@@ -1973,7 +2038,9 @@ export const ReaderPage = () => {
               </Button>
               <Button
                 aria-expanded={readerToolPanel === "annotations"}
+                aria-keyshortcuts="H"
                 onClick={() => setReaderAnnotationsOpen(readerToolPanel !== "annotations")}
+                title="Highlights and notes (H)"
                 type="button"
                 variant="outline"
               >
