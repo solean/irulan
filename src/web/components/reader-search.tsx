@@ -241,7 +241,11 @@ export const ReaderSearch = ({ bookId, onNavigate, onOpenChange, open }: ReaderS
               type="button"
             >
               <span className="reader-search-result-section">{result.sectionLabel}</span>
-              <span className="reader-search-result-snippet">{result.snippet}</span>
+              <span className="reader-search-result-snippet">
+                {result.snippet.before}
+                <mark className="reader-search-result-match">{result.snippet.match}</mark>
+                {result.snippet.after}
+              </span>
             </button>
           </div>
         ))}

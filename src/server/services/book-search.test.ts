@@ -114,7 +114,7 @@ describe("book search indexing and queries", () => {
     for (const result of page.results) {
       const text = textByHref.get(result.sectionHref);
       expect(text?.slice(result.range.offset, result.range.endOffset)).toBe(result.range.exact);
-      expect(result.snippet).toContain(result.range.exact);
+      expect(result.snippet.match).toBe(result.range.exact);
     }
 
     rmSync(EPUB_PATH);

@@ -8,6 +8,7 @@ import {
   READER_TEXT_VERSION,
   type BookSearchPage,
   type BookSearchResult,
+  type BookSearchSnippet,
 } from "../../shared/types";
 import { db } from "../db/client";
 import { books, readerSectionText } from "../db/schema";
@@ -137,9 +138,9 @@ const matchedRange = (row: SearchRow) => {
   return range;
 };
 
-const searchSnippet = (text: string, result: BookSearchResult["range"]) => {
+const searchSnippet = (text: string, result: BookSearchResult["range"]): BookSearchSnippet => {
   if (result.exact.length > MAX_SEARCH_SNIPPET_LENGTH - 2) {
-    return `${result.exact.slice(0, MAX_SEARCH_SNIPPET_LENGTH - 2)} …`;
+    return { before: "", match: result.exact.slice(0, MAX_SEARCH_SNIPPET_LENGTH - 2), after: " …" };
   }
 
   const leadingMarker = result.offset > 0 ? "… " : "";
@@ -154,7 +155,11 @@ const searchSnippet = (text: string, result: BookSearchResult["range"]) => {
   const beforeLength = Math.floor(contextLength / 2);
   const start = Math.max(0, result.offset - beforeLength);
   const end = Math.min(text.length, result.endOffset + contextLength - (result.offset - start));
-  return `${start > 0 ? leadingMarker : ""}${text.slice(start, end)}${end < text.length ? trailingMarker : ""}`;
+  return {
+    before: `${start > 0 ? leadingMarker : ""}${text.slice(start, result.offset)}`,
+    match: text.slice(result.offset, result.endOffset),
+    after: `${text.slice(result.endOffset, end)}${end < text.length ? trailingMarker : ""}`,
+  };
 };
 
 export const searchBook = async (

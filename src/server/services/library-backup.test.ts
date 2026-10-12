@@ -169,7 +169,9 @@ describe("complete library backup and restore", () => {
       sectionHref: "OEBPS/chapter-2.xhtml",
       sectionLabel: "The Glass Garden",
     });
-    expect(search.results[0]?.snippet.length).toBeLessThanOrEqual(240);
+    const snippet = search.results[0]?.snippet;
+    expect(snippet?.match).toBe("needleword");
+    expect(`${snippet?.before}${snippet?.match}${snippet?.after}`.length).toBeLessThanOrEqual(240);
   });
 
   test("rejects an invalid archive before changing the current library", async () => {

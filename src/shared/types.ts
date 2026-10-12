@@ -128,11 +128,18 @@ export const BOOK_SEARCH_PAGE_SIZE = 20;
 export const MAX_BOOK_SEARCH_PAGE_SIZE = 50;
 export const MAX_BOOK_SEARCH_QUERY_LENGTH = 200;
 
+/** Result context split so clients can emphasize `match`, the text at `range`. */
+export type BookSearchSnippet = {
+  before: string;
+  match: string;
+  after: string;
+};
+
 export type BookSearchResult = {
   sectionHref: string;
   sectionLabel: string;
   spineIndex: number;
-  snippet: string;
+  snippet: BookSearchSnippet;
   range: ReaderTextRange;
 };
 

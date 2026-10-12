@@ -1284,6 +1284,15 @@
   -webkit-line-clamp: 3;
 }
 
+.reader-search-result-match {
+  padding: 0 0.08em;
+  border-radius: 0.2em;
+  background-color: rgba(250, 190, 45, 0.62);
+  color: var(--text-primary);
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+}
+
 ::highlight(reader-search-result) {
   background-color: rgba(250, 190, 45, 0.62);
   color: inherit;

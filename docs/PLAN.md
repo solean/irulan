@@ -164,7 +164,7 @@ the response; existing books backfill lazily. Plain-text queries are bounded and
 quoted `AND` terms rather than exposing FTS operators. The reader panel supports `Cmd/Ctrl+F`,
 result-arrow navigation, `Enter`, `Escape`, and opening the resolved match.
 
-- 🟢 result snippets
+- 🟢 result snippets with the match highlighted
 - 🟢 chapter labels
 - 🟢 result counts
 - 🟢 direct navigation to matched text
