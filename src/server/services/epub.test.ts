@@ -415,6 +415,37 @@ describe("prepareEpubReader", () => {
     expect(manifest.author).toBe("Unknown Author");
   });
 
+  test("records the package language as a canonical tag, ignoring invalid ones", async () => {
+    const tagged = await writeEpub("language", {
+      metadata: "<dc:title>Test Book</dc:title>\n    <dc:language>EN-gb</dc:language>",
+    });
+    const invalid = await writeEpub("language-invalid", {
+      metadata: "<dc:title>Test Book</dc:title>\n    <dc:language>not a language</dc:language>",
+    });
+
+    expect(
+      (await prepareEpubReader(tagged.epubPath, tagged.readerDirectory, "book-lang")).language,
+    ).toBe("en-GB");
+    expect(
+      (await prepareEpubReader(invalid.epubPath, invalid.readerDirectory, "book-bad-lang"))
+        .language,
+    ).toBeNull();
+  });
+
+  test("rebuilds a manifest cached before it recorded the language", async () => {
+    const { epubPath, readerDirectory } = await writeEpub("language-stale", {
+      metadata: "<dc:title>Test Book</dc:title>\n    <dc:language>fr</dc:language>",
+    });
+    const first = await prepareEpubReader(epubPath, readerDirectory, "book-stale");
+    const { language: _, ...legacy } = first;
+    writeFileSync(path.join(readerDirectory, "manifest.json"), JSON.stringify(legacy));
+
+    const rebuilt = await prepareEpubReader(epubPath, readerDirectory, "book-rebuilt");
+
+    expect(rebuilt.language).toBe("fr");
+    expect(rebuilt.sections[0]?.url).toContain("book-rebuilt");
+  });
+
   test("reuses the manifest it already wrote instead of reopening the archive", async () => {
     const { epubPath, readerDirectory } = await writeEpub("cached");
 

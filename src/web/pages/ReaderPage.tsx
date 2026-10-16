@@ -55,6 +55,8 @@ import { numberFormatter } from "../lib/format";
 import { getBookHref, scrollContentToTop } from "../lib/navigation";
 import {
   createReaderAssetSection,
+  getLanguageDirection,
+  getReaderDocumentLanguage,
   getReaderDocumentTitle,
   getReaderBookPagePosition,
   parseReaderMarkup,
@@ -1693,6 +1695,10 @@ export const ReaderPage = () => {
     </div>
   );
 
+  // A section may declare its own language; otherwise the book's applies.
+  const bookTextLanguage =
+    (sectionDocument ? getReaderDocumentLanguage(sectionDocument) : null) ?? reader.language;
+
   // The reading surface (tinted ground + floating page + paginated body) is
   // identical in both layouts — only the surrounding chrome differs.
   const readingSurface = (
@@ -1754,6 +1760,8 @@ export const ReaderPage = () => {
           >
             <article
               className="reader-body reader-body-paginated"
+              dir={getLanguageDirection(bookTextLanguage)}
+              lang={bookTextLanguage ?? undefined}
               key={displayedSection.href}
               onLoadCapture={() => {
                 measurePagination();
@@ -1845,7 +1853,9 @@ export const ReaderPage = () => {
             </button>
           </div>
 
-          <span className="reader-immersive-title">{reader.title}</span>
+          <span className="reader-immersive-title" lang={reader.language ?? undefined}>
+            {reader.title}
+          </span>
 
           <div className="reader-immersive-bar-group reader-immersive-bar-trail">
             <button
@@ -1924,7 +1934,9 @@ export const ReaderPage = () => {
           >
             <div className="reader-immersive-panel-head stack-xs">
               <p className="eyebrow">Contents</p>
-              <p className="reader-immersive-panel-title">{reader.title}</p>
+              <p className="reader-immersive-panel-title" lang={reader.language ?? undefined}>
+                {reader.title}
+              </p>
               <p className="detail-author">{reader.author}</p>
             </div>
             {renderTocNav(() => setReaderPanel(null))}
@@ -1982,7 +1994,7 @@ export const ReaderPage = () => {
         <Card className="panel reader-sidebar stack-sm">
           <div className="stack-xs">
             <p className="eyebrow">Now reading</p>
-            <h2>{reader.title}</h2>
+            <h2 lang={reader.language ?? undefined}>{reader.title}</h2>
             <p className="detail-author">{reader.author}</p>
           </div>
 

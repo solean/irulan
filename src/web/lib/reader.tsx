@@ -1,4 +1,12 @@
-import type { MouseEvent, ReactNode } from "react";
+import {
+  cloneElement,
+  Fragment,
+  type HTMLAttributes,
+  isValidElement,
+  type MouseEvent,
+  type ReactElement,
+  type ReactNode,
+} from "react";
 
 import type { BookReaderSection } from "../../shared/types";
 
@@ -60,6 +68,39 @@ const getNodeText = (node: Node, preserveWhitespace = false): string | null => {
   }
 
   return normalized;
+};
+
+const XML_NAMESPACE = "http://www.w3.org/XML/1998/namespace";
+
+// EPUB content is XHTML, so a language is usually `xml:lang`; the attribute has
+// no namespace when a malformed section falls back to the HTML parser.
+const getElementLanguage = (element: Element) =>
+  element.getAttribute("lang") ||
+  element.getAttributeNS(XML_NAMESPACE, "lang") ||
+  element.getAttribute("xml:lang") ||
+  null;
+
+/** The language a section declares on its `<body>` or `<html>`, if any. */
+export const getReaderDocumentLanguage = (document: Document) =>
+  (document.body ? getElementLanguage(document.body) : null) ??
+  getElementLanguage(document.documentElement);
+
+/**
+ * Writing direction for a language tag, or undefined when unknown.
+ *
+ * `Intl.Locale#getTextInfo` is not in the ES2024 lib typings, hence the cast.
+ */
+export const getLanguageDirection = (language: string | null): "ltr" | "rtl" | undefined => {
+  if (!language) return undefined;
+  try {
+    const locale = new Intl.Locale(language) as Intl.Locale & {
+      getTextInfo?: () => { direction?: string };
+    };
+    const direction = locale.getTextInfo?.().direction;
+    return direction === "ltr" || direction === "rtl" ? direction : undefined;
+  } catch {
+    return undefined;
+  }
 };
 
 const getElementAnchorId = (element: Element) =>
@@ -184,6 +225,28 @@ const renderNode = (
   }
 
   const element = node as Element;
+  const rendered = renderElement(element, options, path, mode);
+  // Keep the book's own language and direction marks, so a quotation in
+  // another language hyphenates, renders and is read aloud correctly.
+  const lang = getElementLanguage(element);
+  const rawDir = element.getAttribute("dir")?.toLowerCase();
+  const dir = rawDir === "ltr" || rawDir === "rtl" || rawDir === "auto" ? rawDir : undefined;
+  if ((!lang && !dir) || !isValidElement(rendered) || rendered.type === Fragment) {
+    return rendered;
+  }
+
+  return cloneElement(rendered as ReactElement<HTMLAttributes<HTMLElement>>, {
+    dir,
+    lang: lang ?? undefined,
+  });
+};
+
+const renderElement = (
+  element: Element,
+  options: ReaderRenderOptions,
+  path: string,
+  mode: "block" | "inline" | "pre",
+): ReactNode | null => {
   const tag = element.tagName.toLowerCase();
   const anchorId = getElementAnchorId(element);
   const childrenMode = tag === "pre" ? "pre" : mode === "pre" ? "pre" : "inline";

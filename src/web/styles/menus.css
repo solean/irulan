@@ -47,7 +47,7 @@
   background: transparent;
   border-radius: var(--radius-sm);
   color: var(--text-primary);
-  font-size: 13px;
+  font-size: var(--fs-base);
   text-align: left;
   cursor: pointer;
   transition: background-color 120ms ease, color 120ms ease;

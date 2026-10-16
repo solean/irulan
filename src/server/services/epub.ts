@@ -38,6 +38,7 @@ type ExtractedEpub = {
 type ReaderManifest = {
   title: string;
   author: string;
+  language: string | null;
   sections: BookReaderSection[];
 };
 
@@ -62,6 +63,7 @@ type ParsedEpub = {
   opfPath: string;
   title: string | null;
   author: string | null;
+  language: string | null;
   manifestItems: ManifestItem[];
   manifestById: Map<string, ManifestItem>;
   metaItems: MetaItem[];
@@ -369,6 +371,18 @@ const prettifySectionLabel = (value: string) =>
     .trim()
     .replace(/^\w/, (character) => character.toUpperCase());
 
+/** The package's first `dc:language` as a canonical BCP 47 tag, or null. */
+const parseLanguageTag = (value: unknown) => {
+  const raw = asText(value);
+  if (!raw) return null;
+  try {
+    const [tag] = Intl.getCanonicalLocales(raw);
+    return tag && tag !== "und" ? tag : null;
+  } catch {
+    return null;
+  }
+};
+
 const parsePackage = (
   opfXml: string,
   opfPath: string,
@@ -394,6 +408,7 @@ const parsePackage = (
   return {
     title: asText(metadata.title),
     author: asText(asArray(metadata.creator)[0]),
+    language: parseLanguageTag(asArray(metadata.language)[0]),
     manifestItems,
     manifestById,
     metaItems,
@@ -686,6 +701,8 @@ const readCachedReaderManifest = async (readerDir: string): Promise<ReaderManife
     if (
       typeof parsed.title === "string" &&
       typeof parsed.author === "string" &&
+      // Manifests written before the language field existed are rebuilt.
+      (typeof parsed.language === "string" || parsed.language === null) &&
       Array.isArray(parsed.sections) &&
       parsed.sections.every(
         (section) =>
@@ -833,6 +850,7 @@ export const prepareEpubReader = async (
   const manifest: ReaderManifest = {
     title: parsed.title ?? "Untitled Book",
     author: parsed.author ?? "Unknown Author",
+    language: parsed.language,
     sections,
   };
 

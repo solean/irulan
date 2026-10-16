@@ -51,8 +51,9 @@ const persistReaderPreferencesToShell = (preferences: Partial<ReaderPreferences>
 };
 
 
-export const READER_MIN_FONT_SCALE = 0.95;
-export const READER_MAX_FONT_SCALE = 1.25;
+// Must match the bounds electron/main.cjs accepts for the shell preferences.
+export const READER_MIN_FONT_SCALE = 0.8;
+export const READER_MAX_FONT_SCALE = 2;
 export const READER_FONT_SCALE_STEP = 0.1;
 
 export const READER_FONTS: ReadonlyArray<{

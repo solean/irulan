@@ -27,7 +27,7 @@ export const OnboardingChecklist = ({
     <Card className="panel onboarding-card stack-md">
       <div className="onboarding-header">
         <div className="stack-xs">
-          <h2 className="onboarding-title">Finish setting up Irulan</h2>
+          <h2>Finish setting up Irulan</h2>
           <p className="onboarding-subtitle">
             {completedCount} of {steps.length} done
           </p>

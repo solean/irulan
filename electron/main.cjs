@@ -83,8 +83,8 @@ const normalizeReaderPreferences = (value) => {
   if (
     typeof value.fontScale === "number" &&
     Number.isFinite(value.fontScale) &&
-    value.fontScale >= 0.95 &&
-    value.fontScale <= 1.25
+    value.fontScale >= 0.8 &&
+    value.fontScale <= 2
   ) {
     preferences.fontScale = value.fontScale;
   }

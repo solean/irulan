@@ -12,14 +12,23 @@
   --font-sans: 'Geist Variable', -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', sans-serif;
   --font-serif: 'Source Serif 4 Variable', 'Iowan Old Style', 'Charter', 'Georgia', serif;
 
-  /* Type scale (1.2 ratio, optical adjustments) */
+  /* Type scale. Every UI font-size uses these steps; Tailwind's text-* map
+     onto them (responsive.css).
+       xs   uppercase eyebrows and table headers, counts
+       sm   secondary text: metadata, captions, hints
+       base controls, menus, table cells, compact body copy
+       md   default UI text (body), card titles
+       lg   brand, author lines
+       xl   section titles, dialog titles
+       3xl  page titles
+     The book title on the detail page and the reader's book text have their
+     own fluid sizes. */
   --fs-xs:   11px;
   --fs-sm:   12px;
   --fs-base: 13px;
   --fs-md:   14px;
   --fs-lg:   16px;
   --fs-xl:   20px;
-  --fs-2xl:  26px;
   --fs-3xl:  34px;
 
   /* Line heights */
@@ -50,10 +59,10 @@
   --button-primary-hover: #6C4F2E;
   --button-primary-foreground: #F6F4EE;
 
+  /* The root keeps the browser's default size so rem units (Tailwind, the
+     reader) follow the user's preference; UI text is sized on body. */
   font-family: var(--font-sans);
-  font-size: var(--fs-md);
   line-height: var(--lh-normal);
-  font-feature-settings: "ss01", "ss03", "cv11";
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
@@ -81,7 +90,7 @@
   --chart-3: #8E6940;
   --chart-4: #684B2F;
   --chart-5: #49331F;
-  --radius: 0.45rem;
+  --radius: 6px;
   --sidebar: #FCFBF8;
   --sidebar-foreground: #342719;
   --sidebar-primary: var(--button-primary);
@@ -206,11 +215,11 @@ body {
   height: 100%;
   background: var(--bg-base);
   color: var(--text-primary);
+  font-size: var(--fs-md);
 }
 
 /* Buttons take their font from Tailwind's preflight, which lives in the base
    layer; an unlayered reset here would override every Button size utility. */
-body,
 input,
 textarea,
 select,
@@ -230,7 +239,6 @@ table {
 
 .serif {
   font-family: var(--font-serif);
-  font-feature-settings: "kern", "liga", "calt";
 }
 
 .numeric,

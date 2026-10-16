@@ -7,12 +7,15 @@
   height: 100vh;
 }
 
-.electron-shell .app-shell {
+/* Desktop convention: controls and the draggable title bar don't select when
+   clicked or dragged. Everything else (titles, metadata, error messages, book
+   text) stays selectable so it can be copied. */
+.electron-shell :is(.main-header, button, [role="button"], [role="menuitem"], [role="option"], [role="radio"], [role="tab"], label) {
   -webkit-user-select: none;
   user-select: none;
 }
 
-.electron-shell :is(input, textarea, [contenteditable="true"], .reader-body, .reader-body *) {
+.electron-shell .main-header :is(input, textarea) {
   -webkit-user-select: text;
   user-select: text;
 }
@@ -226,7 +229,7 @@
   padding: 0 10px;
   border-radius: var(--radius-sm);
   color: var(--text-primary);
-  font-size: 13px;
+  font-size: var(--fs-base);
   font-weight: 500;
   text-decoration: none;
   transition:
@@ -264,7 +267,7 @@
 
 .app-menu-theme-label {
   color: var(--text-secondary);
-  font-size: 13px;
+  font-size: var(--fs-base);
   font-weight: 500;
 }
 

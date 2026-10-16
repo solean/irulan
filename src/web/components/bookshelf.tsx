@@ -157,7 +157,7 @@ export const BookshelfSkeleton = ({ view }: { view: BookshelfView }) => {
             <col className="books-table-col-title" />
             <col className="books-table-col-author" />
             <col className="books-table-col-file" />
-            <col className="books-table-col-imported" />
+            <col className="books-table-col-date" />
             <col className="books-table-col-size" />
           </colgroup>
           <TableHeader className="[&_tr]:border-0">

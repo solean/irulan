@@ -636,7 +636,7 @@ export const BookDetailPage = () => {
 
       <Card className="panel stack-sm">
         <div className="section-heading">
-          <CardTitle>About this book</CardTitle>
+          <CardTitle className="section-title">About this book</CardTitle>
         </div>
         <dl className="about-grid">
           {book.finishedAt ? (
@@ -712,7 +712,7 @@ export const BookDetailPage = () => {
 
       <Card className="panel stack-sm">
         <CardHeader className="section-heading border-b">
-          <CardTitle>Bookshelves</CardTitle>
+          <CardTitle className="section-title">Bookshelves</CardTitle>
           <span>{numberFormatter.format(bookShelfIdsDraft.length)} selected</span>
         </CardHeader>
         <div className="bookshelf-membership-list">
@@ -751,7 +751,7 @@ export const BookDetailPage = () => {
 
       <Card className="panel stack-sm" ref={historyRef}>
         <CardHeader className="section-heading border-b">
-          <CardTitle>Delivery history</CardTitle>
+          <CardTitle className="section-title">Delivery history</CardTitle>
           <span>
             {deliveries.length === 0
               ? "0 attempts"

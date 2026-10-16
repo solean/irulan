@@ -414,6 +414,7 @@ export const getBookReader = async (bookId: string): Promise<BookReader> => {
     id: bookId,
     title: manifest.title,
     author: manifest.author,
+    language: manifest.language,
     sections: manifest.sections,
   };
 };

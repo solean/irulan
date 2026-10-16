@@ -133,10 +133,10 @@
 
 .detail-cover-overlay-label {
   font-family: var(--font-serif);
-  font-size: var(--fs-base);
+  font-size: var(--fs-xs);
   font-weight: 500;
   letter-spacing: var(--tracking-wide);
-  font-variant-caps: all-small-caps;
+  text-transform: uppercase;
 }
 
 /* ─── Finished celebration (FinishCelebration) ───
@@ -228,6 +228,7 @@
   letter-spacing: var(--tracking-tight);
   line-height: var(--lh-tight);
   text-wrap: balance;
+  overflow-wrap: break-word;
 }
 
 .detail-author-large {
@@ -245,7 +246,7 @@
   gap: 6px;
   margin: 0;
   color: var(--text-tertiary);
-  font-size: 12px;
+  font-size: var(--fs-sm);
   font-variant-numeric: tabular-nums;
 }
 
@@ -273,7 +274,7 @@
 
 .reading-card-state {
   color: var(--text-tertiary);
-  font-size: 12px;
+  font-size: var(--fs-sm);
   font-variant-numeric: tabular-nums;
 }
 
@@ -292,7 +293,7 @@
 
 .reading-control-label {
   color: var(--text-tertiary);
-  font-size: 12px;
+  font-size: var(--fs-sm);
   font-weight: 500;
 }
 
@@ -388,7 +389,7 @@
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  font-size: 14px;
+  font-size: var(--fs-md);
   font-weight: 600;
   color: var(--text-primary);
 }
@@ -417,7 +418,7 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  font-size: 12px;
+  font-size: var(--fs-sm);
   font-weight: 500;
   color: var(--text-secondary);
 }
@@ -468,15 +469,15 @@
 
 .send-recipient-eyebrow {
   font-family: var(--font-serif);
-  font-size: var(--fs-sm);
+  font-size: var(--fs-xs);
   font-weight: 500;
   letter-spacing: var(--tracking-wide);
-  font-variant-caps: all-small-caps;
+  text-transform: uppercase;
   color: var(--text-tertiary);
 }
 
 .send-recipient-email {
-  font-size: 13px;
+  font-size: var(--fs-base);
   font-weight: 500;
   color: var(--text-primary);
   font-variant-numeric: tabular-nums;
@@ -544,7 +545,7 @@
   gap: 6px;
   width: fit-content;
   color: var(--text-secondary);
-  font-size: 13px;
+  font-size: var(--fs-base);
   text-decoration: none;
   transition: color 120ms ease;
 }
@@ -574,7 +575,7 @@
 
 .about-grid dt {
   margin: 0;
-  font-size: 12px;
+  font-size: var(--fs-sm);
   font-weight: 500;
   color: var(--text-tertiary);
 }
@@ -586,7 +587,7 @@
   min-width: 0;
   min-height: 24px;
   margin: 0;
-  font-size: 13px;
+  font-size: var(--fs-base);
   color: var(--text-primary);
   font-variant-numeric: tabular-nums;
 }
@@ -601,7 +602,7 @@
 .about-grid-secondary {
   overflow: hidden;
   color: var(--text-tertiary);
-  font-size: 12px;
+  font-size: var(--fs-sm);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -674,13 +675,13 @@
 
 .bookshelf-membership-name {
   color: var(--text-primary);
-  font-size: 13px;
+  font-size: var(--fs-base);
   font-weight: 600;
 }
 
 .bookshelf-membership-email {
   color: var(--text-tertiary);
-  font-size: 12px;
+  font-size: var(--fs-sm);
   overflow-wrap: anywhere;
 }
 
@@ -694,7 +695,7 @@
 
 .history-empty-title {
   margin: 0;
-  font-size: 13px;
+  font-size: var(--fs-base);
   font-weight: 600;
   color: var(--text-primary);
 }
@@ -703,7 +704,7 @@
   margin: 0;
   max-width: 60ch;
   color: var(--text-tertiary);
-  font-size: 13px;
+  font-size: var(--fs-base);
   line-height: 1.6;
 }
 
@@ -755,7 +756,7 @@
 }
 
 .history-row-recipient {
-  font-size: 13px;
+  font-size: var(--fs-base);
   font-weight: 500;
   color: var(--text-primary);
   font-variant-numeric: tabular-nums;
@@ -763,7 +764,7 @@
 }
 
 .history-row-time {
-  font-size: 12px;
+  font-size: var(--fs-sm);
   color: var(--text-tertiary);
 }
 
@@ -774,7 +775,7 @@
   background: var(--error-soft);
   border: 1px solid var(--error-border);
   color: var(--error);
-  font-size: 12px;
+  font-size: var(--fs-sm);
   line-height: 1.5;
 }
 
@@ -807,7 +808,7 @@
   margin: 0;
   max-width: 60ch;
   color: var(--text-secondary);
-  font-size: 13px;
+  font-size: var(--fs-base);
   line-height: 1.55;
 }
 
@@ -883,7 +884,7 @@
 }
 
 .detail-sticky-title {
-  font-size: 13px;
+  font-size: var(--fs-base);
   font-weight: 600;
   color: var(--text-primary);
   overflow: hidden;
@@ -892,7 +893,7 @@
 }
 
 .detail-sticky-author {
-  font-size: 12px;
+  font-size: var(--fs-sm);
   color: var(--text-tertiary);
   overflow: hidden;
   text-overflow: ellipsis;

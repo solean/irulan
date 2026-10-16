@@ -15,8 +15,16 @@
 /* ─── Responsive ─── */
 
 @media (max-width: 768px) {
+  /* 16px stops iOS Safari zooming on focus. The selector list matches
+     controls.css so this override wins its specificity. */
   input,
-  select {
+  input[type="search"],
+  input[type="email"],
+  input[type="text"],
+  select,
+  textarea,
+  .reader-annotation-edit textarea,
+  #reader-new-note {
     font-size: 16px;
   }
 
@@ -213,9 +221,8 @@
     border-radius: 22px;
   }
 
-  .reader-body {
-    font-size: calc(1rem * var(--reader-font-scale, 1));
-    line-height: 1.75;
+  .reader-canvas {
+    --reader-font-size: calc(1rem * var(--reader-font-scale, 1));
   }
 
   .reader-page-window {
@@ -231,7 +238,7 @@
   }
 
   .books-table {
-    min-width: 640px;
+    min-width: 700px;
   }
 
   .books-table th,
@@ -355,7 +362,16 @@
 
 @theme inline {
   --font-heading: var(--font-sans);
-  --font-sans: 'Geist Variable', sans-serif;
+  /* Tailwind text sizes resolve to the app's type scale (foundation.css), so
+     shadcn components and hand-written CSS share one set of sizes. */
+  --text-xs: var(--fs-sm);
+  --text-sm: var(--fs-base);
+  --text-base: var(--fs-md);
+  --text-lg: var(--fs-lg);
+  --text-xl: var(--fs-xl);
+  /* Components were laid out against a 14px root; 0.21875rem keeps their
+     spacing at 3.5px per step now that the root uses the browser default. */
+  --spacing: 0.21875rem;
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);

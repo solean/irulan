@@ -95,6 +95,8 @@ export type BookReader = {
   id: string;
   title: string;
   author: string;
+  /** Canonical BCP 47 tag from the package's `dc:language`, when it has one. */
+  language: string | null;
   sections: BookReaderSection[];
 };
 

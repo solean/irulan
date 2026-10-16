@@ -250,7 +250,7 @@ export const SettingsPage = () => {
       {loadError ? <p className="inline-error">{loadError}</p> : null}
 
       <section className="settings-intro" aria-labelledby="kindle-settings-title">
-        <h2 id="kindle-settings-title">Send to Kindle</h2>
+        <h2 className="page-title" id="kindle-settings-title">Send to Kindle</h2>
         <p>Configure email delivery so you can send EPUBs to your Kindle.</p>
       </section>
 

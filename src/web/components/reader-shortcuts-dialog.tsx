@@ -19,7 +19,7 @@ export const ReaderShortcutsDialog = ({ onOpenChange, open }: ReaderShortcutsDia
     <DialogContent className="reader-shortcuts-modal gap-5 sm:max-w-[520px]" showCloseButton={false}>
       <div className="import-modal-header">
         <DialogHeader className="stack-xs gap-1">
-          <DialogTitle className="text-[20px] font-semibold tracking-[-0.02em]">
+          <DialogTitle className="text-xl font-semibold tracking-[-0.02em]">
             Keyboard shortcuts
           </DialogTitle>
           <DialogDescription className="confirm-modal-copy text-left">

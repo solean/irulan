@@ -15,7 +15,7 @@
   min-height: 26px;
   padding-left: 2px;
   color: var(--text-tertiary);
-  font-size: 12px;
+  font-size: var(--fs-sm);
   line-height: 1.35;
 }
 
@@ -32,14 +32,14 @@
 
 .smtp-amazon-guide h3 {
   margin: 0;
-  font-size: 14px;
+  font-size: var(--fs-md);
   font-weight: 600;
   color: var(--text-primary);
 }
 
 .smtp-amazon-guide a {
   color: var(--accent);
-  font-size: 12px;
+  font-size: var(--fs-sm);
   font-weight: 500;
 }
 
@@ -54,7 +54,7 @@
   margin: 0;
   padding-left: 20px;
   color: var(--text-secondary);
-  font-size: 13px;
+  font-size: var(--fs-base);
   line-height: 1.5;
 }
 
@@ -128,14 +128,14 @@
   gap: 10px;
   flex-wrap: wrap;
   color: var(--text-tertiary);
-  font-size: 12px;
+  font-size: var(--fs-sm);
   font-variant-numeric: tabular-nums;
 }
 
 .bookshelves-page-note {
   margin: 0;
   color: var(--text-secondary);
-  font-size: 13px;
+  font-size: var(--fs-base);
 }
 
 .bookshelves-page-note a {
@@ -179,10 +179,10 @@
 .smtp-onboarding-eyebrow {
   margin: 0;
   font-family: var(--font-serif);
-  font-size: var(--fs-sm);
+  font-size: var(--fs-xs);
   font-weight: 500;
   letter-spacing: var(--tracking-wide);
-  font-variant-caps: all-small-caps;
+  text-transform: uppercase;
   color: color-mix(in srgb, var(--accent-hover) 84%, var(--text-primary));
 }
 
@@ -190,7 +190,7 @@
 .smtp-onboarding-step-copy,
 .smtp-onboarding-step-meta {
   margin: 0;
-  font-size: 13px;
+  font-size: var(--fs-base);
   line-height: 1.6;
 }
 
@@ -230,7 +230,7 @@
   border-radius: 999px;
   background: color-mix(in srgb, var(--accent-soft) 92%, transparent);
   color: color-mix(in srgb, var(--accent-hover) 84%, var(--text-primary));
-  font-size: 13px;
+  font-size: var(--fs-base);
   font-weight: 700;
   line-height: 1;
 }
@@ -246,7 +246,7 @@
 .smtp-onboarding-step-title {
   margin: 0;
   color: var(--text-primary);
-  font-size: 14px;
+  font-size: var(--fs-md);
   font-weight: 600;
 }
 
@@ -257,7 +257,7 @@
   border: 1px solid color-mix(in srgb, var(--accent-hover) 18%, var(--border-default));
   background: color-mix(in srgb, var(--accent-soft) 58%, transparent);
   color: var(--text-secondary);
-  font-size: 13px;
+  font-size: var(--fs-base);
   line-height: 1.6;
 }
 
@@ -270,7 +270,7 @@
   border: 1px solid var(--border-default);
   color: var(--text-secondary);
   font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
-  font-size: 12px;
+  font-size: var(--fs-sm);
   line-height: 1.7;
 }
 
@@ -279,7 +279,7 @@ code {
   border-radius: var(--radius-xs);
   background: var(--bg-elevated);
   font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
-  font-size: 12px;
+  font-size: var(--fs-sm);
 }
 
 /* Compact settings content; the application shell stays shared. */
@@ -297,13 +297,8 @@ code {
   margin: 4px 0 8px;
 }
 
-.settings-page .settings-intro h2 {
+.settings-intro .page-title {
   margin: 0 0 6px;
-  font-family: var(--font-serif);
-  font-size: var(--fs-3xl);
-  font-weight: 500;
-  line-height: var(--lh-tight);
-  letter-spacing: var(--tracking-tight);
 }
 
 .settings-intro p,
@@ -323,14 +318,6 @@ code {
 .settings-page .section-heading {
   align-items: center;
   flex-wrap: wrap;
-}
-
-.settings-page h2 {
-  margin: 0;
-  font-family: var(--font-serif);
-  font-size: var(--fs-2xl);
-  font-weight: 500;
-  line-height: var(--lh-snug);
 }
 
 .settings-mail-form {
@@ -422,7 +409,6 @@ code {
 
 .settings-row-copy h2 {
   margin-bottom: 4px;
-  font-size: var(--fs-xl);
 }
 
 .settings-row-copy code {
@@ -480,10 +466,6 @@ code {
   margin-top: 8px;
   padding: 24px 0 8px;
   border-top: 1px solid var(--border-default);
-}
-
-.settings-backup .settings-row-copy h2 {
-  font-size: var(--fs-2xl);
 }
 
 .settings-backup-controls {

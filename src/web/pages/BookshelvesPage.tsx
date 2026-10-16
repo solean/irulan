@@ -253,7 +253,7 @@ export const BookshelvesPage = () => {
       <Card className="panel">
         <div className="stack-xs">
           <div className="section-heading">
-            <h2>Bookshelves</h2>
+            <h2 className="page-title">Bookshelves</h2>
             <Pill>
               {numberFormatter.format(bookshelves.length)}
               {bookshelves.length === 1 ? " shelf" : " shelves"}

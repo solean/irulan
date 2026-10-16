@@ -24,7 +24,7 @@
   margin: 0;
   max-width: 48ch;
   color: var(--text-secondary);
-  font-size: 13px;
+  font-size: var(--fs-base);
 }
 
 /* Sticks within the .content scroll pane, which already starts below the
@@ -82,7 +82,7 @@
 }
 
 .reader-toc-index {
-  font-size: 11px;
+  font-size: var(--fs-xs);
   font-weight: 600;
   color: var(--text-tertiary);
   font-variant-numeric: tabular-nums;
@@ -90,7 +90,7 @@
 
 .reader-toc-label {
   min-width: 0;
-  font-size: 13px;
+  font-size: var(--fs-base);
   line-height: 1.4;
   white-space: normal;
   overflow-wrap: anywhere;
@@ -126,14 +126,14 @@
 
 .reader-current-label {
   min-width: 0;
-  font-size: 13px;
+  font-size: var(--fs-base);
   font-weight: 600;
   color: var(--text-primary);
   text-wrap: balance;
 }
 
 .reader-page-status {
-  font-size: 12px;
+  font-size: var(--fs-sm);
   color: var(--text-tertiary);
   font-variant-numeric: tabular-nums;
 }
@@ -148,6 +148,8 @@
 }
 
 .reader-canvas {
+  /* Book text size. --reader-font-scale is set inline on this element. */
+  --reader-font-size: calc(1.06rem * var(--reader-font-scale, 1));
   --reader-paper: #faf6ef;
   --reader-paper-edge: rgba(58, 44, 28, 0.09);
   --reader-ink: #241d17;
@@ -364,14 +366,14 @@
 }
 
 .reader-end-copy strong {
-  font-size: 14px;
+  font-size: var(--fs-md);
   font-weight: 600;
 }
 
 .reader-end-copy span {
   overflow: hidden;
   color: var(--reader-muted);
-  font-size: 12px;
+  font-size: var(--fs-sm);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -384,11 +386,20 @@
   min-height: 50vh;
 }
 
+/* The page fills the reading area up to 45rem, which is the default 820px
+   reader window's width less its gutters. The cap doesn't depend on the reader's
+   type size: changing the size reflows more or fewer words onto each line, and
+   the margins stay put, as in Kindle or Apple Books. In wider windows the cap
+   keeps lines from running across the whole screen. Pagination measures this
+   element, so the cap also sets the column width. */
 .reader-page-window {
   --reader-page-gap: clamp(32px, 4vw, 56px);
   position: relative;
   overflow: hidden;
+  width: 100%;
+  max-inline-size: 45rem;
   height: min(72vh, 920px);
+  margin-inline: auto;
   outline: none;
   transition: opacity 160ms ease;
   /* Horizontal gestures drive page turns; keep vertical for scrolling and
@@ -570,7 +581,7 @@
 
 .reader-immersive-control-aa {
   font-family: var(--font-serif);
-  font-size: 16px;
+  font-size: var(--fs-lg);
   font-weight: 600;
   letter-spacing: 0.01em;
 }
@@ -579,7 +590,7 @@
   min-width: 0;
   text-align: center;
   font-family: var(--font-serif);
-  font-size: 14px;
+  font-size: var(--fs-md);
   font-weight: 500;
   color: var(--reader-muted);
   white-space: nowrap;
@@ -748,7 +759,7 @@
 }
 
 .reader-immersive-page {
-  font-size: 12px;
+  font-size: var(--fs-sm);
   color: var(--reader-muted);
   font-variant-numeric: tabular-nums;
 }
@@ -824,7 +835,7 @@
 .reader-immersive-panel-title {
   margin: 0;
   font-family: var(--font-serif);
-  font-size: 16px;
+  font-size: var(--fs-lg);
   font-weight: 500;
   line-height: 1.25;
   color: var(--text-primary);
@@ -848,9 +859,9 @@
 
 .reader-immersive-field-label {
   font-family: var(--font-serif);
-  font-size: var(--fs-sm);
+  font-size: var(--fs-xs);
   font-weight: 500;
-  font-variant-caps: all-small-caps;
+  text-transform: uppercase;
   letter-spacing: 0.06em;
   color: var(--text-tertiary);
 }
@@ -868,7 +879,7 @@
    inside the immersive appearance panel. */
 .reader-font-trigger {
   min-height: 36px;
-  width: 11.5rem;
+  width: 161px;
   justify-content: space-between;
   background: var(--bg-surface);
 }
@@ -887,9 +898,8 @@
     Georgia,
     serif
   );
-  font-size: calc(1.06rem * var(--reader-font-scale, 1));
+  font-size: var(--reader-font-size);
   line-height: var(--reader-line-height, 1.5);
-  letter-spacing: 0.01em;
   text-rendering: optimizeLegibility;
   font-kerning: normal;
 }
@@ -986,25 +996,32 @@
   text-decoration: none;
 }
 
-.reader-body .reader-heading-h1,
+/* Sized in em so headings follow the reader's type size and always stay
+   larger than the text beneath them. */
+.reader-body .reader-heading-h1 {
+  font-size: 2em;
+}
+
 .reader-body .reader-heading-h2 {
-  font-size: clamp(1.9rem, 2.7vw, 2.6rem);
+  font-size: 1.6em;
 }
 
 .reader-body .reader-heading-h3 {
-  font-size: clamp(1.45rem, 2.2vw, 1.8rem);
+  font-size: 1.3em;
 }
 
-.reader-body .reader-heading-h4,
+.reader-body .reader-heading-h4 {
+  font-size: 1.1em;
+}
+
 .reader-body .reader-heading-h5,
 .reader-body .reader-heading-h6 {
-  font-size: clamp(1.1rem, 1.7vw, 1.3rem);
+  font-size: 1em;
 }
 
 .reader-paragraph {
   color: var(--reader-ink);
-  overflow-wrap: anywhere;
-  text-wrap: pretty;
+  overflow-wrap: break-word;
 }
 
 .reader-blockquote {
@@ -1133,16 +1150,16 @@
 
 .detail-author {
   color: var(--text-secondary);
-  font-size: 13px;
+  font-size: var(--fs-base);
 }
 
 .eyebrow {
   margin: 0;
   font-family: var(--font-serif);
-  font-size: var(--fs-sm);
+  font-size: var(--fs-xs);
   font-weight: 500;
   letter-spacing: var(--tracking-wide);
-  font-variant-caps: all-small-caps;
+  text-transform: uppercase;
   color: var(--text-tertiary);
 }
 
@@ -1151,18 +1168,7 @@
   max-width: 60ch;
   color: var(--text-secondary);
   line-height: 1.6;
-  font-size: 13px;
-}
-
-.page h2 {
-  margin: 0;
-  font-family: var(--font-serif);
-  font-optical-sizing: auto;
-  font-size: var(--fs-xl);
-  font-weight: 500;
-  line-height: var(--lh-snug);
-  letter-spacing: var(--tracking-snug);
-  color: var(--text-primary);
+  font-size: var(--fs-base);
 }
 
 
@@ -1211,12 +1217,8 @@
   gap: 16px;
 }
 
-.reader-tool-panel-header h2 {
+.reader-tool-panel .reader-tool-panel-header h2 {
   margin: 2px 0 0;
-  font-family: var(--font-serif);
-  font-size: 20px;
-  font-weight: 550;
-  letter-spacing: -0.015em;
 }
 
 .reader-search-form {
@@ -1226,7 +1228,7 @@
 }
 
 .reader-search-status {
-  min-height: 1.25rem;
+  min-height: 18px;
   color: var(--text-secondary);
   font-size: var(--fs-sm);
 }
@@ -1324,7 +1326,7 @@
 }
 
 .reader-tool-status {
-  min-height: 1.25rem;
+  min-height: 18px;
   color: var(--text-secondary);
   font-size: var(--fs-sm);
 }
@@ -1578,7 +1580,7 @@
 }
 
 .reader-note-quote {
-  max-height: 7rem;
+  max-height: 98px;
   margin: 0;
   padding: 10px 12px;
   overflow: auto;

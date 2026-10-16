@@ -111,7 +111,7 @@ export const ImportBooksModal = ({
       >
         <div className="import-modal-header">
           <DialogHeader className="stack-xs import-modal-copy gap-1">
-            <DialogTitle className="text-[20px] font-semibold tracking-[-0.02em]">
+            <DialogTitle className="text-xl font-semibold tracking-[-0.02em]">
               Add EPUBs
             </DialogTitle>
           </DialogHeader>
@@ -233,7 +233,7 @@ export const ImportTargetModal = ({
         showCloseButton={false}
       >
         <DialogHeader className="stack-xs gap-1">
-          <DialogTitle className="text-[20px] font-semibold tracking-[-0.02em]">
+          <DialogTitle className="text-xl font-semibold tracking-[-0.02em]">
             Choose bookshelves
           </DialogTitle>
           <p className="import-target-copy">
@@ -353,7 +353,7 @@ export const ConfirmModal = ({
       <div className="stack-sm">
         <div className="stack-xs">
           <p className="eyebrow">{eyebrow}</p>
-          <AlertDialogTitle className="text-left text-[20px] font-semibold tracking-[-0.02em]">
+          <AlertDialogTitle className="text-left text-xl font-semibold tracking-[-0.02em]">
             {title}
           </AlertDialogTitle>
         </div>

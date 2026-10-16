@@ -835,7 +835,7 @@ export const BookshelfPage = () => {
           >
           <header className="bookshelf-main-header">
             <div className="bookshelf-main-heading">
-              <h1 className="bookshelf-main-title">
+              <h1 className="page-title">
                 {activeBookshelfId === ALL_BOOKSHELVES_ID
                   ? "All books"
                   : activeBookshelf?.name ?? "Bookshelf"}
